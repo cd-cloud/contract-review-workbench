@@ -1,4 +1,4 @@
-const { spawn } = require("child_process");
+const { spawn, spawnSync } = require("child_process");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
@@ -38,6 +38,19 @@ function getCodexCommand() {
   return "codex";
 }
 
+function resolveCodexCommandStatus() {
+  const command = getCodexCommand();
+  if (!command) return { command: "codex", exists: false };
+  if (path.isAbsolute(command)) return { command, exists: fs.existsSync(command) };
+  const lookupCommand = process.platform === "win32" ? "where" : "which";
+  const result = spawnSync(lookupCommand, [command], { encoding: "utf8" });
+  if (result.status === 0) {
+    const resolved = String(result.stdout || "").split(/\r?\n/).filter(Boolean)[0] || command;
+    return { command: resolved, exists: true };
+  }
+  return { command, exists: false };
+}
+
 function resolveChatCompletionsUrl() {
   const provider = getProvider();
   const raw =
@@ -64,6 +77,7 @@ function getModelName() {
 function getProviderStatus() {
   const provider = getProvider();
   const apiKey = getApiKey();
+  const codex = resolveCodexCommandStatus();
   let baseUrl = "";
   try {
     baseUrl = provider === "codex" || provider === "codex-cli" ? "" : resolveChatCompletionsUrl();
@@ -76,6 +90,8 @@ function getProviderStatus() {
     model: provider === "codex" || provider === "codex-cli" ? "" : getModelName(),
     baseUrlConfigured: Boolean(baseUrl),
     apiKeyConfigured: Boolean(apiKey),
+    codexCommand: codex.command,
+    codexExists: codex.exists,
   };
 }
 
@@ -244,6 +260,7 @@ function printJson(value) {
 module.exports = {
   compact,
   getProvider,
+  getCodexCommand,
   getProviderStatus,
   readStdinJson,
   runJsonTask,

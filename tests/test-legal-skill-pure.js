@@ -8,12 +8,12 @@
  */
 
 const assert = require("assert");
-const { execSync } = require("child_process");
+const { execFileSync } = require("child_process");
 const { test, testAsync, summary } = require("./test-helper");
 
 function runInFreshEnv(code, extraEnv = {}) {
   const env = { ...process.env, ...extraEnv };
-  return execSync(`node -e ${JSON.stringify(code)}`, {
+  return execFileSync(process.execPath, ["-e", code], {
     env,
     encoding: "utf8",
     cwd: require("path").resolve(__dirname, ".."),
@@ -42,6 +42,12 @@ test("getRunnerStatus returns object with all expected keys", () => {
   assert("baseUrlConfigured" in s);
   assert("apiKeyConfigured" in s);
   assert("mode" in s);
+  assert("ready" in s);
+  assert("summary" in s);
+  assert("codexCommand" in s);
+  assert("codexExists" in s);
+  assert("runnerScript" in s);
+  assert("runnerScriptExists" in s);
 });
 
 test("getRunnerStatus.configured is boolean", () => {
@@ -65,6 +71,37 @@ test("getRunnerStatus.mode is fallback when runner is not configured", () => {
   if (!s.configured) {
     assert.strictEqual(s.mode, "fallback");
   }
+});
+
+test("getRunnerStatus defaults to Codex CLI local skill runner", () => {
+  const out = runInFreshEnv(
+    `delete process.env.LEGAL_SKILL_RUNNER_SCRIPT;` +
+    `delete process.env.LEGAL_SKILL_ALLOW_FALLBACK;` +
+    `process.env.LEGAL_AI_PROVIDER = "codex-cli";` +
+    `const { getRunnerStatus } = require("./server/legal-skill-adapter");` +
+    `const s = getRunnerStatus();` +
+    `console.log(JSON.stringify({mode:s.mode, runnerScript:s.runnerScript, configured:s.configured, ready: typeof s.ready}));`
+  );
+  const result = JSON.parse(out);
+  assert.strictEqual(result.configured, true);
+  assert.strictEqual(result.mode, "codex-cli-local-skill");
+  assert(result.runnerScript.endsWith("scripts/codex-skill-runner.js"));
+  assert.strictEqual(result.ready, "boolean");
+});
+
+test("LEGAL_SKILL_ALLOW_FALLBACK disables implicit Codex runner for fallback tests", () => {
+  const out = runInFreshEnv(
+    `delete process.env.LEGAL_SKILL_RUNNER_SCRIPT;` +
+    `process.env.LEGAL_SKILL_ALLOW_FALLBACK = "1";` +
+    `process.env.LEGAL_AI_PROVIDER = "codex-cli";` +
+    `const { getRunnerStatus } = require("./server/legal-skill-adapter");` +
+    `const s = getRunnerStatus();` +
+    `console.log(JSON.stringify({mode:s.mode, configured:s.configured, runnerScript:s.runnerScript}));`
+  );
+  const result = JSON.parse(out);
+  assert.strictEqual(result.configured, false);
+  assert.strictEqual(result.mode, "fallback");
+  assert.strictEqual(result.runnerScript, null);
 });
 
 // ---------------------------------------------------------------------------
@@ -96,7 +133,7 @@ test("parseRunnerArgs parses JSON array env", () => {
     `delete require.cache[require.resolve("./server/legal-skill-adapter")];` +
     `const { getRunnerStatus } = require("./server/legal-skill-adapter");` +
     `console.log(JSON.stringify(getRunnerStatus().args));`,
-    { LEGAL_SKILL_ARGS_JSON: '["--foo","--bar"]' }
+    { LEGAL_SKILL_ALLOW_FALLBACK: "1", LEGAL_SKILL_ARGS_JSON: '["--foo","--bar"]' }
   );
   assert.deepStrictEqual(JSON.parse(out), ["--foo", "--bar"]);
 });
@@ -106,7 +143,7 @@ test("parseRunnerArgs returns empty array for invalid JSON", () => {
     `delete require.cache[require.resolve("./server/legal-skill-adapter")];` +
     `const { getRunnerStatus } = require("./server/legal-skill-adapter");` +
     `console.log(JSON.stringify(getRunnerStatus().args));`,
-    { LEGAL_SKILL_ARGS_JSON: "not-json" }
+    { LEGAL_SKILL_ALLOW_FALLBACK: "1", LEGAL_SKILL_ARGS_JSON: "not-json" }
   );
   assert.deepStrictEqual(JSON.parse(out), []);
 });
@@ -116,7 +153,7 @@ test("parseRunnerArgs returns empty array when env is empty", () => {
     `delete require.cache[require.resolve("./server/legal-skill-adapter")];` +
     `const { getRunnerStatus } = require("./server/legal-skill-adapter");` +
     `console.log(JSON.stringify(getRunnerStatus().args));`,
-    { LEGAL_SKILL_ARGS_JSON: "" }
+    { LEGAL_SKILL_ALLOW_FALLBACK: "1", LEGAL_SKILL_ARGS_JSON: "" }
   );
   assert.deepStrictEqual(JSON.parse(out), []);
 });

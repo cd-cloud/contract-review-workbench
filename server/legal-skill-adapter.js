@@ -7,8 +7,13 @@ const { splitClauses, classifyClause } = require("../lib/contract-splitter");
 
 const SKILL_PATH = process.env.LEGAL_WORK_ORCHESTRATOR_SKILL || path.join(process.env.USERPROFILE || "", ".codex", "skills", "legal-work-orchestrator", "SKILL.md");
 const PROVIDER_STATUS = getProviderStatus();
-const DEFAULT_RUNNER_SCRIPT = PROVIDER_STATUS.mode === "openai-compatible" ? "scripts/ai-skill-runner.js" : "";
-const RUNNER_SCRIPT = process.env.LEGAL_SKILL_RUNNER_SCRIPT || DEFAULT_RUNNER_SCRIPT;
+const EXPLICIT_RUNNER_SCRIPT = Object.prototype.hasOwnProperty.call(process.env, "LEGAL_SKILL_RUNNER_SCRIPT");
+const DEFAULT_RUNNER_SCRIPT = PROVIDER_STATUS.mode === "openai-compatible" ? "scripts/ai-skill-runner.js" : "scripts/codex-skill-runner.js";
+const RUNNER_SCRIPT = process.env.LEGAL_SKILL_ALLOW_FALLBACK === "1" && !EXPLICIT_RUNNER_SCRIPT
+  ? ""
+  : EXPLICIT_RUNNER_SCRIPT
+    ? process.env.LEGAL_SKILL_RUNNER_SCRIPT
+    : DEFAULT_RUNNER_SCRIPT;
 const RUNNER_COMMAND = process.env.LEGAL_SKILL_COMMAND || (RUNNER_SCRIPT ? process.execPath : "");
 const RUNNER_ARGS = RUNNER_SCRIPT ? [path.resolve(process.cwd(), RUNNER_SCRIPT), ...parseRunnerArgs(process.env.LEGAL_SKILL_ARGS_JSON)] : parseRunnerArgs(process.env.LEGAL_SKILL_ARGS_JSON);
 
@@ -43,17 +48,37 @@ async function analyzeLegalReview(request, options = {}) {
 }
 
 function getRunnerStatus() {
+  const runnerScriptExists = RUNNER_SCRIPT ? fs.existsSync(path.resolve(process.cwd(), RUNNER_SCRIPT)) : false;
+  const skillExists = fs.existsSync(SKILL_PATH);
+  const usesCodexCli = PROVIDER_STATUS.mode === "codex-cli";
+  const ready = Boolean(
+    RUNNER_COMMAND &&
+    (!RUNNER_SCRIPT || runnerScriptExists) &&
+    (!usesCodexCli || PROVIDER_STATUS.codexExists) &&
+    (!usesCodexCli || skillExists)
+  );
+  const summary = ready
+    ? "本机 Codex CLI + legal-work-orchestrator 已就绪。"
+    : RUNNER_COMMAND
+      ? "本机 AI 审阅未就绪，请检查 Codex CLI 和 legal-work-orchestrator skill。"
+      : "本机 AI 审阅未启用，当前使用本地规则兜底。";
   return {
     configured: Boolean(RUNNER_COMMAND),
+    ready,
+    summary,
     command: RUNNER_COMMAND || null,
     args: RUNNER_ARGS,
+    runnerScript: RUNNER_SCRIPT || null,
+    runnerScriptExists,
     skillPath: SKILL_PATH,
-    skillExists: fs.existsSync(SKILL_PATH),
+    skillExists,
     provider: PROVIDER_STATUS.provider,
     model: PROVIDER_STATUS.model,
+    codexCommand: PROVIDER_STATUS.codexCommand || null,
+    codexExists: Boolean(PROVIDER_STATUS.codexExists),
     baseUrlConfigured: PROVIDER_STATUS.baseUrlConfigured,
     apiKeyConfigured: PROVIDER_STATUS.apiKeyConfigured,
-    mode: RUNNER_COMMAND ? `configured-runner:${PROVIDER_STATUS.provider}` : "fallback",
+    mode: RUNNER_COMMAND ? (usesCodexCli ? "codex-cli-local-skill" : `configured-runner:${PROVIDER_STATUS.provider}`) : "fallback",
   };
 }
 

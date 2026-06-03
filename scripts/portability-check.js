@@ -30,9 +30,9 @@ function main() {
     path.join(process.env.USERPROFILE || process.env.HOME || "", ".codex", "skills", "legal-work-orchestrator", "SKILL.md");
   const checks = [
     checkFile("legal-work-orchestrator skill", skillPath),
-    checkFile("AI skill runner", path.resolve("scripts/ai-skill-runner.js")),
-    checkFile("AI suggestion runner", path.resolve("scripts/ai-suggestion-runner.js")),
-    checkFile("AI intake runner", path.resolve("scripts/ai-intake-runner.js")),
+    checkFile("Codex skill runner", path.resolve("scripts/codex-skill-runner.js")),
+    checkFile("Codex suggestion runner", path.resolve("scripts/codex-suggestion-runner.js")),
+    checkFile("Codex intake runner", path.resolve("scripts/codex-intake-runner.js")),
     checkFile("AI visual QA runner", path.resolve("scripts/ai-visual-qa-runner.js")),
     checkFile("legal skill schema", path.resolve("schemas/legal-skill-response.schema.json")),
     checkFile("suggestion action schema", path.resolve("schemas/suggestion-action-response.schema.json")),
@@ -62,7 +62,7 @@ function main() {
     },
     checks,
     recommendedCommands: {
-      codex: "npm run server:ai",
+      codex: "npm run server:codex",
       kimi:
         "set LEGAL_AI_PROVIDER=kimi&& set KIMI_API_KEY=<key>&& npm run server:kimi",
     },

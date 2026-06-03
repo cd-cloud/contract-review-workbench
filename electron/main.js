@@ -123,9 +123,9 @@ function startBackend() {
   if (!isDev) {
     const appRoot = path.join(process.resourcesPath, "app");
     const runnerMap = {
-      LEGAL_SKILL_RUNNER_SCRIPT: "scripts/ai-skill-runner.js",
-      SUGGESTION_ACTION_RUNNER_SCRIPT: "scripts/ai-suggestion-runner.js",
-      CONTRACT_INTAKE_RUNNER_SCRIPT: "scripts/ai-intake-runner.js",
+      LEGAL_SKILL_RUNNER_SCRIPT: "scripts/codex-skill-runner.js",
+      SUGGESTION_ACTION_RUNNER_SCRIPT: "scripts/codex-suggestion-runner.js",
+      CONTRACT_INTAKE_RUNNER_SCRIPT: "scripts/codex-intake-runner.js",
       VISUAL_QA_RUNNER_SCRIPT: "scripts/ai-visual-qa-runner.js",
     };
     for (const [key, relPath] of Object.entries(runnerMap)) {

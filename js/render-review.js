@@ -248,8 +248,9 @@ function getCodexRunStatus(contract, material) {
   const stale = Boolean(running && updatedAt && Date.now() - updatedAt > STALE_JOB_TIMEOUT_MS);
   return {
     sourceKey,
-    backend: runner.configured ? "connected" : runner.error ? "unavailable" : "unknown",
+    backend: runner.ready ? "connected" : runner.configured === false || runner.error || runner.ready === false ? "unavailable" : "unknown",
     runnerMode: runner.mode || "",
+    runnerSummary: runner.summary || "",
     analysis,
     auto,
     segmentation,
@@ -274,7 +275,7 @@ function renderCodexStatusPanel(status) {
   const rows = [
     {
       label: "后端",
-      value: status.backend === "connected" ? `已连接${status.runnerMode ? ` | ${status.runnerMode}` : ""}` : status.backend === "unavailable" ? "未连接" : "待确认",
+      value: status.backend === "connected" ? `已就绪${status.runnerMode ? ` | ${status.runnerMode}` : ""}` : status.backend === "unavailable" ? (status.runnerSummary || "本机 AI 未就绪") : "待确认",
       tone: status.backend === "connected" ? "low" : "medium",
     },
     {
