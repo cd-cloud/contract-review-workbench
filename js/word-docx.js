@@ -72,7 +72,7 @@ async function readUploadedFile(file) {
 
 async function parseDocxOnBackend(fileName, buffer) {
   try {
-    const response = await legalWorkbenchFetch("http://localhost:8787/api/docx/parse", {
+    const response = await legalWorkbenchFetch("/api/docx/parse", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

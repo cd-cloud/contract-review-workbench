@@ -116,7 +116,7 @@ function buildLegalSkillClauseList(text, sourceKey) {
 async function runLegalSkillAnalysis(contract, materialText, extraRequirements = "", options = {}) {
   const request = buildLegalSkillRequest(contract, materialText, extraRequirements, options);
   try {
-    const response = await legalWorkbenchFetch("http://localhost:8787/api/legal-review/jobs", {
+    const response = await legalWorkbenchFetch("/api/legal-review/jobs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(request),
@@ -185,7 +185,7 @@ async function pollLegalSkillJob(jobId, contractId, options = {}) {
     while (Date.now() - startedAt < POLL_TIMEOUT_MS) {
       if (controller.signal.aborted) throw new Error("AI 分析已取消。");
       await delay(POLL_INTERVAL_MS);
-      const response = await legalWorkbenchFetch(`http://localhost:8787/api/legal-review/jobs/${encodeURIComponent(jobId)}`, { signal: controller.signal });
+      const response = await legalWorkbenchFetch(`/api/legal-review/jobs/${encodeURIComponent(jobId)}`, { signal: controller.signal });
       if (!response.ok) throw new Error("AI 分析任务状态读取失败");
       const data = await response.json();
       const job = data.job;
@@ -473,7 +473,7 @@ function delay(ms) {
 }
 
 async function syncBackendSnapshot() {
-  const response = await legalWorkbenchFetch("http://localhost:8787/api/db/sync", {
+  const response = await legalWorkbenchFetch("/api/db/sync", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(state),
@@ -483,7 +483,7 @@ async function syncBackendSnapshot() {
 }
 
 async function runBackendSuggestionAction(payload) {
-  const response = await legalWorkbenchFetch("http://localhost:8787/api/ai-suggestion/action", {
+  const response = await legalWorkbenchFetch("/api/ai-suggestion/action", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -493,7 +493,7 @@ async function runBackendSuggestionAction(payload) {
 }
 
 async function runContractIntake(contractText) {
-  const response = await legalWorkbenchFetch("http://localhost:8787/api/contract-intake", {
+  const response = await legalWorkbenchFetch("/api/contract-intake", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ contractText }),
@@ -503,7 +503,7 @@ async function runContractIntake(contractText) {
 }
 
 async function archiveContractFile(contractId, base64Content, originalName, mimeType) {
-  const response = await legalWorkbenchFetch(`http://localhost:8787/api/contracts/${encodeURIComponent(contractId)}/files`, {
+  const response = await legalWorkbenchFetch(`/api/contracts/${encodeURIComponent(contractId)}/files`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -518,7 +518,7 @@ async function archiveContractFile(contractId, base64Content, originalName, mime
 }
 
 async function archiveContractExport(contractId, base64Content, originalName, mimeType) {
-  const response = await legalWorkbenchFetch(`http://localhost:8787/api/contracts/${encodeURIComponent(contractId)}/exports`, {
+  const response = await legalWorkbenchFetch(`/api/contracts/${encodeURIComponent(contractId)}/exports`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -538,7 +538,7 @@ let backendSyncDirty = false;
 const pollControllers = new Map();
 
 async function fetchBackendSnapshot() {
-  const response = await legalWorkbenchFetch("http://localhost:8787/api/db");
+  const response = await legalWorkbenchFetch("/api/db");
   if (!response.ok) throw new Error("本地后端数据加载失败");
   const db = await response.json();
   return db.snapshot || null;
@@ -566,7 +566,7 @@ async function hydrateFromBackendOnStart() {
 
 async function refreshRunnerStatus() {
   try {
-    const response = await legalWorkbenchFetch("http://localhost:8787/api/legal-review/runner-status");
+    const response = await legalWorkbenchFetch("/api/legal-review/runner-status");
     if (!response.ok) throw new Error("runner status unavailable");
     const data = await response.json();
     state.runnerStatus = data.runner;
@@ -593,7 +593,7 @@ async function flushBackendSync() {
   backendSyncDirty = false;
   const snapshot = clone(state);
   try {
-    const response = await legalWorkbenchFetch("http://localhost:8787/api/db/sync", {
+    const response = await legalWorkbenchFetch("/api/db/sync", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(snapshot),
@@ -693,7 +693,7 @@ function buildVisualQaRequest(contract, material, clauses, reason = "review-stat
 }
 
 async function runVisualQa(contract, material, clauses, reason = "review-state") {
-  const response = await legalWorkbenchFetch("http://localhost:8787/api/visual-qa", {
+  const response = await legalWorkbenchFetch("/api/visual-qa", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(buildVisualQaRequest(contract, material, clauses, reason)),

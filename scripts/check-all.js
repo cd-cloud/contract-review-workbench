@@ -4,7 +4,7 @@ const { execSync } = require("child_process");
 
 const ROOT = path.resolve(__dirname, "..");
 
-function collectJsFiles(dir, exclude = ["node_modules", ".git"]) {
+function collectJsFiles(dir, exclude = ["node_modules", ".git", "dist"]) {
   const files = [];
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);

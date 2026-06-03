@@ -11,7 +11,7 @@ module.exports = defineConfig({
   workers: 1,
   reporter: "line",
   use: {
-    baseURL: "http://127.0.0.1:8787",
+    baseURL: process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:8787",
     trace: "on-first-retry",
     headless: true,
     // Use the already-downloaded Chromium (avoid headless-shell requirement)

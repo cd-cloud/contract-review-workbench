@@ -83,7 +83,10 @@ function wait(ms) {
     const handled = handleStatic({ method: "GET" }, res, makeUrl("/js/runtime-config.js"));
     assert.strictEqual(handled, true);
     assert.strictEqual(res.status, 200);
+    assert.ok(res.body.includes("LEGAL_WORKBENCH_CONFIG"));
     assert.ok(res.body.includes("LEGAL_WORKBENCH_API_TOKEN"));
+    assert.ok(res.body.includes("LEGAL_WORKBENCH_BACKEND_ORIGIN"));
+    assert.ok(res.body.includes("http://127.0.0.1:8787"));
     const token = getApiToken();
     assert.ok(res.body.includes(token), "runtime-config should include the actual API token");
   });

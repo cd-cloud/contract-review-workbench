@@ -66,7 +66,7 @@
         try {
           const contract = Store.getActiveContract();
           if (!contract) return;
-          const res = await legalWorkbenchFetch("http://localhost:8787/api/contracts");
+          const res = await legalWorkbenchFetch("/api/contracts");
           if (!res.ok) return;
           const data = await res.json();
           const match = data.contracts?.find((c) => c.id === contract.id);

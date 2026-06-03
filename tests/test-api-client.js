@@ -9,6 +9,7 @@ function loadClient(token) {
   const calls = [];
   const context = {
     Headers,
+    URL,
     window: { LEGAL_WORKBENCH_API_TOKEN: token },
     fetch(input, init) {
       calls.push({ input, init });
@@ -23,6 +24,7 @@ async function main() {
   {
     const { client, calls } = loadClient("test-token");
     await client("/api/db", { headers: { "Content-Type": "application/json" } });
+    assert.strictEqual(calls[0].input, "http://127.0.0.1:8787/api/db");
     assert.strictEqual(calls[0].init.headers.get("X-Legal-Workbench-Token"), "test-token");
     assert.strictEqual(calls[0].init.headers.get("Content-Type"), "application/json");
   }
@@ -33,7 +35,29 @@ async function main() {
     assert.strictEqual(calls[0].init.headers.has("X-Legal-Workbench-Token"), false);
   }
 
-  console.log("2/2 passed");
+  {
+    const calls = [];
+    const context = {
+      Headers,
+      URL,
+      window: {
+        LEGAL_WORKBENCH_CONFIG: {
+          apiToken: "config-token",
+          backendOrigin: "http://127.0.0.1:8791",
+        },
+      },
+      fetch(input, init) {
+        calls.push({ input, init });
+        return Promise.resolve({ ok: true });
+      },
+    };
+    vm.runInNewContext(source, context);
+    await context.legalWorkbenchFetch("http://localhost:8787/api/contracts?x=1");
+    assert.strictEqual(calls[0].input, "http://127.0.0.1:8791/api/contracts?x=1");
+    assert.strictEqual(calls[0].init.headers.get("X-Legal-Workbench-Token"), "config-token");
+  }
+
+  console.log("3/3 passed");
 }
 
 main().catch((error) => {

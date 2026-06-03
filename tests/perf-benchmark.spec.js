@@ -5,7 +5,7 @@
 
 const { test, expect } = require("playwright/test");
 
-const BASE_URL = "http://127.0.0.1:8787";
+const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:8787";
 
 /**
  * Helper to measure async function execution time inside the browser.

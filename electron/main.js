@@ -11,7 +11,15 @@ const os = require("os");
 const net = require("net");
 
 const isDev = !app.isPackaged;
+const isTest = process.env.NODE_ENV === "test" || process.env.ELECTRON_SMOKE_TEST === "1";
 const WORKBENCH_ROOT = path.join(os.homedir(), "LegalWorkbench");
+
+function smokeLog(message) {
+  if (!isTest || !process.env.ELECTRON_SMOKE_LOG) return;
+  try {
+    fs.appendFileSync(process.env.ELECTRON_SMOKE_LOG, `[electron-main] ${new Date().toISOString()} ${message}\n`);
+  } catch (error) {}
+}
 
 /* ─────────────── Data directory writable check ─────────────── */
 function ensureWorkbenchRoot() {
@@ -45,6 +53,7 @@ function ensureWorkbenchRoot() {
 }
 
 if (!ensureWorkbenchRoot()) return;
+smokeLog("workbench root ready");
 
 /* ─────────────── Port selection ─────────────── */
 let BACKEND_PORT = 8787;
@@ -88,6 +97,7 @@ let tray = null;
 let backendProcess = null;
 let backendReady = false;
 let backendRestartCount = 0;
+let isQuitting = false;
 const MAX_BACKEND_RESTARTS = 5;
 
 /* ─────────────── Backend lifecycle ─────────────── */
@@ -97,6 +107,9 @@ function startBackend() {
   const serverScript = isDev
     ? path.join(__dirname, "..", "server", "server.js")
     : path.join(process.resourcesPath, "app", "server", "server.js");
+  const backendRuntime = isDev
+    ? (process.env.LEGAL_WORKBENCH_NODE_COMMAND || process.env.npm_node_execpath || "node")
+    : process.execPath;
 
   const env = {
     ...process.env,
@@ -120,8 +133,8 @@ function startBackend() {
     }
   }
 
-  console.log("[Electron] Starting backend...", serverScript, "on port", BACKEND_PORT);
-  backendProcess = spawn(process.execPath, [serverScript], {
+  console.log("[Electron] Starting backend...", serverScript, "with", backendRuntime, "on port", BACKEND_PORT);
+  backendProcess = spawn(backendRuntime, [serverScript], {
     env,
     stdio: ["pipe", "pipe", "pipe"],
     detached: false,
@@ -130,6 +143,7 @@ function startBackend() {
   backendProcess.stdout.on("data", (data) => {
     const text = data.toString().trim();
     if (text) console.log("[Backend]", text);
+    if (text) smokeLog(`[Backend] ${text}`);
     if (text.includes(`listening on http://127.0.0.1:${BACKEND_PORT}`)) {
       backendReady = true;
       if (mainWindow) loadWorkbench();
@@ -139,15 +153,18 @@ function startBackend() {
   backendProcess.stderr.on("data", (data) => {
     const text = data.toString().trim();
     if (text) console.error("[Backend Error]", text);
+    if (text) smokeLog(`[Backend Error] ${text}`);
   });
 
   backendProcess.on("error", (err) => {
     console.error("[Backend] Failed to start:", err);
+    smokeLog(`[Backend] failed to start ${err.message}`);
     tryRestartBackend();
   });
 
   backendProcess.on("close", (code) => {
     console.log(`[Backend] Exited with code ${code}`);
+    smokeLog(`[Backend] exited with code ${code}`);
     backendProcess = null;
     backendReady = false;
     if (code !== 0 && code !== null) {
@@ -210,6 +227,7 @@ function stopBackend() {
 
 /* ─────────────── Window lifecycle ─────────────── */
 function createWindow() {
+  smokeLog("createWindow begin");
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -234,11 +252,13 @@ function createWindow() {
   }
 
   mainWindow.once("ready-to-show", () => {
+    smokeLog("window ready-to-show");
     mainWindow.show();
-    if (isDev) mainWindow.webContents.openDevTools();
+    if (isDev && !isTest) mainWindow.webContents.openDevTools();
   });
 
   mainWindow.on("close", (event) => {
+    if (isQuitting) return;
     if (process.platform === "darwin") return; // macOS standard behavior
     event.preventDefault();
     mainWindow.hide();
@@ -251,6 +271,7 @@ function createWindow() {
 
 function loadWorkbench() {
   if (!mainWindow) return;
+  smokeLog(`loading ${BACKEND_URL()}`);
   mainWindow.loadURL(BACKEND_URL());
 }
 
@@ -415,6 +436,7 @@ async function autoBackupOnQuit() {
 }
 
 async function quitApp() {
+  isQuitting = true;
   if (tray) {
     tray.destroy();
     tray = null;
@@ -425,10 +447,15 @@ async function quitApp() {
 }
 
 app.whenReady().then(async () => {
+  smokeLog("app.whenReady");
   await resolveBackendPort();
+  smokeLog(`resolved backend port ${BACKEND_PORT}`);
   startBackend();
+  smokeLog("backend start requested");
   createWindow();
+  smokeLog("window create requested");
   createTray();
+  smokeLog("tray create requested");
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -450,6 +477,7 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
+  isQuitting = true;
   stopBackend();
 });
 
@@ -459,10 +487,10 @@ app.on("will-quit", () => {
 });
 
 // Prevent multiple instances
-const gotTheLock = app.requestSingleInstanceLock();
+const gotTheLock = isTest ? true : app.requestSingleInstanceLock();
 if (!gotTheLock) {
   app.quit();
-} else {
+} else if (!isTest) {
   app.on("second-instance", () => {
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();

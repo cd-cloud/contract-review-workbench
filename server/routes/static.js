@@ -4,7 +4,17 @@ const { sendStaticFile, getApiToken } = require("../http-utils");
 const ROOT_DIR = path.resolve(__dirname, "../..");
 
 function sendRuntimeConfig(res) {
-  const body = `window.LEGAL_WORKBENCH_API_TOKEN = ${JSON.stringify(getApiToken())};\n`;
+  const port = Number(process.env.LEGAL_WORKBENCH_PORT || 8787);
+  const config = {
+    apiToken: getApiToken(),
+    backendOrigin: `http://127.0.0.1:${port}`,
+  };
+  const body = [
+    `window.LEGAL_WORKBENCH_CONFIG = ${JSON.stringify(config)};`,
+    `window.LEGAL_WORKBENCH_API_TOKEN = ${JSON.stringify(config.apiToken)};`,
+    `window.LEGAL_WORKBENCH_BACKEND_ORIGIN = ${JSON.stringify(config.backendOrigin)};`,
+    "",
+  ].join("\n");
   res.writeHead(200, {
     "Content-Type": "text/javascript; charset=utf-8",
     "Cache-Control": "no-store",

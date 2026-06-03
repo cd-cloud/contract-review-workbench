@@ -66,7 +66,7 @@
       searchAbort = controller;
 
       const res = await legalWorkbenchFetch(
-        `http://localhost:8787/api/search?q=${encodeURIComponent(query)}&limit=30`,
+        `/api/search?q=${encodeURIComponent(query)}&limit=30`,
         { signal: controller.signal }
       );
       if (!res.ok) throw new Error("Search failed");
