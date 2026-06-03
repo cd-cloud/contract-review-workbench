@@ -39,11 +39,28 @@ function showToast(message, tone = "success") {
     toast.className = "app-toast";
     document.body.appendChild(toast);
   }
-  toast.textContent = message;
+  toast.textContent = tone === "error" ? summarizeUserFacingError(message) : message;
   toast.dataset.tone = tone;
   toast.classList.add("visible");
   clearTimeout(showToast.timer);
   showToast.timer = setTimeout(() => toast.classList.remove("visible"), 3200);
+}
+
+function summarizeUserFacingError(message) {
+  const text = String(message || "");
+  if (/阻断|blocking/i.test(text)) {
+    return "界面校验发现需要先处理的问题。";
+  }
+  if (/Visual QA|界面校验|一致性检查|导出/i.test(text)) {
+    return "界面校验暂未完成，请稍后重试。";
+  }
+  if (/切分|segmentation|clauseSegmentation/i.test(text)) {
+    return "语义切分暂未完成，已先使用本地规则。";
+  }
+  if (/Legal Skill|AI|runner|fetch|ECONNREFUSED|timeout|超时|后端/i.test(text)) {
+    return "AI 审阅暂未完成，请稍后重试。";
+  }
+  return "操作暂未完成，请稍后重试。";
 }
 
 function closeSkillResultModal() {

@@ -124,7 +124,7 @@ function renderVisualQaPanel(sourceKey, contract = null, material = null, clause
         </div>
         <span class="risk ${status === "blocked" || high ? "high" : medium || failed ? "medium" : "low"}">${escapeHtml(label)}</span>
       </div>
-      <p class="muted">${escapeHtml(running || failed || deferred ? job.message : effectiveReport?.summary || "Agent B 模型检查已改为手动、AI结果更新后或导出前运行；普通编辑只使用本地即时兜底。")}</p>
+      <p class="muted">${escapeHtml(running || failed || deferred ? formatReviewJobSummary(job, "visual") : effectiveReport?.summary || "Agent B 模型检查已改为手动、AI结果更新后或导出前运行；普通编辑只使用本地即时兜底。")}</p>
       <div class="row-actions">
         <button class="small-button" type="button" data-run-visual-qa="${escapeHtml(sourceKey)}" ${running ? "disabled" : ""}>运行 Agent B 检查</button>
       </div>
@@ -279,17 +279,17 @@ function renderCodexStatusPanel(status) {
     },
     {
       label: "自动审阅",
-      value: formatJobStatus(status.auto, status.legalResult ? "已生成结果" : "未运行"),
+      value: formatReviewJobSummary(status.auto, "auto", status.legalResult ? "已生成结果" : "未运行"),
       tone: status.stale ? "medium" : jobTone(status.auto),
     },
     {
       label: "Legal Skill",
-      value: status.analysis?.message || (status.legalResult ? "审阅结果已写入" : "等待运行"),
+      value: formatReviewJobSummary(status.analysis, "analysis", status.legalResult ? "审阅结果已写入" : "等待运行"),
       tone: status.stale ? "medium" : jobTone(status.analysis),
     },
     {
       label: "语义切分",
-      value: formatJobStatus(status.segmentation, status.legalResult?.response?.clauseSegmentation?.length ? "已有 AI 切分" : "等待切分"),
+      value: formatReviewJobSummary(status.segmentation, "segmentation", status.legalResult?.response?.clauseSegmentation?.length ? "已有 AI 切分" : "等待切分"),
       tone: jobTone(status.segmentation),
     },
     {
@@ -324,9 +324,29 @@ function renderCodexStatusPanel(status) {
 
 function formatVisualQaStatusForProgress(visual) {
   if (!visual) return "按需检查";
-  if (["queued", "running", "deferred", "failed"].includes(visual.status)) return visual.message || formatJobStatus(visual, "按需检查");
+  if (["queued", "running", "deferred", "failed"].includes(visual.status)) return formatReviewJobSummary(visual, "visual", "按需检查");
   if (visual.status === "completed") return "最近已检查";
   return "按需检查";
+}
+
+function formatReviewJobSummary(job, kind = "job", fallback = "等待处理") {
+  if (!job) return fallback;
+  if (job.status === "completed") return kind === "visual" ? "最近已检查" : "已完成";
+  if (job.status === "failed") {
+    if (kind === "segmentation") return "语义切分暂未完成，已使用本地规则。";
+    if (kind === "visual") return "界面校验暂未完成，可稍后重试。";
+    if (kind === "auto" || kind === "analysis") return "AI 审阅暂未完成，可稍后重试。";
+    return "暂未完成，可稍后重试。";
+  }
+  if (job.status === "deferred") return kind === "visual" ? "界面校验稍后自动处理。" : "稍后自动处理。";
+  if (job.status === "running") {
+    if (kind === "segmentation") return "正在进行语义切分。";
+    if (kind === "visual") return "正在进行界面校验。";
+    if (kind === "auto" || kind === "analysis") return "正在进行 AI 审阅。";
+    return "运行中";
+  }
+  if (job.status === "queued") return "已排队";
+  return fallback;
 }
 
 function buildCodexWorkflowSteps(status) {
@@ -668,7 +688,7 @@ function renderSegmentationJobStatus(contractId) {
   const job = state.segmentationJobs?.[contractId];
   if (!job || job.status === "completed") return "";
   if (job.status === "running") return `<p class="muted">AI 正在进行语义切分，完成后会自动更新条款卡片。</p>`;
-  if (job.status === "failed") return `<p class="muted">AI 切分暂未完成：${escapeHtml(job.message || "未知错误")}。当前使用本地规则切分。</p>`;
+  if (job.status === "failed") return `<p class="muted">语义切分暂未完成，当前已使用本地规则切分。</p>`;
   return "";
 }
 
@@ -925,7 +945,7 @@ function renderSubclauseCard(contract, material, parentClause, subclause, subcla
 
 function renderClauseAnalysisStatus(action = {}) {
   if (action.analysisStatus === "running") return `<div class="status-note">正在调用 AI 进行条款级分析...</div>`;
-  if (action.analysisStatus === "failed") return `<div class="status-note error">AI 分析失败：${escapeHtml(action.analysisError || "未知错误")}</div>`;
+  if (action.analysisStatus === "failed") return `<div class="status-note error">AI 条款级分析暂未完成，请稍后重试。</div>`;
   if (action.analysisStatus === "completed") return `<div class="status-note">AI 条款级分析已完成：${escapeHtml((action.analysisCompletedAt || "").slice(0, 19).replace("T", " "))}</div>`;
   return "";
 }

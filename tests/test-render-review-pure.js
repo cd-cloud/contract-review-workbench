@@ -142,6 +142,22 @@ test("formatJobStatus: job with message returns message", () => {
   assert.strictEqual(formatJobStatus({ status: "running", message: "自定义消息" }, "fallback"), "自定义消息");
 });
 
+// --- formatReviewJobSummary ---
+test("formatReviewJobSummary: failed segmentation hides detailed message", () => {
+  const value = formatReviewJobSummary({ status: "failed", message: "runner stderr: stack trace" }, "segmentation", "fallback");
+  assert.strictEqual(value, "语义切分暂未完成，已使用本地规则。");
+});
+
+test("formatReviewJobSummary: failed visual qa hides detailed message", () => {
+  const value = formatReviewJobSummary({ status: "failed", message: "HTTP 500: screenshot parser failed" }, "visual", "fallback");
+  assert.strictEqual(value, "界面校验暂未完成，可稍后重试。");
+});
+
+test("formatReviewJobSummary: failed legal analysis hides detailed message", () => {
+  const value = formatReviewJobSummary({ status: "failed", message: "ECONNREFUSED 127.0.0.1" }, "analysis", "fallback");
+  assert.strictEqual(value, "AI 审阅暂未完成，可稍后重试。");
+});
+
 // --- jobTone ---
 test("jobTone: failed returns 'medium'", () => {
   assert.strictEqual(jobTone({ status: "failed" }), "medium");
