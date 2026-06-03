@@ -33,6 +33,29 @@ function Find-UnpackedExe {
   return $null
 }
 
+function Stop-StaleAppProcesses($expectedExe) {
+  $expectedPath = [System.IO.Path]::GetFullPath($expectedExe)
+  $expectedName = [System.IO.Path]::GetFileName($expectedPath)
+
+  Get-Process | ForEach-Object {
+    $path = $null
+    try {
+      $path = $_.Path
+    } catch {
+      $path = $null
+    }
+
+    if ($path) {
+      $processPath = [System.IO.Path]::GetFullPath($path)
+      $processName = [System.IO.Path]::GetFileName($processPath)
+      if ($processName -eq $expectedName -and $processPath -ne $expectedPath) {
+        Step "Stopping stale desktop app process: $processPath"
+        Stop-Process -Id $_.Id -Force
+      }
+    }
+  }
+}
+
 Set-Location $root
 
 Step "Checking Node.js"
@@ -86,6 +109,7 @@ Write-Host "Ready for daily use:" -ForegroundColor Green
 Write-Host $appExe
 
 if ($Launch) {
+  Stop-StaleAppProcesses $appExe
   Step "Launching win-unpacked app"
   Start-Process -FilePath $appExe -WorkingDirectory (Split-Path $appExe)
 }
