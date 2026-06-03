@@ -1,0 +1,1632 @@
+const POLL_TIMEOUT_MS = 8 * 60 * 1000;
+const POLL_INTERVAL_MS = 2500;
+const VISUAL_QA_DELAY_MS = 30 * 1000;
+const VISUAL_QA_COOLDOWN_MS = 10 * 60 * 1000;
+const BACKEND_SYNC_DELAY_MS = 700;
+
+function buildLegalSkillRequest(contract, materialText, extraRequirements = "", options = {}) {
+  const text = materialText || contract.text || "";
+  const sourceKey = `${contract.id}:${state.activeUpdateId || "current"}`;
+  const businessBackground = [contract.businessBackground, contract.purpose ? `系统识别合同目的：${contract.purpose}` : ""].filter(Boolean).join("\n");
+  const clauses = options.omitClauses ? [] : buildLegalSkillClauseList(text, sourceKey);
+  const playbookContext = state.playbooks
+    .filter((item) => item.reviewStatus !== "disabled")
+    .filter((item) => clauses.some((clause) => clause.type === item.type))
+    .map((item) => ({
+      type: item.type,
+      status: item.status,
+      reviewStatus: item.reviewStatus,
+      ourRole: item.ourRole,
+      standard: item.standard,
+      fallback: item.fallback,
+      forbidden: item.forbidden,
+      negotiation: item.negotiation,
+      keywords: item.keywords || [],
+      confidenceScore: item.confidenceScore || 0,
+      sourceOccurrences: (item.sourceOccurrences || []).slice(0, 5).map((occurrence) => ({
+        contractName: occurrence.contractName,
+        counterpartyName: occurrence.counterpartyName,
+        clauseTitle: occurrence.clauseTitle,
+        depositedAt: occurrence.depositedAt,
+      })),
+      variants: (item.variants || []).slice(0, 3).map((variant) => ({
+        text: variant.text,
+        status: variant.status,
+        source: variant.contractName,
+      })),
+      knowledgeSignals: (item.knowledgeSignals || []).slice(0, 5),
+    }));
+  const versionHistory = (state.updates || [])
+    .filter((item) => item.contractId === contract.id)
+    .map((item) => ({
+      id: item.id,
+      type: item.type,
+      note: item.note,
+      materialKind: item.materialKind,
+      createdAt: item.createdAt,
+      feedbackDeadline: item.feedbackDeadline,
+    }));
+  const currentUpdate = versionHistory.find((item) => item.id === state.activeUpdateId) || versionHistory[0] || null;
+  const progressContext = versionHistory
+    .map((item) => {
+      const parts = [
+        item.createdAt ? `时间：${item.createdAt}` : "",
+        item.type ? `版本性质：${item.type}` : "",
+        item.materialKind ? `材料类型：${materialKindLabel(item.materialKind)}` : "",
+        item.feedbackDeadline ? `反馈期限：${item.feedbackDeadline}` : "",
+        item.note ? `进展说明：${item.note}` : "",
+      ].filter(Boolean);
+      return parts.join("；");
+    })
+    .filter(Boolean)
+    .join("\n");
+  return {
+    workflow: "legal-contract-review",
+    skill: "legal-work-orchestrator",
+    downstream_skill: "legal-contract-orchestrator",
+    jurisdiction: "中国大陆",
+    contract_type: contract.type || "待识别",
+    business_background: businessBackground,
+    commercial_context: contract.businessBackground || "",
+    detected_contract_purpose: contract.purpose || "",
+    party_roles: `我方：${contract.ourRole || "待识别"}；相对方：${contract.counterpartyName || "待识别"}`,
+    represented_party: contract.ourRole || "待识别",
+    mode: "review",
+    contract_text: text,
+    clauses,
+    clause_playbook_context: playbookContext,
+    version_history: versionHistory,
+    progress_context: progressContext,
+    current_progress_update: currentUpdate,
+    counterparty_version: contract.redlineText || "",
+    attachments_or_exhibits: contract.commentsText || "",
+    drafting_requirements: extraRequirements,
+    risk_preference: "平衡",
+    language: "中文",
+    output_format: "structured_json",
+  };
+}
+
+function buildLegalSkillClauseList(text, sourceKey) {
+  return splitVersionClauses(text, sourceKey).flatMap((clause) => {
+    const base = {
+      id: clause.id,
+      stableId: clause.stableId,
+      number: clause.number || clause.originalNumberText,
+      title: clause.title,
+      type: clause.type,
+      text: clause.text,
+      hierarchyLevel: clause.hierarchyLevel || "article",
+    };
+    const subclauses = splitSubclauses(clause).map((subclause) => ({
+      id: subclause.id,
+      stableId: subclause.stableId,
+      parentId: clause.id,
+      parentStableId: clause.stableId,
+      number: extractLeadingDecimalNumber(subclause.text) || `${clause.number}.${subclause.number}`,
+      title: subclause.title || extractLeadingDecimalNumber(subclause.text) || "",
+      type: subclause.type || clause.type,
+      text: subclause.text,
+      hierarchyLevel: "subclause",
+    }));
+    return [base, ...subclauses];
+  });
+}
+
+async function runLegalSkillAnalysis(contract, materialText, extraRequirements = "", options = {}) {
+  const request = buildLegalSkillRequest(contract, materialText, extraRequirements, options);
+  try {
+    const response = await legalWorkbenchFetch("http://localhost:8787/api/legal-review/jobs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    });
+    if (response.status === 202) {
+      const data = await response.json();
+      return await pollLegalSkillJob(data.job.id, contract.id, options);
+    }
+    if (response.ok) return normalizeLegalSkillResult(await response.json());
+    throw new Error(`本地 Legal Skill 服务返回错误：${response.status}`);
+  } catch (error) {
+    if (!isLikelyServerUnavailableError(error)) throw error;
+    if (!options.allowBrowserFallback) throw new Error("AI 后端不可用，无法执行 Legal Skill。请确认本地服务和 AI Runner 已启动。");
+    // Debug: local legal skill server unavailable; using browser fallback.
+  }
+  // Browser fallback: preserve the Legal Skill IO shape when the local runner is unavailable.
+  // A backend service should replace this with legal-work-orchestrator / legal-contract-orchestrator execution.
+  const clauses = splitVersionClauses(request.contract_text, `${contract.id}:analysis-preview`);
+  const findings = generateFindings(contract, clauses);
+  return normalizeLegalSkillResult({
+    ok: true,
+    source: "browser-fallback",
+    request,
+    response: {
+      contractSummary: {
+        contractName: contract.name,
+        contractType: contract.type,
+        purpose: contract.purpose,
+        businessBackground: contract.businessBackground,
+        ourRole: contract.ourRole,
+        counterparty: contract.counterpartyName,
+        riskLevel: contract.riskLevel,
+        completionScore: null,
+        positionDeviationLevel: null,
+      },
+      contractLevelRisks: findings.filter((finding) => !finding.clauseId),
+      clauseAnalyses: findings
+        .filter((finding) => finding.clauseId)
+        .map((finding) => ({
+          clauseId: finding.clauseId,
+          severity: finding.severity,
+          issue: finding.issue,
+          consequence: finding.consequence,
+          proposedRevision: finding.fix,
+          negotiationPosition: finding.negotiation,
+          fallbackText: "",
+          businessDecision: finding.needsBusiness ? "需业务确认" : "",
+        })),
+      missingFacts: [],
+      businessSummary: "",
+    },
+  });
+}
+
+function isLikelyServerUnavailableError(error) {
+  const message = String(error?.message || error || "");
+  return /Failed to fetch|NetworkError|Load failed|ECONNREFUSED|ERR_CONNECTION_REFUSED|fetch failed/i.test(message);
+}
+
+async function pollLegalSkillJob(jobId, contractId, options = {}) {
+  const controller = new AbortController();
+  pollControllers.set(jobId, controller);
+  try {
+    if (!options.silentStatus) setAnalysisStatus(contractId, "running", "AI Legal Skill 正在审阅合同，长合同通常需要 2-3 分钟。");
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < POLL_TIMEOUT_MS) {
+      if (controller.signal.aborted) throw new Error("AI 分析已取消。");
+      await delay(POLL_INTERVAL_MS);
+      const response = await legalWorkbenchFetch(`http://localhost:8787/api/legal-review/jobs/${encodeURIComponent(jobId)}`, { signal: controller.signal });
+      if (!response.ok) throw new Error("AI 分析任务状态读取失败");
+      const data = await response.json();
+      const job = data.job;
+      if (!options.silentStatus) setAnalysisStatus(contractId, job.status, `${job.phase || "分析中"}｜已等待 ${Math.round((Date.now() - startedAt) / 1000)} 秒`);
+      if (job.status === "completed") return job.result;
+      if (job.status === "failed") throw new Error(job.error || "AI 分析失败");
+    }
+    throw new Error("AI 分析超时，请稍后重试或缩短合同文本。");
+  } finally {
+    pollControllers.delete(jobId);
+  }
+}
+
+function cancelPollJob(jobId) {
+  const controller = pollControllers.get(jobId);
+  if (controller) {
+    controller.abort();
+    pollControllers.delete(jobId);
+  }
+}
+
+function setAnalysisStatus(contractId, status, message) {
+  state.analysisJobs = state.analysisJobs || {};
+  state.analysisJobs[contractId] = {
+    status,
+    message,
+    updatedAt: new Date().toISOString(),
+  };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  if (state.activeContractId === contractId) renderReview();
+}
+
+function clearAnalysisStatus(contractId) {
+  if (!state.analysisJobs) return;
+  delete state.analysisJobs[contractId];
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function hasUsableCodexSegmentation(contract, material) {
+  return getClauseSegmentationStatus(material.text, material.sourceKey).source === "ai";
+}
+
+function isCodexSegmentationRunning(sourceKey) {
+  return state.segmentationJobs?.[sourceKey]?.status === "running";
+}
+
+async function ensureCodexSegmentation(contract, material) {
+  if (!contract || !material?.text) return false;
+  const jobKey = material.sourceKey || contract.id;
+  if (hasUsableCodexSegmentation(contract, material) || isCodexSegmentationRunning(jobKey)) return false;
+  state.segmentationJobs = state.segmentationJobs || {};
+  state.segmentationJobs[jobKey] = {
+    status: "running",
+    message: "AI 正在阅读合同并进行章节/条款语义切分。",
+    startedAt: new Date().toISOString(),
+  };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  renderReview();
+  try {
+    const result = await runLegalSkillAnalysis(contract, material.text, buildSegmentationOnlyRequirements(), { omitClauses: true, silentStatus: true });
+    mergeSegmentationOnlyResult(contract, result);
+    scheduleVisualQa(contract.id, "segmentation-applied", { delay: 500, force: true });
+    state.segmentationJobs[jobKey] = {
+      status: "completed",
+      message: "AI 条款切分已完成。",
+      completedAt: new Date().toISOString(),
+    };
+    saveState();
+    renderReview();
+    return true;
+  } catch (error) {
+    state.segmentationJobs[jobKey] = {
+      status: "failed",
+      message: error.message || String(error),
+      failedAt: new Date().toISOString(),
+    };
+    saveState();
+    renderReview();
+    return false;
+  }
+}
+
+function buildSegmentationOnlyRequirements() {
+  return [
+    "请先只完成合同章节和条款结构切分，重点输出 response.clauseSegmentation。",
+    "切分必须基于合同语义和版式层级，不要机械依赖正则；当父章节与唯一子条款标题/正文重复时，只保留一个条款节点，不要制造父子重复卡片。",
+    "章节/部分标题应优先作为 chapterTitle 元数据，不要单独输出只有标题、没有实质正文的 segment；如果下一条实质条款已经使用同一标题或首行，就只输出下一条。",
+    "不要让同一个标题同时出现在父条款卡片和子条款卡片中；title 只放标题，text 放完整原文条款正文，避免 title-only 卡片。",
+    "clauseSegmentation.text 必须来自合同原文，不要改写；title 仅在原文有明确标题时填写，否则留空。",
+    "本次自动切分阶段不需要输出实质审阅建议；contractLevelRisks 和 clauseAnalyses 可为空数组。",
+  ].join("\n");
+}
+
+function mergeSegmentationOnlyResult(contract, result) {
+  result = normalizeLegalSkillResult(result);
+  state.legalSkillResults = state.legalSkillResults || {};
+  const previous = state.legalSkillResults[contract.id] || { response: {} };
+  state.legalSkillResults[contract.id] = {
+    ...previous,
+    response: {
+      contractSummary: {
+        ...(previous.response?.contractSummary || {}),
+        ...(result.response?.contractSummary || {}),
+      },
+      clauseSegmentation: result.response?.clauseSegmentation || previous.response?.clauseSegmentation || [],
+      contractLevelRisks: previous.response?.contractLevelRisks || [],
+      clauseAnalyses: previous.response?.clauseAnalyses || [],
+      missingFacts: previous.response?.missingFacts || [],
+      businessSummary: previous.response?.businessSummary || "",
+    },
+    segmentationAppliedAt: new Date().toISOString(),
+  };
+}
+
+function normalizeLegalSkillResult(result) {
+  const normalized = {
+    ...(result || {}),
+    response: {
+      contractSummary: result?.response?.contractSummary || {},
+      clauseSegmentation: normalizeSkillClauseSegmentation(result?.response?.clauseSegmentation),
+      contractLevelRisks: [],
+      clauseAnalyses: [],
+      missingFacts: result?.response?.missingFacts || [],
+      businessSummary: result?.response?.businessSummary || "",
+    },
+  };
+  const seenContractRisks = new Set();
+  (result?.response?.contractLevelRisks || []).forEach((item) => {
+    const risk = normalizeSkillContractRisk(item);
+    if (!risk || isGenericSkillAdvice(risk)) return;
+    const key = normalizeText([risk.actionType, risk.title, risk.issue, risk.suggestion, risk.proposedClauseText].filter(Boolean).join("|")).slice(0, 220);
+    if (seenContractRisks.has(key)) return;
+    seenContractRisks.add(key);
+    normalized.response.contractLevelRisks.push(risk);
+  });
+  const seenClauseRisks = new Set();
+  (result?.response?.clauseAnalyses || []).forEach((item) => {
+    const risk = normalizeSkillClauseRisk(item);
+    if (!risk || isGenericSkillAdvice(risk)) return;
+    const key = normalizeText([risk.clauseId, risk.actionType, risk.issue, risk.proposedRevision, risk.replacementText, risk.commentText].filter(Boolean).join("|")).slice(0, 240);
+    if (seenClauseRisks.has(key)) return;
+    seenClauseRisks.add(key);
+    normalized.response.clauseAnalyses.push(risk);
+  });
+  return normalized;
+}
+
+function normalizeSkillClauseSegmentation(items = []) {
+  if (!Array.isArray(items)) return [];
+  const normalized = items
+    .map((item, index) => {
+      const text = String(item?.text || "").trim();
+      if (!text || text.length < 8) return null;
+      return {
+        stableId: String(item.stableId || `ai-${index + 1}`),
+        order: Number.isFinite(Number(item.order)) ? Number(item.order) : index + 1,
+        title: String(item.title || "").trim(),
+        text,
+        type: normalizeClauseTypeLabel(item.type || classifyClause(text, item.title || "") || "其他"),
+        chapterTitle: String(item.chapterTitle || ""),
+        hierarchyLevel: String(item.hierarchyLevel || "article"),
+        sourceKind: "ai-segmented",
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.order - b.order);
+  return collapseDuplicateSegmentationHeadings(normalized);
+}
+
+function collapseDuplicateSegmentationHeadings(segments) {
+  const result = [];
+  segments.forEach((segment) => {
+    const currentTitle = normalizeSegmentationTitle(segment.title || firstMeaningfulLine(segment.text));
+    const previous = result.at(-1);
+    const normalizedSegment = {
+      ...segment,
+      chapterTitle: normalizeSegmentationTitle(segment.chapterTitle) === currentTitle ? "" : segment.chapterTitle,
+    };
+    if (previous && isDuplicateSegmentationPair(previous, normalizedSegment)) {
+      if (isHeadingOnlySegment(previous) && !isHeadingOnlySegment(normalizedSegment)) {
+        result[result.length - 1] = normalizedSegment;
+      }
+      return;
+    }
+    result.push(normalizedSegment);
+  });
+  return result.map((segment, index) => ({ ...segment, order: index + 1 }));
+}
+
+function isDuplicateSegmentationPair(a, b) {
+  const aTitle = normalizeSegmentationTitle(a.title || firstMeaningfulLine(a.text));
+  const bTitle = normalizeSegmentationTitle(b.title || firstMeaningfulLine(b.text));
+  const aFirstLine = normalizeSegmentationTitle(firstMeaningfulLine(a.text));
+  const bFirstLine = normalizeSegmentationTitle(firstMeaningfulLine(b.text));
+  const sameHeading = aTitle && (aTitle === bTitle || aTitle === bFirstLine || bTitle === aFirstLine);
+  const sameText = normalizeSegmentationTitle(a.text) === normalizeSegmentationTitle(b.text);
+  return Boolean(sameHeading && (sameText || isHeadingOnlySegment(a) || isHeadingOnlySegment(b)));
+}
+
+function isHeadingOnlySegment(segment) {
+  const title = normalizeSegmentationTitle(segment.title || segment.chapterTitle);
+  const text = normalizeSegmentationTitle(segment.text);
+  const firstLine = normalizeSegmentationTitle(firstMeaningfulLine(segment.text));
+  return Boolean(title && (text === title || (firstLine === title && String(segment.text || "").trim().length <= 80)));
+}
+
+function firstMeaningfulLine(text) {
+  return String(text || "").split(/\n/).map((line) => line.trim()).find(Boolean) || "";
+}
+
+function normalizeSegmentationTitle(text) {
+  return String(text || "")
+    .replace(new RegExp("^\\u7b2c[\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341\u767e\u96f6\u3007\u4e240-9]+[\\u7ae0\\u8282\\u6761\\u6b3e\\u90e8\\u5206]\\s*"), "")
+    .replace(new RegExp("^[\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341\u767e\u96f6\u3007\u4e240-9]+[\\u3001.\\uff0e]\\s*"), "")
+    .replace(/[\uFF1A:\u3002\uFF1B;\uFF0C,\s]/g, "")
+    .trim();
+}
+
+function normalizeSkillContractRisk(item = {}) {
+  const suggestion = item.suggestion || item.recommendation || item.fix || item.proposedRevision || "";
+  const proposedClauseText = item.proposedClauseText || item.proposed_clause_text || item.replacementText || "";
+  const actionType = item.actionType === "comment_only" ? "comment_only" : "add_clause";
+  if (actionType === "add_clause" && !String(suggestion || proposedClauseText).trim()) return null;
+  return {
+    severity: normalizeSeverity(item.severity),
+    actionType,
+    title: item.title || item.issue || "合同级风险",
+    issue: item.issue || item.summary || item.title || "",
+    consequence: item.consequence || "",
+    suggestion,
+    proposedClauseText,
+    targetInsertPosition: item.targetInsertPosition || item.insertAfter || "",
+    businessRationale: item.businessRationale || "",
+    adoptionNote: item.adoptionNote || "",
+    negotiationBottomLine: item.negotiationBottomLine || item.bottomLine || "",
+    acceptableFallback: item.acceptableFallback || item.concessionText || item.fallbackText || "",
+    linkedClauseIds: Array.isArray(item.linkedClauseIds) ? item.linkedClauseIds : [],
+    qualityScore: normalizeQualityScore(item.qualityScore),
+  };
+}
+
+function normalizeSkillClauseRisk(item = {}) {
+  const proposedRevision = item.proposedRevision || item.recommendation || item.fix || item.suggestion || item.replacementText || "";
+  const actionType = normalizeClauseActionType(item.actionType, { ...item, proposedRevision });
+  if (actionType !== "comment_only" && !String(proposedRevision).trim()) return null;
+  if (actionType === "comment_only" && !String(item.commentText || item.issue || proposedRevision).trim()) return null;
+  return {
+    clauseId: item.clauseId || item.targetClauseId || "",
+    title: item.title || item.clauseTitle || item.issue || "条款风险",
+    clauseType: item.clauseType || item.type || "",
+    severity: normalizeSeverity(item.severity),
+    actionType,
+    issue: item.issue || item.summary || "",
+    consequence: item.consequence || "",
+    proposedRevision,
+    targetText: item.targetText || "",
+    replacementText: item.replacementText || "",
+    commentText: item.commentText || "",
+    negotiationPosition: item.negotiationPosition || item.negotiation || "",
+    fallbackText: item.fallbackText || "",
+    businessDecision: item.businessDecision || "",
+    adoptionNote: item.adoptionNote || "",
+    negotiationBottomLine: item.negotiationBottomLine || item.bottomLine || "",
+    acceptableFallback: item.acceptableFallback || item.concessionText || item.fallbackText || "",
+    linkedClauseIds: Array.isArray(item.linkedClauseIds) ? item.linkedClauseIds : [],
+    qualityScore: normalizeQualityScore(item.qualityScore),
+  };
+}
+
+function normalizeQualityScore(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return null;
+  return Math.max(0, Math.min(100, Math.round(number)));
+}
+
+function isGenericSkillAdvice(item = {}) {
+  const source = [item.title, item.issue, item.suggestion, item.proposedRevision, item.commentText].filter(Boolean).join("\n");
+  if (!source.trim()) return true;
+  if (/未识别到显著风险|建议结合.*背景.*复核|进一步确认|继续关注|酌情完善|保持现状/.test(source) && !/(修改为|替换为|删除|新增|补充以下|建议条款|proposed|replace|delete|add)/i.test(source)) return true;
+  return false;
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function syncBackendSnapshot() {
+  const response = await legalWorkbenchFetch("http://localhost:8787/api/db/sync", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(state),
+  });
+  if (!response.ok) throw new Error("本地后端同步失败");
+  return await response.json();
+}
+
+async function runBackendSuggestionAction(payload) {
+  const response = await legalWorkbenchFetch("http://localhost:8787/api/ai-suggestion/action", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error(`后端AI建议动作失败：${response.status}`);
+  return await response.json();
+}
+
+async function runContractIntake(contractText) {
+  const response = await legalWorkbenchFetch("http://localhost:8787/api/contract-intake", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ contractText }),
+  });
+  if (!response.ok) throw new Error(`AI 信息填充失败：${response.status}`);
+  return await response.json();
+}
+
+async function archiveContractFile(contractId, base64Content, originalName, mimeType) {
+  const response = await legalWorkbenchFetch(`http://localhost:8787/api/contracts/${encodeURIComponent(contractId)}/files`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contentBase64: base64Content,
+      originalName,
+      mimeType,
+      fileType: "attachment",
+    }),
+  });
+  if (!response.ok) console.error("[Archive] File upload failed:", response.status);
+  return response.ok;
+}
+
+async function archiveContractExport(contractId, base64Content, originalName, mimeType) {
+  const response = await legalWorkbenchFetch(`http://localhost:8787/api/contracts/${encodeURIComponent(contractId)}/exports`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contentBase64: base64Content,
+      originalName,
+      mimeType,
+    }),
+  });
+  if (!response.ok) console.error("[Archive] Export save failed:", response.status);
+  return response.ok;
+}
+
+let backendSyncTimer = null;
+let backendSyncInFlight = false;
+let backendSyncDirty = false;
+
+const pollControllers = new Map();
+
+async function fetchBackendSnapshot() {
+  const response = await legalWorkbenchFetch("http://localhost:8787/api/db");
+  if (!response.ok) throw new Error("本地后端数据加载失败");
+  const db = await response.json();
+  return db.snapshot || null;
+}
+
+async function hydrateFromBackendOnStart() {
+  try {
+    const snapshot = await fetchBackendSnapshot();
+    if (!snapshot?.contracts?.length) return false;
+    const loaded = replaceWorkbenchState(snapshot, { source: "backend-primary" });
+    if (loaded) {
+      state.backendSync = {
+        ok: true,
+        source: "backend-primary",
+        syncedAt: new Date().toISOString(),
+      };
+      saveState(state, { localOnly: true, preserveUpdatedAt: true });
+    }
+    return loaded;
+  } catch (error) {
+    // Debug: backend snapshot unavailable; using localStorage.
+    return false;
+  }
+}
+
+async function refreshRunnerStatus() {
+  try {
+    const response = await legalWorkbenchFetch("http://localhost:8787/api/legal-review/runner-status");
+    if (!response.ok) throw new Error("runner status unavailable");
+    const data = await response.json();
+    state.runnerStatus = data.runner;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    return data.runner;
+  } catch (error) {
+    state.runnerStatus = { configured: false, mode: "browser-fallback", error: error.message || String(error) };
+    return state.runnerStatus;
+  }
+}
+
+function scheduleBackendSync() {
+  backendSyncDirty = true;
+  clearTimeout(backendSyncTimer);
+  backendSyncTimer = setTimeout(() => flushBackendSync(), BACKEND_SYNC_DELAY_MS);
+}
+
+async function flushBackendSync() {
+  if (backendSyncInFlight) {
+    backendSyncDirty = true;
+    return;
+  }
+  backendSyncInFlight = true;
+  backendSyncDirty = false;
+  const snapshot = clone(state);
+  try {
+    const response = await legalWorkbenchFetch("http://localhost:8787/api/db/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(snapshot),
+    });
+    if (!response.ok) throw new Error("自动同步失败");
+    state.backendSync = {
+      ok: true,
+      syncedAt: new Date().toISOString(),
+    };
+    saveState(state, { localOnly: true, preserveUpdatedAt: true });
+  } catch (error) {
+    state.backendSync = {
+      ok: false,
+      error: error.message || String(error),
+      failedAt: new Date().toISOString(),
+    };
+    saveState(state, { localOnly: true, preserveUpdatedAt: true });
+    // Debug: backend autosync failed; local browser cache remains available.
+  } finally {
+    backendSyncInFlight = false;
+    if (backendSyncDirty) scheduleBackendSync(state);
+  }
+}
+
+function getStoredSkillResult(contractId) {
+  return state.legalSkillResults?.[contractId]?.response || null;
+}
+
+function buildVisualQaRequest(contract, material, clauses, reason = "review-state") {
+  const actions = getClauseActions(material.sourceKey);
+  const findings = getAnalysisFindings(contract, clauses);
+  const localChecks = buildAutomaticReviewChecks(contract, material, clauses);
+  return {
+    reason,
+    contract: {
+      id: contract.id,
+      name: contract.name,
+      type: contract.type,
+      ourRole: contract.ourRole,
+      counterpartyName: contract.counterpartyName,
+      businessBackground: contract.businessBackground,
+      riskLevel: contract.riskLevel,
+    },
+    material: {
+      sourceKey: material.sourceKey,
+      title: material.title,
+      mode: material.mode,
+    },
+    contractText: material.text,
+    clauses: clauses.map((clause) => ({
+      id: clause.id,
+      stableId: clause.stableId,
+      number: clause.number,
+      originalNumber: clause.originalNumber,
+      title: clause.title,
+      text: clause.text,
+      type: clause.type,
+      chapterTitle: clause.chapterTitle || "",
+      hierarchyLevel: clause.hierarchyLevel || "article",
+      inserted: Boolean(clause.inserted),
+      unnumbered: Boolean(clause.unnumbered),
+    })),
+    findings: findings.map((finding) => ({
+      id: finding.id,
+      clauseId: finding.clauseId || "",
+      title: finding.title,
+      severity: finding.severity,
+      actionType: finding.actionType || finding.action || "",
+      issue: finding.issue || "",
+      fix: finding.fix || finding.proposedClauseText || "",
+      linkedClauseIds: finding.linkedClauseIds || [],
+      targetInsertPosition: finding.targetInsertPosition || "",
+      originalClauseId: finding.originalClauseId || "",
+      placementMethod: finding.placementMethod || "",
+      placementConfidence: finding.placementConfidence ?? null,
+      placementWarning: finding.placementWarning || "",
+      routedFromContractRisk: Boolean(finding.routedFromContractRisk),
+    })),
+    actions: Object.entries(actions).map(([clauseId, action]) => ({
+      clauseId,
+      edited: Boolean(action.editedText),
+      deleted: Boolean(action.deleted),
+      commented: Boolean(action.comment),
+      riskDecision: action.riskDecision || "",
+    })),
+    insertedClauses: getInsertedClauses(material.sourceKey).map((item) => ({
+      id: item.id,
+      targetClauseId: item.targetClauseId || "",
+      targetStableId: item.targetStableId || "",
+      position: item.position || "",
+      title: item.title || "",
+      type: item.type || "",
+      text: item.text || "",
+    })),
+    localChecks,
+  };
+}
+
+async function runVisualQa(contract, material, clauses, reason = "review-state") {
+  const response = await legalWorkbenchFetch("http://localhost:8787/api/visual-qa", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(buildVisualQaRequest(contract, material, clauses, reason)),
+  });
+  if (!response.ok) throw new Error(`Visual QA 返回错误：${response.status}`);
+  return normalizeVisualQaResult(await response.json());
+}
+
+function normalizeVisualQaResult(result = {}) {
+  const report = result.visualQa || {};
+  const normalizeIssue = (item = {}) => ({
+    severity: ["high", "medium", "low"].includes(item.severity) ? item.severity : "low",
+    type: item.type || "visual",
+    targetId: item.targetId || "",
+    title: item.title || "待复核事项",
+    detail: item.detail || "",
+    recommendation: item.recommendation || "",
+    findingId: item.findingId || "",
+    fromClauseId: item.fromClauseId || "",
+    toClauseId: item.toClauseId || "",
+    confidence: Number.isFinite(Number(item.confidence)) ? Number(item.confidence) : null,
+  });
+  return {
+    ok: result.ok !== false,
+    source: result.source || "",
+    visualQa: {
+      status: ["pass", "needs_attention", "blocked"].includes(report.status) ? report.status : "needs_attention",
+      summary: report.summary || "",
+      displayIssues: (report.displayIssues || []).map(normalizeIssue),
+      structureIssues: (report.structureIssues || []).map(normalizeIssue),
+      suggestionPlacementIssues: (report.suggestionPlacementIssues || []).map(normalizeIssue),
+      numberingIssues: (report.numberingIssues || []).map(normalizeIssue),
+      autoFixes: (report.autoFixes || []).map((item) => ({
+        type: item.type || "visual",
+        targetId: item.targetId || "",
+        title: item.title || "可自动修复项",
+        description: item.description || "",
+        safeToApply: Boolean(item.safeToApply),
+        operation: item.operation || "",
+        findingId: item.findingId || "",
+        fromClauseId: item.fromClauseId || "",
+        toClauseId: item.toClauseId || "",
+        confidence: Number.isFinite(Number(item.confidence)) ? Number(item.confidence) : null,
+      })),
+      blockingExportIssues: (report.blockingExportIssues || []).map(normalizeIssue),
+      manualReviewItems: (report.manualReviewItems || []).map(normalizeIssue),
+    },
+  };
+}
+
+const visualQaTimers = {};
+const VISUAL_QA_INTERACTION_DELAY_MS = VISUAL_QA_DELAY_MS;
+const VISUAL_QA_AUTO_REASONS = new Set([
+  "segmentation-applied",
+  "legal-review-applied",
+  "visual-qa-autofix-applied",
+]);
+
+function scheduleVisualQa(contractId = state.activeContractId, reason = "review-state", options = {}) {
+  const contract = state.contracts.find((item) => item.id === contractId);
+  if (!contract) return;
+  const material = getWorkbenchMaterial(contract);
+  const sourceKey = material.sourceKey;
+  const current = state.visualQaJobs?.[sourceKey];
+  state.visualQaJobs = state.visualQaJobs || {};
+  if (!options.force && !shouldAutoRunVisualQa(reason)) {
+    return;
+  }
+  if (!options.force && isVisualQaInCooldown(sourceKey)) {
+    state.visualQaJobs[sourceKey] = {
+      status: "deferred",
+      reason,
+      message: "Agent B 模型检查已节流；本地即时兜底仍在运行。可手动点击“运行 Agent B 检查”。",
+      deferredAt: new Date().toISOString(),
+    };
+    saveState();
+    return;
+  }
+  if (!options.force && current?.status === "running") {
+    state.visualQaJobs[sourceKey] = {
+      ...current,
+      pending: true,
+      pendingReason: reason,
+      message: "Visual QA 正在运行；本次变更已加入下一轮后台检查。",
+      updatedAt: new Date().toISOString(),
+    };
+    saveState();
+    return;
+  }
+  clearTimeout(visualQaTimers[sourceKey]);
+  const delay = options.delay ?? (options.force ? 0 : VISUAL_QA_DELAY_MS);
+  state.visualQaJobs[sourceKey] = {
+    status: "queued",
+    reason,
+    message: options.force
+      ? "Visual QA 即将执行强制检查。"
+      : `Visual QA 已排队，将在 ${Math.round(delay / 1000)} 秒内后台检查本次展示和结构变更。`,
+    queuedAt: new Date().toISOString(),
+    scheduledFor: new Date(Date.now() + delay).toISOString(),
+  };
+  saveState();
+  visualQaTimers[sourceKey] = setTimeout(() => runVisualQaForMaterial(contract, material, reason), delay);
+}
+
+function shouldAutoRunVisualQa(reason = "") {
+  return VISUAL_QA_AUTO_REASONS.has(reason);
+}
+
+function isVisualQaInCooldown(sourceKey) {
+  const reportTime = state.visualQaReports?.[sourceKey]?.checkedAt ? new Date(state.visualQaReports[sourceKey].checkedAt).getTime() : 0;
+  const job = state.visualQaJobs?.[sourceKey];
+  const jobTime = job?.completedAt || job?.failedAt || job?.startedAt;
+  const latest = Math.max(reportTime, jobTime ? new Date(jobTime).getTime() : 0);
+  return latest && Date.now() - latest < VISUAL_QA_COOLDOWN_MS;
+}
+
+async function runVisualQaForMaterial(contract, material = getWorkbenchMaterial(contract), reason = "review-state") {
+  const sourceKey = material.sourceKey;
+  clearTimeout(visualQaTimers[sourceKey]);
+  state.visualQaJobs = state.visualQaJobs || {};
+  state.visualQaJobs[sourceKey] = {
+    status: "running",
+    reason,
+    message: "Visual QA 正在检查审阅台展示、建议归属和编号一致性。",
+    startedAt: new Date().toISOString(),
+  };
+  saveState();
+  if (state.activeContractId === contract.id) renderReview();
+  try {
+    const clauses = splitVersionClauses(material.text, material.sourceKey);
+    const report = await runVisualQa(contract, material, clauses, reason);
+    state.visualQaReports = state.visualQaReports || {};
+    state.visualQaReports[sourceKey] = {
+      ...report.visualQa,
+      source: report.source || "",
+      reason,
+      checkedAt: new Date().toISOString(),
+    };
+    const queuedNext = state.visualQaJobs[sourceKey]?.pending;
+    const queuedReason = state.visualQaJobs[sourceKey]?.pendingReason || "visual-qa-pending-change";
+    state.visualQaJobs[sourceKey] = {
+      status: "completed",
+      reason,
+      message: report.visualQa.summary || "Visual QA 已完成。",
+      completedAt: new Date().toISOString(),
+    };
+    saveState();
+    if (state.activeContractId === contract.id) renderReview();
+    if (queuedNext) scheduleVisualQa(contract.id, queuedReason, { delay: VISUAL_QA_INTERACTION_DELAY_MS });
+    return report;
+  } catch (error) {
+    const queuedNext = state.visualQaJobs[sourceKey]?.pending;
+    const queuedReason = state.visualQaJobs[sourceKey]?.pendingReason || "visual-qa-pending-change";
+    state.visualQaJobs[sourceKey] = {
+      status: "failed",
+      reason,
+      message: error.message || String(error),
+      failedAt: new Date().toISOString(),
+    };
+    saveState();
+    if (state.activeContractId === contract.id) renderReview();
+    if (queuedNext) scheduleVisualQa(contract.id, queuedReason, { delay: VISUAL_QA_INTERACTION_DELAY_MS });
+    return null;
+  }
+}
+
+function getVisualQaState(sourceKey) {
+  return {
+    job: state.visualQaJobs?.[sourceKey] || null,
+    report: state.visualQaReports?.[sourceKey] || null,
+  };
+}
+
+function applyVisualQaAutoFixes(sourceKey, options = {}) {
+  const report = state.visualQaReports?.[sourceKey];
+  const safeFixes = (report?.autoFixes || []).filter((fix) => fix.safeToApply);
+  if (!safeFixes.length) return { applied: 0, skipped: 0, message: "Visual QA 没有返回可安全自动执行的修复项。" };
+  const contractId = String(sourceKey || "").split(":")[0];
+  const contract = state.contracts.find((item) => item.id === contractId);
+  const stored = state.legalSkillResults?.[contractId];
+  const response = stored?.response;
+  if (!contract || !response) return { applied: 0, skipped: safeFixes.length, message: "没有找到对应合同或 AI 审阅结果。" };
+  let applied = 0;
+  let skipped = 0;
+  safeFixes.forEach((fix) => {
+    const operation = normalizeVisualQaFixOperation(fix);
+    if (operation === "relocate_finding") {
+      const moved = relocateSkillFindingInResult(contractId, response, fix);
+      moved ? applied += 1 : skipped += 1;
+      return;
+    }
+    if (operation === "dedupe_finding") {
+      const removed = dedupeSkillFindingInResult(contractId, response, fix);
+      removed ? applied += removed : skipped += 1;
+      return;
+    }
+    skipped += 1;
+  });
+  if (!applied) {
+    report.summary = `Agent B 提出了 ${safeFixes.length} 项安全修复，但未匹配到可执行的本地建议。请重新运行 Visual QA 或查看建议归属字段。`;
+    state.visualQaJobs = state.visualQaJobs || {};
+    state.visualQaJobs[sourceKey] = {
+      ...(state.visualQaJobs[sourceKey] || {}),
+      status: "completed",
+      message: report.summary,
+      completedAt: new Date().toISOString(),
+    };
+    saveState();
+    if (state.activeContractId === contract.id) renderReview();
+    return { applied, skipped, message: "Agent B 的修复项没有匹配到本地建议。" };
+  }
+  state.visualQaAutoFixAudits = state.visualQaAutoFixAudits || {};
+  state.visualQaAutoFixAudits[sourceKey] = state.visualQaAutoFixAudits[sourceKey] || [];
+  state.visualQaAutoFixAudits[sourceKey].push({
+    id: uid("visual-fix-audit"),
+    applied,
+    skipped,
+    source: report.source || "",
+    createdAt: new Date().toISOString(),
+  });
+  stored.appliedAt = new Date().toISOString();
+  const material = getWorkbenchMaterial(contract);
+  const clauses = splitVersionClauses(material.text, material.sourceKey);
+  state.findings = (state.findings || []).filter((finding) => finding.contractId !== contract.id);
+  state.findings.push(...getStoredSkillFindings(contract, clauses));
+  report.autoFixes = (report.autoFixes || []).map((fix) => fix.safeToApply ? { ...fix, applied: true } : fix);
+  report.summary = `已执行 ${applied} 项 Agent B 安全修复。${report.summary || ""}`;
+  saveState();
+  if (options.rerun !== false) scheduleVisualQa(contract.id, "visual-qa-autofix-applied", { delay: 800, force: true });
+  if (state.activeContractId === contract.id) renderReview();
+  return { applied, skipped };
+}
+
+function normalizeVisualQaFixOperation(fix = {}) {
+  if (["relocate_finding", "dedupe_finding", "hide_duplicate_text", "renumber_clause", "other"].includes(fix.operation)) return fix.operation;
+  const source = `${fix.type || ""}\n${fix.title || ""}\n${fix.description || ""}`.toLowerCase();
+  if (/relocate|move|placement|归属|放错|移动|重定位/.test(source)) return "relocate_finding";
+  if (/dedupe|duplicate|重复|去重/.test(source)) return "dedupe_finding";
+  return fix.operation || "other";
+}
+
+function relocateSkillFindingInResult(contractId, response, fix = {}) {
+  const toClauseId = fix.toClauseId || fix.targetId;
+  if (!toClauseId) return false;
+  const clauseItem = findRawSkillFindingItem(contractId, response.clauseAnalyses || [], fix, "clause");
+  if (clauseItem) {
+    clauseItem.previousClauseId = clauseItem.clauseId || clauseItem.targetClauseId || "";
+    clauseItem.clauseId = toClauseId;
+    clauseItem.targetClauseId = toClauseId;
+    clauseItem.placementAdjustedByAgentB = true;
+    return true;
+  }
+  const contractItem = findRawSkillFindingItem(contractId, response.contractLevelRisks || [], fix, "contract")
+    || findRawSkillFindingItem(contractId, response.contractLevelRisks || [], fix, "contract-routed");
+  if (contractItem) {
+    contractItem.previousLinkedClauseIds = contractItem.linkedClauseIds || [];
+    contractItem.linkedClauseIds = [toClauseId];
+    contractItem.targetClauseId = toClauseId;
+    contractItem.placementAdjustedByAgentB = true;
+    return true;
+  }
+  return false;
+}
+
+function dedupeSkillFindingInResult(contractId, response, fix = {}) {
+  const removedClause = removeRawSkillFindingItem(contractId, response.clauseAnalyses || [], fix, "clause");
+  const removedContract = removeRawSkillFindingItem(contractId, response.contractLevelRisks || [], fix, "contract")
+    || removeRawSkillFindingItem(contractId, response.contractLevelRisks || [], fix, "contract-routed");
+  return removedClause + removedContract;
+}
+
+function findRawSkillFindingItem(contractId, items, fix, scope) {
+  return items.find((item) => rawSkillFindingMatchesFix(contractId, item, fix, scope))
+    || findBestRawSkillFindingItem(items, fix)
+    || null;
+}
+
+function removeRawSkillFindingItem(contractId, items, fix, scope) {
+  const index = items.findIndex((item) => rawSkillFindingMatchesFix(contractId, item, fix, scope));
+  if (index < 0) return 0;
+  items.splice(index, 1);
+  return 1;
+}
+
+function rawSkillFindingMatchesFix(contractId, item, fix, scope) {
+  if (!item) return false;
+  const stableId = buildSkillFindingStableId(contractId, item, scope);
+  if (fix.findingId && fix.findingId === stableId) return true;
+  if (fix.fromClauseId && [item.clauseId, item.targetClauseId, ...(item.linkedClauseIds || [])].includes(fix.fromClauseId)) {
+    const fixText = normalizeText([fix.title, fix.description, fix.targetId].filter(Boolean).join("|"));
+    const itemText = normalizeText([item.title, item.issue, item.proposedRevision, item.proposedClauseText, item.fix, item.suggestion].filter(Boolean).join("|"));
+    return !fixText || jaccard(tokenize(fixText), tokenize(itemText)) >= 0.08;
+  }
+  return false;
+}
+
+function findBestRawSkillFindingItem(items = [], fix = {}) {
+  const fixText = normalizeText([fix.title, fix.description, fix.targetId].filter(Boolean).join("|"));
+  if (!fixText) return null;
+  let best = null;
+  let bestScore = 0;
+  items.forEach((item) => {
+    const itemText = normalizeText([item.title, item.issue, item.proposedRevision, item.proposedClauseText, item.fix, item.suggestion].filter(Boolean).join("|"));
+    const score = jaccard(tokenize(fixText), tokenize(itemText));
+    if (score > bestScore) {
+      bestScore = score;
+      best = item;
+    }
+  });
+  return bestScore >= 0.12 ? best : null;
+}
+
+function getAiClauseSegmentationForSource(text, sourceKey) {
+  const validation = getValidatedAiClauseSegmentation(text, sourceKey);
+  if (!validation.accepted) return null;
+  return validation.segments.map((item, index) => ({
+    id: uid("clause"),
+    contractId: sourceKey,
+    number: index + 1,
+    title: item.title,
+    text: item.text,
+    type: item.type || classifyClause(item.text, item.title),
+    chapterTitle: item.chapterTitle || "",
+    hierarchyLevel: item.hierarchyLevel || "article",
+    keyClause: item.type !== "其他",
+    riskLevel: "low",
+    deviates: false,
+    sourceKind: "ai-segmented",
+    aiStableId: item.stableId,
+  }));
+}
+
+function getClauseSegmentationStatus(text, sourceKey) {
+  const validation = getValidatedAiClauseSegmentation(text, sourceKey);
+  if (!validation.available) return { source: "local", label: "本地规则切分", count: 0, overlap: 0 };
+  if (!validation.accepted) {
+    return {
+      source: "local",
+      label: "本地规则切分",
+      count: validation.segments.length,
+      overlap: validation.overlap,
+      note: validation.reason || "AI 切分与当前文本重合度不足，已回退。",
+    };
+  }
+  return {
+    source: "ai",
+    label: "AI 语义切分",
+    count: validation.segments.length,
+    overlap: validation.overlap,
+  };
+}
+
+function getValidatedAiClauseSegmentation(text, sourceKey) {
+  const contractId = String(sourceKey || "").split(":")[0];
+  const result = getStoredSkillResult(contractId);
+  const segments = normalizeSkillClauseSegmentation(result?.clauseSegmentation || []);
+  if (segments.length < 2) return { available: false, accepted: false, segments: [], overlap: 0 };
+  const structureIssue = detectAiSegmentationStructureIssue(text, segments);
+  if (structureIssue) {
+    return { available: true, accepted: false, segments, overlap: 0, reason: structureIssue };
+  }
+  const sourceFingerprint = normalizeText(text).slice(0, 1200);
+  const segmentFingerprint = normalizeText(segments.map((item) => item.text).join("\n")).slice(0, 1200);
+  if (!sourceFingerprint || !segmentFingerprint) return { available: true, accepted: false, segments, overlap: 0 };
+  const overlap = jaccard(tokenize(sourceFingerprint), tokenize(segmentFingerprint));
+  return { available: true, accepted: overlap >= 0.28, segments, overlap };
+}
+
+function detectAiSegmentationStructureIssue(text, segments = []) {
+  const sourceArticles = extractExplicitArticleRefs(text);
+  if (sourceArticles.length < 2) return "";
+  const sourceArticleSet = new Set(sourceArticles);
+  const aiArticleRefs = segments.flatMap((segment) => extractExplicitArticleRefs(`${segment.title || ""}\n${segment.text || ""}`));
+  const merged = segments.find((segment) => {
+    const title = String(segment.title || "");
+    const refs = extractExplicitArticleRefs(`${segment.title || ""}\n${segment.text || ""}`);
+    const uniqueRefs = [...new Set(refs.filter((ref) => sourceArticleSet.has(ref)))];
+    return uniqueRefs.length > 1 || /第\s*[一二三四五六七八九十百零〇两0-9]+\s*条\s*(?:至|到|-|—|－)\s*第?\s*[一二三四五六七八九十百零〇两0-9]+\s*条/.test(title);
+  });
+  if (merged) return "AI 切分合并了原合同中明确编号的多个正式条款，已按原合同编号回退。";
+  const aiArticleSet = new Set(aiArticleRefs);
+  const preservedCount = sourceArticles.filter((ref) => aiArticleSet.has(ref)).length;
+  if (sourceArticles.length >= 4 && preservedCount < Math.ceil(sourceArticles.length * 0.72)) {
+    return "AI 切分未充分保留原合同明确条款编号，已按原合同编号回退。";
+  }
+  return "";
+}
+
+function extractExplicitArticleRefs(text) {
+  const refs = [];
+  const source = String(text || "");
+  for (const match of source.matchAll(/第\s*([一二三四五六七八九十百零〇两0-9]+)\s*条/g)) {
+    const value = parseChineseOrArabicNumber(match[1]) || normalizeNumberRef(match[1]);
+    if (value) refs.push(`article-${value}`);
+  }
+  return [...new Set(refs)];
+}
+
+function getStoredSkillFindings(contract, clauses = []) {
+  const result = getStoredSkillResult(contract.id);
+  if (!result?.clauseAnalyses?.length && !result?.contractLevelRisks?.length) return [];
+  const byId = new Map(clauses.map((clause) => [clause.id, clause]));
+  clauses.forEach((clause) => {
+    if (clause.stableId) byId.set(clause.stableId, clause);
+  });
+  const byTitle = new Map(clauses.map((clause) => [normalizeClauseTitle(clause.title), clause]));
+  const matchedClauseIds = new Set();
+  const clauseFindings = (result.clauseAnalyses || []).map((item) => {
+    const placement = resolveSkillClausePlacement(item, clauses, byId, byTitle);
+    const clause = placement.clause;
+    if (clause?.id) matchedClauseIds.add(clause.id);
+    return {
+      id: buildSkillFindingStableId(contract.id, item, "clause"),
+      contractId: contract.id,
+      clauseId: clause?.id || item.clauseId || null,
+      originalClauseId: item.clauseId || item.targetClauseId || "",
+      placementMethod: placement.method,
+      placementConfidence: placement.confidence,
+      placementWarning: placement.relocated ? `建议已从 ${placement.originalClauseId || "未指定条款"} 重新匹配到 ${clause?.title || clause?.id || "当前条款"}` : "",
+      title: item.title || item.issue || "Skill 条款风险",
+      severity: normalizeSeverity(item.severity),
+      actionType: normalizeClauseActionType(item.actionType, item),
+      issue: item.issue || item.summary || "",
+      consequence: item.consequence || "",
+      fix: item.replacementText || item.proposedRevision || item.fix || item.suggestion || item.commentText || "",
+      fallbackText: item.fallbackText || item.replacementText || "",
+      negotiation: item.negotiationPosition || item.negotiation || "",
+      needsBusiness: Boolean(item.businessDecision),
+      targetText: item.targetText || "",
+      commentText: item.commentText || "",
+      adoptionNote: item.adoptionNote || "",
+      negotiationBottomLine: item.negotiationBottomLine || "",
+      acceptableFallback: item.acceptableFallback || item.fallbackText || "",
+      linkedClauseIds: item.linkedClauseIds || [],
+      qualityScore: item.qualityScore ?? null,
+      needsManagement: normalizeSeverity(item.severity) === "high",
+      status: "待处理",
+    };
+  });
+  const contractFindings = (result.contractLevelRisks || []).map((item) => {
+    const placement = resolveContractRiskTargetPlacement(item, clauses, byId, byTitle);
+    const targetClause = placement.clause;
+    const isTargetedAddClause = targetClause && item.actionType !== "comment_only";
+    return {
+      id: buildSkillFindingStableId(contract.id, item, isTargetedAddClause ? "contract-routed" : "contract"),
+      contractId: contract.id,
+      clauseId: targetClause?.id || null,
+      originalClauseId: (item.linkedClauseIds || [])[0] || item.targetClauseId || "",
+      placementMethod: placement.method,
+      placementConfidence: placement.confidence,
+      placementWarning: placement.relocated ? `合同级建议已重新归入 ${targetClause?.title || targetClause?.id || "当前条款"}` : "",
+      title: item.title || item.issue || "Skill 合同级风险",
+      severity: normalizeSeverity(item.severity),
+      actionType: isTargetedAddClause ? "add_clause" : item.actionType === "comment_only" ? "comment_only" : "add_clause",
+      issue: item.issue || item.summary || "",
+      consequence: item.consequence || "",
+      fix: item.proposedClauseText || item.fix || item.suggestion || item.proposedRevision || "",
+      negotiation: item.negotiation || "",
+      proposedClauseText: item.proposedClauseText || "",
+      targetInsertPosition: item.targetInsertPosition || "",
+      adoptionNote: item.adoptionNote || "",
+      negotiationBottomLine: item.negotiationBottomLine || "",
+      acceptableFallback: item.acceptableFallback || "",
+      linkedClauseIds: item.linkedClauseIds || [],
+      qualityScore: item.qualityScore ?? null,
+      needsBusiness: true,
+      needsManagement: normalizeSeverity(item.severity) === "high",
+      status: "待处理",
+      routedFromContractRisk: Boolean(targetClause),
+    };
+  });
+  return dedupeSkillFindings([...contractFindings, ...clauseFindings]);
+}
+
+function dedupeSkillFindings(findings = []) {
+  const grouped = new Map();
+  findings.forEach((finding) => {
+    const key = buildSkillFindingDedupKey(finding);
+    const previous = grouped.get(key);
+    if (!previous || skillFindingPlacementScore(finding) > skillFindingPlacementScore(previous)) grouped.set(key, finding);
+  });
+  return [...grouped.values()];
+}
+
+function buildSkillFindingStableId(contractId, item = {}, scope = "clause") {
+  const source = [
+    contractId,
+    scope,
+    item.id,
+    item.clauseId,
+    item.targetClauseId,
+    item.title,
+    item.issue,
+    item.proposedRevision,
+    item.replacementText,
+    item.proposedClauseText,
+    item.fix,
+    item.suggestion,
+    item.targetInsertPosition,
+  ]
+    .filter(Boolean)
+    .join("|");
+  return `skill-finding-${hashStableText(normalizeText(source).slice(0, 800))}`;
+}
+
+function hashStableText(text) {
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function skillFindingPlacementScore(finding = {}) {
+  let score = 0;
+  if (finding.clauseId) score += 50;
+  if (finding.routedFromContractRisk) score += 20;
+  if (finding.targetInsertPosition) score += 8;
+  if ((finding.linkedClauseIds || []).length) score += 8;
+  score += riskRank(finding.severity || "low");
+  score += Math.min(Number(finding.qualityScore) || 0, 100) / 100;
+  return score;
+}
+
+function normalizeClauseActionType(value, item = {}) {
+  const explicit = String(value || "");
+  if (["replace_clause", "revise_clause", "delete_clause", "comment_only"].includes(explicit)) return explicit;
+  const source = `${item.title || ""}\n${item.issue || ""}\n${item.proposedRevision || item.fix || item.suggestion || ""}`;
+  if (/删除|删去|移除|不建议保留/.test(source)) return "delete_clause";
+  if (/替换为|修改为|改为|全文替换/.test(source)) return "replace_clause";
+  if (!String(item.proposedRevision || item.fix || item.suggestion || "").trim()) return "comment_only";
+  return "revise_clause";
+}
+
+function matchSkillClause(item, clauses, byId, byTitle) {
+  return resolveSkillClausePlacement(item, clauses, byId, byTitle).clause;
+}
+
+function resolveSkillClausePlacement(item, clauses, byId, byTitle) {
+  if (!item || !clauses.length) return emptyClausePlacement();
+  const direct = byId.get(item.clauseId) || byId.get(item.targetClauseId);
+  const numbered = matchClauseByExplicitNumber(item, clauses);
+  if (numbered && (!direct || numbered.id !== direct.id)) {
+    return buildClausePlacement(numbered, "explicit-number", 0.98, item, direct);
+  }
+
+  const title = item.title || item.clauseTitle || "";
+  const titleMatch = byTitle.get(normalizeClauseTitle(title));
+  const best = findBestSkillClause(item, clauses);
+  if (direct) {
+    const directScore = scoreSkillClausePlacement(item, direct);
+    const bestIsDifferent = best.clause && best.clause.id !== direct.id;
+    if (bestIsDifferent && best.score >= 0.62 && best.score >= directScore + 0.18) {
+      return buildClausePlacement(best.clause, "semantic-reroute", best.score, item, direct);
+    }
+    return buildClausePlacement(direct, "agent-id-verified", Math.max(directScore, best.clause?.id === direct.id ? best.score : 0.45), item);
+  }
+  if (numbered) return buildClausePlacement(numbered, "explicit-number", 0.98, item);
+  if (titleMatch) return buildClausePlacement(titleMatch, "title", Math.max(0.72, scoreSkillClausePlacement(item, titleMatch)), item);
+  if (best.clause && best.score >= 0.38) return buildClausePlacement(best.clause, "semantic", best.score, item);
+  return emptyClausePlacement();
+}
+
+function emptyClausePlacement() {
+  return { clause: null, method: "unmatched", confidence: 0, relocated: false, originalClauseId: "" };
+}
+
+function buildClausePlacement(clause, method, confidence, item = {}, originalClause = null) {
+  return {
+    clause,
+    method,
+    confidence: Number(Math.max(0, Math.min(1, confidence || 0)).toFixed(2)),
+    relocated: Boolean(originalClause && clause && originalClause.id !== clause.id),
+    originalClauseId: originalClause?.id || item.clauseId || item.targetClauseId || "",
+  };
+}
+
+function findBestSkillClause(item, clauses) {
+  let best = { clause: null, score: 0 };
+  clauses.forEach((clause) => {
+    const score = scoreSkillClausePlacement(item, clause);
+    if (score > best.score) best = { clause, score };
+  });
+  return best;
+}
+
+function scoreSkillClausePlacement(item, clause) {
+  if (!item || !clause) return 0;
+  const source = buildSkillPlacementText(item);
+  const title = item.title || item.clauseTitle || "";
+  let score = clauseMatchScore(source, title, item.clauseType, clause);
+  const targetText = normalizeText(item.targetText || "");
+  const clauseText = normalizeText(`${clause.title || ""}\n${clause.text || ""}`);
+  if (targetText && clauseText.includes(targetText.slice(0, Math.min(targetText.length, 160)))) score += 0.72;
+  if (source.includes(clause.id) || (clause.stableId && source.includes(clause.stableId))) score += 0.15;
+  const explicitNumbers = extractClauseNumberRefs(source);
+  const clauseNumbers = getClauseNumberRefs(clause);
+  if (explicitNumbers.length && clauseNumbers.some((number) => explicitNumbers.includes(number))) score += 0.55;
+  if (explicitNumbers.length && !clauseNumbers.some((number) => explicitNumbers.includes(number))) score -= 0.25;
+  const normalizedTitle = normalizeClauseTitle(clause.title);
+  if (normalizedTitle && normalizeText(source).includes(normalizedTitle)) score += 0.25;
+  if (clause.chapterTitle && normalizeText(source).includes(normalizeText(clause.chapterTitle))) score += 0.12;
+  score += scoreDocumentRegionContext(source, clause);
+  if (item.clauseType && clause.type && String(item.clauseType).includes(clause.type)) score += 0.1;
+  return Math.max(0, Math.min(1, score));
+}
+
+function buildSkillPlacementText(item = {}) {
+  return [
+    item.clauseId,
+    item.targetClauseId,
+    item.clauseTitle,
+    item.title,
+    item.targetText,
+    item.issue,
+    item.summary,
+    item.proposedRevision,
+    item.replacementText,
+    item.proposedClauseText,
+    item.fix,
+    item.suggestion,
+    item.commentText,
+    item.targetInsertPosition,
+    ...(item.linkedClauseIds || []),
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function matchClauseByExplicitNumber(item, clauses) {
+  const source = [
+    item.clauseId,
+    item.targetClauseId,
+    item.clauseTitle,
+    item.title,
+    item.targetText,
+    item.issue,
+    item.summary,
+    item.proposedRevision,
+    item.replacementText,
+    item.proposedClauseText,
+    item.fix,
+    item.suggestion,
+    item.commentText,
+    item.targetInsertPosition,
+    ...(item.linkedClauseIds || []),
+  ].filter(Boolean).join("\n");
+  const numbers = extractClauseNumberRefs(source);
+  if (!numbers.length) return null;
+  const candidates = clauses.filter((clause) => getClauseNumberRefs(clause).some((number) => numbers.includes(number)));
+  if (candidates.length <= 1) return candidates[0] || null;
+  const ranked = candidates
+    .map((clause) => ({ clause, score: scoreNumberedClauseContext(source, clause) + scoreSkillClausePlacement(item, clause) }))
+    .sort((a, b) => b.score - a.score);
+  if (!ranked.length || ranked[0].score < 0.12) return null;
+  if (ranked[1] && ranked[0].score - ranked[1].score < 0.12) return null;
+  return ranked[0].clause;
+}
+
+function matchContractRiskTargetClause(item, clauses, byId, byTitle) {
+  return resolveContractRiskTargetPlacement(item, clauses, byId, byTitle).clause;
+}
+
+function resolveContractRiskTargetPlacement(item, clauses, byId, byTitle) {
+  if (!item || !clauses.length) return emptyClausePlacement();
+  const linked = (item.linkedClauseIds || [])
+    .map((id) => byId.get(id))
+    .find(Boolean);
+  const targetText = buildContractRiskTargetText(item);
+  const numbered = matchClauseByExplicitNumber({ ...item, targetText }, clauses);
+  if (numbered && (!linked || numbered.id !== linked.id)) {
+    return buildClausePlacement(numbered, "explicit-number", 0.98, item, linked);
+  }
+
+  const directTitle = byTitle.get(normalizeClauseTitle(item.targetInsertPosition || item.title || ""));
+  const suggestedType = normalizeSuggestedClauseType(`${item.title || ""}\n${item.issue || ""}\n${item.suggestion || ""}\n${item.proposedClauseText || ""}`);
+  const best = findBestContractRiskTarget(targetText, suggestedType, clauses);
+  if (linked) {
+    const linkedScore = contractRiskTargetScore(targetText, suggestedType, linked);
+    if (best.clause && best.clause.id !== linked.id && best.score >= 0.62 && best.score >= linkedScore + 0.18) {
+      return buildClausePlacement(best.clause, "semantic-reroute", best.score, item, linked);
+    }
+    return buildClausePlacement(linked, "agent-linked-id-verified", Math.max(linkedScore, best.clause?.id === linked.id ? best.score : 0.45), item);
+  }
+  if (numbered) return buildClausePlacement(numbered, "explicit-number", 0.98, item);
+  if (directTitle) return buildClausePlacement(directTitle, "title", Math.max(0.72, contractRiskTargetScore(targetText, suggestedType, directTitle)), item);
+  if (best.clause && best.score >= 0.55) return buildClausePlacement(best.clause, "semantic", best.score, item);
+  return emptyClausePlacement();
+}
+
+function buildContractRiskTargetText(item = {}) {
+  return [
+    item.targetInsertPosition,
+    item.targetClauseId,
+    item.title,
+    item.issue,
+    item.suggestion,
+    item.proposedClauseText,
+    item.proposedRevision,
+    item.replacementText,
+    item.businessRationale,
+    ...(item.linkedClauseIds || []),
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function findBestContractRiskTarget(targetText, suggestedType, clauses) {
+  let best = { clause: null, score: 0 };
+  clauses.forEach((clause) => {
+    const score = contractRiskTargetScore(targetText, suggestedType, clause);
+    if (score > best.score) best = { clause, score };
+  });
+  return best;
+}
+
+function contractRiskTargetScore(targetText, suggestedType, clause) {
+  const source = String(targetText || "");
+  let score = 0;
+  if (!source.trim()) return 0;
+  if (source.includes(clause.id) || (clause.stableId && source.includes(clause.stableId))) score += 1;
+  const explicitNumbers = extractClauseNumberRefs(source);
+  const clauseNumbers = [
+    clause.originalNumberText,
+    clause.number,
+    extractLeadingDecimalNumber(clause.title),
+    extractLeadingDecimalNumber(clause.text),
+  ].filter(Boolean).map(normalizeNumberRef);
+  if (clauseNumbers.some((number) => explicitNumbers.includes(number))) score += 1.2;
+  const number = clause.originalNumber || clause.number || parseClauseNumberFromText(clause.title) || parseClauseNumberFromText(clause.text);
+  if (number && source.includes(`第${numberToChinese(number)}条`)) score += 0.85;
+  if (number && source.includes(`第${number}条`)) score += 0.85;
+  const normalizedTitle = normalizeClauseTitle(clause.title);
+  if (normalizedTitle && source.includes(normalizedTitle)) score += 0.75;
+  if (clause.chapterTitle && source.includes(clause.chapterTitle)) score += 0.48;
+  score += scoreDocumentRegionContext(source, clause);
+  if (suggestedType && suggestedType !== "其他" && clause.type === suggestedType) score += 0.46;
+  if (clause.type && source.includes(clause.type)) score += 0.42;
+  score += clauseMatchScore(source, itemTitleFromTargetText(source), suggestedType, clause) * 0.35;
+  return score;
+}
+
+function scoreNumberedClauseContext(source, clause) {
+  let score = 0;
+  const normalizedSource = normalizeText(source);
+  const normalizedTitle = normalizeClauseTitle(clause.title);
+  const normalizedChapter = normalizeText(clause.chapterTitle || "");
+  if (normalizedTitle && normalizedSource.includes(normalizedTitle)) score += 0.55;
+  if (normalizedChapter && normalizedSource.includes(normalizedChapter)) score += 0.48;
+  score += clauseMatchScore(source, "", "", clause) * 0.35;
+  score += scoreDocumentRegionContext(source, clause);
+  return score;
+}
+
+function scoreDocumentRegionContext(source, clause) {
+  const sourceRegion = inferDocumentRegion(source);
+  const clauseRegion = inferDocumentRegion(`${clause.chapterTitle || ""}\n${clause.title || ""}\n${String(clause.text || "").slice(0, 260)}`);
+  if (!sourceRegion || !clauseRegion) return 0;
+  return sourceRegion === clauseRegion ? 0.5 : -0.65;
+}
+
+function inferDocumentRegion(text) {
+  const source = String(text || "");
+  if (/(附件|附录|附表|appendix|schedule|exhibit|sow|statement\s+of\s+work)/i.test(source)) return "attachment";
+  if (/(正文|主合同|协议正文|合同正文|main\s+agreement)/i.test(source)) return "body";
+  return "";
+}
+
+function itemTitleFromTargetText(text) {
+  return String(text || "").split(/\n/).find(Boolean) || "";
+}
+
+function buildSkillFindingDedupKey(finding = {}) {
+  const addClause = finding.actionType === "add_clause";
+  const source = [
+    finding.actionType,
+    finding.title,
+    finding.issue,
+    finding.fix || finding.proposedClauseText,
+    addClause ? "" : finding.targetInsertPosition,
+  ]
+    .filter(Boolean)
+    .join("|");
+  return normalizeText(source)
+    .replace(/第[一二三四五六七八九十百零〇两0-9]+条/g, "")
+    .replace(/\b\d+(?:\.\d+)+\b/g, "")
+    .slice(0, 260);
+}
+
+function clauseMatchScore(itemText, itemTitle, itemType, clause) {
+  const titleA = tokenize(normalizeClauseTitle(itemTitle));
+  const titleB = tokenize(normalizeClauseTitle(clause.title));
+  const textA = tokenize(itemText);
+  const textB = tokenize(`${clause.title}\n${clause.text}`);
+  const titleScore = jaccard(titleA, titleB);
+  const textScore = jaccard(textA, textB);
+  const typeScore = itemType && clause.type && String(itemType).includes(clause.type) ? 0.25 : 0;
+  return titleScore * 0.5 + textScore * 0.35 + typeScore;
+}
+
+function tokenize(text) {
+  const cleaned = String(text || "")
+    .toLowerCase()
+    .replace(/[^\u4e00-\u9fa5a-z0-9]+/g, " ")
+    .trim();
+  const zh = cleaned.match(/[\u4e00-\u9fa5]{2}/g) || [];
+  const words = cleaned.split(/\s+/).filter((word) => word.length >= 2);
+  return new Set([...zh, ...words]);
+}
+
+function jaccard(a, b) {
+  if (!a.size || !b.size) return 0;
+  let intersection = 0;
+  a.forEach((item) => {
+    if (b.has(item)) intersection += 1;
+  });
+  return intersection / (a.size + b.size - intersection);
+}
+
+function getAnalysisFindings(contract, clauses = []) {
+  const stored = getStoredSkillFindings(contract, clauses);
+  return stored;
+}
+
+function applyLegalSkillResult(contract, result, clauses = []) {
+  result = normalizeLegalSkillResult(result);
+  state.legalSkillResults = state.legalSkillResults || {};
+  state.legalSkillResults[contract.id] = {
+    ...result,
+    appliedAt: new Date().toISOString(),
+  };
+  const summary = result.response?.contractSummary || {};
+  contract.type = summary.contractType || summary.contract_type || contract.type;
+  contract.purpose = summary.purpose || contract.purpose;
+  contract.riskLevel = normalizeSeverity(summary.riskLevel || contract.riskLevel);
+  const findings = getStoredSkillFindings(contract, clauses);
+  state.findings = (state.findings || []).filter((finding) => finding.contractId !== contract.id);
+  if (findings.length) {
+    state.findings.push(...findings);
+  }
+  clearAnalysisStatus(contract.id);
+  contract.updatedAt = today();
+  scheduleVisualQa(contract.id, "legal-review-applied", { delay: 500, force: true });
+}
+
+function applyFocusedClauseSkillResult(contract, clauseId, result) {
+  result = normalizeLegalSkillResult(result);
+  state.legalSkillResults = state.legalSkillResults || {};
+  const previous = state.legalSkillResults[contract.id]?.response || {
+    contractSummary: {},
+    clauseSegmentation: [],
+    contractLevelRisks: [],
+    clauseAnalyses: [],
+    missingFacts: [],
+    businessSummary: "",
+  };
+  const incoming = result.response?.clauseAnalyses || [];
+  state.legalSkillResults[contract.id] = {
+    ...(state.legalSkillResults[contract.id] || {}),
+    ...result,
+    response: {
+      contractSummary: {
+        ...previous.contractSummary,
+        ...(result.response?.contractSummary || {}),
+      },
+      contractLevelRisks: previous.contractLevelRisks || [],
+      clauseSegmentation: (previous.clauseSegmentation || []).length ? previous.clauseSegmentation : result.response?.clauseSegmentation || [],
+      clauseAnalyses: [
+        ...(previous.clauseAnalyses || []).filter((item) => item.clauseId !== clauseId && item.targetClauseId !== clauseId),
+        ...incoming.map((item) => ({ ...item, clauseId: item.clauseId || clauseId })),
+      ],
+      missingFacts: [...new Set([...(previous.missingFacts || []), ...(result.response?.missingFacts || [])])],
+      businessSummary: result.response?.businessSummary || previous.businessSummary || "",
+    },
+    focusedClauseId: clauseId,
+    appliedAt: new Date().toISOString(),
+  };
+  state.findings = (state.findings || []).filter((finding) => finding.contractId !== contract.id || finding.clauseId !== clauseId);
+  const focusedFindings = getStoredSkillFindings(contract, [{ id: clauseId }]).filter((finding) => finding.clauseId === clauseId);
+  if (focusedFindings.length) state.findings.push(...focusedFindings);
+  contract.updatedAt = today();
+}
+
+function getClauseNumberRefs(clause = {}) {
+  return [
+    clause.originalNumberText,
+    clause.number,
+    clause.originalNumber,
+    parseArticleNumberRef(clause.title),
+    parseArticleNumberRef(clause.text),
+    extractLeadingDecimalNumber(clause.title),
+    extractLeadingDecimalNumber(clause.text),
+  ].filter(Boolean).map(normalizeNumberRef);
+}
+
+function extractClauseNumberRefs(text) {
+  const source = String(text || "");
+  const decimalRefs = source.match(/\b\d+(?:\.\d+)+\b/g) || [];
+  const articleRefs = [...source.matchAll(/第\s*([一二三四五六七八九十百零〇两0-9]+)\s*条/g)]
+    .map((match) => parseChineseOrArabicNumber(match[1]))
+    .filter(Boolean);
+  const plainArticleRefs = [...source.matchAll(/(?:^|[^\d.])(\d+)\s*条/g)]
+    .map((match) => match[1])
+    .filter(Boolean);
+  return [...new Set([...decimalRefs, ...articleRefs, ...plainArticleRefs].map(normalizeNumberRef).filter(Boolean))];
+}
+
+function parseArticleNumberRef(text) {
+  const match = String(text || "").trim().match(/^第\s*([一二三四五六七八九十百零〇两0-9]+)\s*条/);
+  return match ? parseChineseOrArabicNumber(match[1]) : "";
+}
+
+function parseChineseOrArabicNumber(value) {
+  const source = String(value || "").replace(/\s+/g, "");
+  if (!source) return "";
+  if (/^\d+$/.test(source)) return source;
+  const digits = { 零: 0, 〇: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+  if (source === "十") return "10";
+  if (source.includes("百")) {
+    const [hundredsText, restText = ""] = source.split("百");
+    const rest = restText ? Number(parseChineseOrArabicNumber(restText)) : 0;
+    return String((digits[hundredsText] || 1) * 100 + rest);
+  }
+  if (source.includes("十")) {
+    const [tensText, onesText = ""] = source.split("十");
+    return String((tensText ? digits[tensText] || 0 : 1) * 10 + (onesText ? digits[onesText] || 0 : 0));
+  }
+  return digits[source] === undefined ? "" : String(digits[source]);
+}
+
+function normalizeNumberRef(value) {
+  const text = String(value || "").replace(/\s+/g, "");
+  const decimal = text.match(/\d+(?:\.\d+)*/)?.[0] || "";
+  return decimal.replace(/\.$/, "");
+}

@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI 合同审阅工作台 MVP</title>
+    <link rel="stylesheet" href="./styles.css?v=20260526-title-edit" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">法</div>
+          <div>
+            <h1>合同审阅工作台</h1>
+            <p>AI 创业公司法务 MVP</p>
+          </div>
+        </div>
+        <nav class="nav">
+          <button class="nav-item active" data-view="dashboard">总览</button>
+          <button class="nav-item" data-view="contracts">合同库</button>
+          <button class="nav-item" data-view="review">审阅台</button>
+          <button class="nav-item" data-view="drafting">起草台</button>
+          <button class="nav-item" data-view="playbooks">条款库</button>
+          <button class="nav-item" data-view="counterparties">相对方</button>
+        </nav>
+        <div class="sidebar-note">
+          <strong>MVP 范围</strong>
+          <span>AI Legal Skill 可视化审阅、条款切分、建议采纳、版本生成与交付导出。</span>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div class="topbar-heading">
+            <button class="nav-toggle-button" type="button" data-toggle-sidebar aria-label="展开导航栏" aria-expanded="false">☰</button>
+            <div>
+              <p class="eyebrow">Legal Work Orchestrator</p>
+              <h2 id="view-title">总览</h2>
+              <p class="view-subtitle" id="view-subtitle">查看待反馈、审阅中合同和最近工作进展。</p>
+            </div>
+          </div>
+          <div class="topbar-actions">
+            <div class="global-search">
+              <input type="text" id="global-search-input" placeholder="🔍 搜索合同、条款、风险规则..." autocomplete="off" />
+              <div class="global-search-dropdown" id="global-search-dropdown"></div>
+            </div>
+            <button class="ghost-button" id="reset-demo">重置示例</button>
+            <button class="ghost-button" id="top-progress-button" data-open-active-progress>更新当前合同进度</button>
+            <button class="primary-button" data-open-upload>新建审阅</button>
+          </div>
+        </header>
+
+        <section class="view active" id="dashboard-view"></section>
+        <section class="view" id="contracts-view"></section>
+        <section class="view" id="review-view"></section>
+        <section class="view" id="drafting-view"></section>
+        <section class="view" id="playbooks-view"></section>
+        <section class="view" id="counterparties-view"></section>
+      </main>
+    </div>
+
+    <dialog class="modal" id="upload-modal">
+      <form class="modal-panel" id="upload-form">
+        <div class="modal-header">
+          <div>
+            <p class="eyebrow">New Review</p>
+            <h3>上传或粘贴合同文本</h3>
+          </div>
+          <button class="icon-button" type="button" data-close-upload aria-label="关闭">×</button>
+        </div>
+        <label>
+          合同名称
+          <input id="contract-name-input" placeholder="例如：某客户 SaaS 服务协议" />
+        </label>
+        <label>
+          相对方
+          <input id="counterparty-input" placeholder="例如：星河智能科技有限公司" />
+        </label>
+        <label>
+          我方角色
+          <input id="party-role-input" placeholder="例如：服务提供方 / 采购方 / 数据接收方 / 甲方 / 乙方" />
+        </label>
+        <label>
+          反馈期限
+          <input id="contract-deadline-input" type="date" />
+        </label>
+        <label>
+          业务负责人
+          <input id="contract-owner-input" placeholder="例如：业务负责人 / 产品负责人" />
+        </label>
+        <label>
+          合同背景
+          <textarea id="contract-background-input" rows="4" placeholder="说明签订本合同的商业背景、合同目的、核心诉求、已知谈判重点或业务底线。"></textarea>
+        </label>
+        <label>
+          上传合同初稿文本文件
+          <input id="clean-file-input" type="file" accept=".txt,.md,.text,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" data-file-target="clean-text-input" />
+        </label>
+        <div class="inline-form-actions">
+          <button class="small-button" type="button" data-autofill-new-review-local>本地快速填充</button>
+          <button class="small-button" type="button" data-autofill-new-review>AI 一键信息填充</button>
+          <span class="muted" id="new-review-autofill-status"></span>
+        </div>
+        <label>
+          合同初稿文本
+          <textarea id="clean-text-input" rows="10" placeholder="粘贴合同初稿正文。通过新建审阅进入的材料一律视为初稿。"></textarea>
+        </label>
+        <div class="modal-actions">
+          <button class="ghost-button" type="button" data-close-upload>取消</button>
+          <button class="primary-button" type="submit">开始审阅</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="modal" id="progress-modal">
+      <form class="modal-panel" id="progress-form">
+        <div class="modal-header">
+          <div>
+            <p class="eyebrow">Progress Update</p>
+            <h3>更新已有审阅路径</h3>
+          </div>
+          <button class="icon-button" type="button" data-close-progress aria-label="关闭">×</button>
+        </div>
+        <label>
+          关联合同
+          <select id="progress-contract-id"></select>
+        </label>
+        <label>
+          版本性质
+          <select id="progress-type-input">
+            <option value="过程稿">过程稿</option>
+            <option value="终稿">终稿</option>
+          </select>
+        </label>
+        <label>
+          进展说明
+          <textarea id="progress-note-input" rows="4" placeholder="例如：对方发来第二轮版本，主要修改责任限制和数据使用条款。"></textarea>
+        </label>
+        <label>
+          反馈期限
+          <input id="progress-deadline-input" type="date" />
+        </label>
+        <label>
+          当前状态
+          <select id="progress-status-input">
+            <option value="业务确认">业务确认</option>
+            <option value="对方反馈">对方反馈</option>
+            <option value="定稿">定稿</option>
+            <option value="签署">签署</option>
+          </select>
+        </label>
+        <label>
+          上传版本文本文件
+          <input type="file" accept=".txt,.md,.eml,.text,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" data-file-target="progress-version-text-input" />
+        </label>
+        <label>
+          合同版本 / 邮件 / 修改建议文本
+          <textarea id="progress-version-text-input" rows="9" placeholder="粘贴本次收到或形成的版本文本。系统会识别是否像红线、修订稿或邮件建议。"></textarea>
+        </label>
+        <div class="modal-actions">
+          <button class="ghost-button" type="button" data-close-progress>取消</button>
+          <button class="primary-button" type="submit">保存进度</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="modal" id="add-clause-modal">
+      <form class="modal-panel" id="add-clause-form">
+        <div class="modal-header">
+          <div>
+            <p class="eyebrow">Add Clause</p>
+            <h3>新增条款</h3>
+          </div>
+          <button class="icon-button" type="button" data-close-add-clause aria-label="关闭">×</button>
+        </div>
+        <input id="add-clause-source-key" type="hidden" />
+        <label>
+          插入位置
+          <select id="add-clause-position">
+            <option value="before">插入到所选条款之前</option>
+            <option value="after">插入到所选条款之后</option>
+            <option value="end">插入到合同末尾</option>
+          </select>
+        </label>
+        <label>
+          选择条款
+          <select id="add-clause-target"></select>
+        </label>
+        <label>
+          条款类型
+          <select id="add-clause-type"></select>
+        </label>
+        <label>
+          条款标题
+          <input id="add-clause-title" placeholder="例如：数据安全与个人信息保护" />
+        </label>
+        <label>
+          条款文本
+          <textarea id="add-clause-text" rows="8" placeholder="填写新增条款正文。系统会在保存后重新调整条款序号和引用关系。"></textarea>
+        </label>
+        <label>
+          新增理由 / 批注
+          <textarea id="add-clause-comment" rows="3" placeholder="例如：补充数据安全义务，回应客户训练数据使用限制。"></textarea>
+        </label>
+        <div class="modal-actions">
+          <button class="ghost-button" type="button" data-close-add-clause>取消</button>
+          <button class="primary-button" type="submit">保存新增条款</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="modal" id="skill-result-modal">
+      <form class="modal-panel" method="dialog">
+        <div class="modal-header">
+          <div>
+            <p class="eyebrow">Legal Skill</p>
+            <h3>Skill 分析结果</h3>
+          </div>
+          <button class="icon-button" type="button" data-close-skill-result aria-label="关闭">×</button>
+        </div>
+        <pre class="json-preview" id="skill-result-preview"></pre>
+        <div class="modal-actions">
+          <button class="primary-button" type="button" data-close-skill-result>确定</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="./js/runtime-config.js"></script>
+    <script src="./js/api-client.js?v=20260602-api-token"></script>
+    <script src="./js/state.js?v=20260522-adopt-ai"></script>
+    <script src="./js/store.js?v=20260528-store"></script>
+    <script src="./lib/normalize.js?v=20260528-shared"></script>
+    <script src="./js/utils.js?v=20260527-type-normalize"></script>
+    <script src="./js/diff-engine.js?v=20260529-extract"></script>
+    <script src="./lib/contract-parsing.js?v=20260528-shared"></script>
+    <script src="./js/contract-parser.js?v=20260523-parser"></script>
+    <script src="./js/analysis-fallback.js?v=20260523-analysis-fallback"></script>
+    <script src="./js/risk-rules.js?v=20260523-knowledge"></script>
+    <script src="./js/api.js?v=20260527-type-normalize"></script>
+    <script src="./js/word-docx.js?v=20260522-adopt-ai"></script>
+    <script src="./js/playbook.js?v=20260522-adopt-ai"></script>
+    <script src="./js/review-redline.js?v=20260523-review-modules"></script>
+    <script src="./js/review-numbering.js?v=20260523-review-numbering"></script>
+    <script src="./js/review-material.js?v=20260526-structure-stable"></script>
+    <script src="./js/review-risk.js?v=20260527-type-normalize"></script>
+    <script src="./js/review-index.js?v=20260523-review-modules"></script>
+    <script src="./js/render-review.js?v=20260526-structure-stable"></script>
+    <script src="./js/review-tree.js?v=20260524-segmentation-dedupe"></script>
+    <script src="./js/review-checks.js?v=20260523-review-checks"></script>
+    <script src="./js/review-reorder.js?v=20260523-review-reorder"></script>
+    <script src="./js/review-actions.js?v=20260526-qa-throttle"></script>
+    <script src="./js/dashboard.js?v=20260523-page-modules"></script>
+    <script src="./js/contract-library.js?v=20260523-page-modules"></script>
+    <script src="./js/drafting.js?v=20260523-page-modules"></script>
+    <script src="./js/counterparties.js?v=20260524-feedback-learning"></script>
+    <script src="./js/contract-lifecycle.js?v=20260523-lifecycle"></script>
+    <script src="./js/ui-shell.js?v=20260523-ui-shell"></script>
+    <script src="./js/app-router.js?v=20260530"></script>
+    <script src="./js/app-contract-actions.js?v=20260530"></script>
+    <script src="./js/app-events.js?v=20260530"></script>
+    <script src="./js/search.js?v=20260602-fts5"></script>
+    <script src="./js/electron-bridge.js?v=20260602"></script>
+    <script src="./app.js?v=20260530-extract"></script>
+  </body>
+</html>

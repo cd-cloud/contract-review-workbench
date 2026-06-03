@@ -1,0 +1,100 @@
+{
+  "name": "legal-contract-workbench",
+  "version": "0.2.0",
+  "private": true,
+  "description": "AI 合同审阅工作台 — 法务桌面应用",
+  "main": "electron/main.js",
+  "scripts": {
+    "server": "node server/server.js",
+    "server:skill": "set LEGAL_SKILL_RUNNER_SCRIPT=scripts/legal-skill-runner.js&& node server/server.js",
+    "server:codex": "set LEGAL_SKILL_RUNNER_SCRIPT=scripts/codex-skill-runner.js&& set VISUAL_QA_RUNNER_SCRIPT=scripts/ai-visual-qa-runner.js&& node server/server.js",
+    "server:ai": "set LEGAL_SKILL_RUNNER_SCRIPT=scripts/ai-skill-runner.js&& set SUGGESTION_ACTION_RUNNER_SCRIPT=scripts/ai-suggestion-runner.js&& set CONTRACT_INTAKE_RUNNER_SCRIPT=scripts/ai-intake-runner.js&& set VISUAL_QA_RUNNER_SCRIPT=scripts/ai-visual-qa-runner.js&& node server/server.js",
+    "server:kimi": "set LEGAL_AI_PROVIDER=kimi&& set LEGAL_SKILL_RUNNER_SCRIPT=scripts/ai-skill-runner.js&& set SUGGESTION_ACTION_RUNNER_SCRIPT=scripts/ai-suggestion-runner.js&& set CONTRACT_INTAKE_RUNNER_SCRIPT=scripts/ai-intake-runner.js&& set VISUAL_QA_RUNNER_SCRIPT=scripts/ai-visual-qa-runner.js&& node server/server.js",
+    "electron": "electron .",
+    "electron:dev": "set NODE_ENV=development&& electron .",
+    "build": "npm run build:win",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "portability:check": "node scripts/portability-check.js",
+    "check": "node scripts/check-all.js && node scripts/regression-smoke.js",
+    "test": "node tests/test-runner.js",
+    "test:layer1": "node scripts/test-layer1-shared-libs.js",
+    "test:layer2": "node scripts/test-layer2-fallback-analysis.js",
+    "test:utils": "node tests/test-utils-pure.js",
+    "test:parser": "node tests/test-contract-parser.js",
+    "test:numbering": "node tests/test-numbering-pure.js",
+    "test:diff": "node tests/test-diff-engine.js",
+    "test:redline": "node tests/test-redline-pure.js",
+    "test:docx": "node tests/test-docx-pure.js",
+    "test:store": "node tests/test-server-store.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.10.0",
+    "playwright": "^1.60.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0",
+    "electron": "^35.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "com.legalworkbench.app",
+    "productName": "AI合同审阅工作台",
+    "asar": false,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "index.html",
+      "app.js",
+      "styles.css",
+      "server/**/*",
+      "scripts/**/*",
+      "js/**/*",
+      "lib/**/*",
+      "schemas/**/*",
+      "data/files",
+      "electron/**/*",
+      "package.json",
+      "!data/frontend-e2e-test",
+      "!data/manual-flow-check",
+      "!test-results",
+      "!**/*.spec.js",
+      "!**/*.test.js"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "electron/assets/icon.png",
+      "signAndEditExecutable": false
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        }
+      ],
+      "icon": "electron/assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "AI合同审阅工作台",
+      "artifactName": "${productName} Setup.${ext}"
+    },
+    "portable": {
+      "artifactName": "${productName}.${ext}"
+    }
+  }
+}

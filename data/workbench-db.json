@@ -1,0 +1,31 @@
+{
+  "snapshot": {
+    "contracts": [],
+    "storageMeta": {
+      "backendSavedAt": "2026-06-01T23:03:46.331Z",
+      "source": "backend-primary"
+    }
+  },
+  "contracts": [],
+  "contractVersions": [],
+  "clauses": [],
+  "clauseActions": [],
+  "counterparties": [],
+  "playbooks": [],
+  "reviewRecords": [],
+  "auditLogs": [],
+  "users": [
+    {
+      "id": "local-admin",
+      "name": "Local Admin",
+      "role": "admin",
+      "permissions": [
+        "contracts:read",
+        "contracts:write",
+        "playbooks:write",
+        "admin"
+      ]
+    }
+  ],
+  "savedAt": "2026-06-01T23:03:46.332Z"
+}

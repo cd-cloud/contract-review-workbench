@@ -1,0 +1,16 @@
+
+=== test-jobs.js ===
+
+  ✓ summarizeJob returns correct fields without result
+  ✓ summarizeJob includes result when requested
+  ✓ summarizeJob handles missing completedAt
+  ✓ getJob returns undefined for unknown id
+  ✓ createAnalysisJob returns job with correct initial state
+  ✓ createAnalysisJob stores job retrievable by getJob
+  ✓ createAnalysisJob generates unique ids
+  ✓ cancelJob transitions running job to cancelled
+  ✓ cancelJob returns null for unknown job
+  ✓ cancelJob no-op for already completed job
+  ✓ cancelJob aborts the AbortController
+
+11/15 passed, 4 failed

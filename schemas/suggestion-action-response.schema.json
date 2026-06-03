@@ -1,0 +1,44 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["action"],
+  "properties": {
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "targetClauseId",
+        "matchConfidence",
+        "actionType",
+        "editedText",
+        "insertedClause",
+        "comment",
+        "rejectionReason",
+        "knowledgeNote"
+      ],
+      "properties": {
+        "status": { "type": "string", "enum": ["adopted", "adjusted", "comment_only", "business_confirmed", "rejected"] },
+        "targetClauseId": { "type": "string" },
+        "matchConfidence": { "type": "number" },
+        "actionType": { "type": "string", "enum": ["add_clause", "replace_clause", "revise_clause", "delete_clause", "comment_only", "none"] },
+        "editedText": { "type": "string" },
+        "insertedClause": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["title", "type", "text", "position", "targetClauseId"],
+          "properties": {
+            "title": { "type": "string" },
+            "type": { "type": "string" },
+            "text": { "type": "string" },
+            "position": { "type": "string", "enum": ["before", "after", "end", "none"] },
+            "targetClauseId": { "type": "string" }
+          }
+        },
+        "comment": { "type": "string" },
+        "rejectionReason": { "type": "string" },
+        "knowledgeNote": { "type": "string" }
+      }
+    }
+  }
+}

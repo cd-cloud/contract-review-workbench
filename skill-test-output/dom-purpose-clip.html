@@ -1,0 +1,2087 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN"><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 合同审阅工作台 MVP</title>
+    <link rel="stylesheet" href="./styles.css?v=20260522-purpose-clip">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">法</div>
+          <div>
+            <h1>合同审阅工作台</h1>
+            <p>AI 创业公司法务 MVP</p>
+          </div>
+        </div>
+        <nav class="nav">
+          <button class="nav-item active" data-view="dashboard">总览</button>
+          <button class="nav-item" data-view="contracts">合同库</button>
+          <button class="nav-item" data-view="review">审阅台</button>
+          <button class="nav-item" data-view="drafting">起草台</button>
+          <button class="nav-item" data-view="playbooks">条款库</button>
+          <button class="nav-item" data-view="counterparties">相对方</button>
+        </nav>
+        <div class="sidebar-note">
+          <strong>MVP 范围</strong>
+          <span>本地存储、规则识别、历史参考、结构化沉淀。</span>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Legal Work Orchestrator</p>
+            <h2 id="view-title">总览</h2>
+          </div>
+        <div class="topbar-actions">
+          <button class="ghost-button" id="reset-demo">重置示例</button>
+          <button class="ghost-button" id="top-progress-button" data-open-active-progress="" title="给当前打开的合同追加材料或进展">更新当前合同进度</button>
+          <button class="primary-button" data-open-upload="">新建审阅</button>
+        </div>
+        </header>
+
+        <section class="view active" id="dashboard-view">
+    <div class="grid stats-grid">
+      <div class="card"><span class="muted">合同总数</span><div class="stat-number">2</div></div>
+      <div class="card"><span class="muted">审核中的合同</span><div class="stat-number">2</div></div>
+      <div class="card"><span class="muted">条款口径</span><div class="stat-number">2</div></div>
+      <div class="card"><span class="muted">相对方</span><div class="stat-number">2</div></div>
+    </div>
+    <div class="panel" style="margin-top:16px">
+      <h3 class="section-title">全局检索</h3>
+      <div class="filters">
+        <input id="global-search" placeholder="搜索合同、相对方、版本记录、条款、条款库">
+      </div>
+      <div class="contract-list" id="global-search-results">
+        <div class="empty">输入关键词后展示匹配结果</div>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:16px">
+      <h3 class="section-title">待反馈合同</h3>
+      <div class="filters">
+        <input id="task-owner-filter" placeholder="按业务负责人筛选" value="">
+        <select id="task-counterparty-filter">
+          <option value="">全部相对方</option>
+          <option value="cp-starry">星河智能科技有限公司</option><option value="cp-1779418696387-724aae">A公司</option>
+        </select>
+      </div>
+      <div class="contract-list" id="feedback-task-list">
+        <div class="empty">暂无待反馈合同</div>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:16px">
+      <h3 class="section-title">最近合同</h3>
+      <div class="contract-list">
+        
+    <div class="contract-row">
+      <div>
+        <h3>保密协议</h3>
+        <div class="meta-line">
+          <span class="tag">保密协议；与数据采购/AI教育合作项目前期信息交换有关，但文本本身并非完整数据采购合同</span>
+          <span class="risk medium">风险中</span>
+          <span>A公司</span>
+          <span>审阅中</span>
+          
+        </div>
+      </div>
+      <div class="row-actions">
+        <button class="small-button" data-open-contract="contract-1779418696387-f67adf">打开</button>
+        <button class="small-button" data-open-progress="contract-1779418696387-f67adf">进度更新</button>
+      </div>
+    </div>
+  
+    <div class="contract-row">
+      <div>
+        <h3>示例：智能客服 SaaS 服务协议</h3>
+        <div class="meta-line">
+          <span class="tag">SaaS 服务合同</span>
+          <span class="risk high">风险高</span>
+          <span>星河智能科技有限公司</span>
+          <span>审阅中</span>
+          
+        </div>
+      </div>
+      <div class="row-actions">
+        <button class="small-button" data-open-contract="contract-demo">打开</button>
+        <button class="small-button" data-open-progress="contract-demo">进度更新</button>
+      </div>
+    </div>
+  
+      </div>
+    </div>
+    <div class="panel" style="margin-top:16px">
+      <h3 class="section-title">审计日志</h3>
+      <div class="contract-list">
+        
+      <div class="contract-row">
+        <div>
+          <strong>调整小条款顺序</strong>
+          <p>保密协议｜1.8 “守约方”，具有第6.1条所赋予其的含义。</p>
+        </div>
+        <span class="muted">2026-05-22 06:58</span>
+      </div>
+      <div class="contract-row">
+        <div>
+          <strong>复核拟发送版本</strong>
+          <p>保密协议｜local</p>
+        </div>
+        <span class="muted">2026-05-22 06:57</span>
+      </div>
+      <div class="contract-row">
+        <div>
+          <strong>生成拟发送版本</strong>
+          <p>保密协议｜未识别到显式修改，仅基于当前版本生成复核版</p>
+        </div>
+        <span class="muted">2026-05-22 06:57</span>
+      </div>
+      <div class="contract-row">
+        <div>
+          <strong>复核拟发送版本</strong>
+          <p>保密协议｜local</p>
+        </div>
+        <span class="muted">2026-05-22 06:38</span>
+      </div>
+      <div class="contract-row">
+        <div>
+          <strong>生成拟发送版本</strong>
+          <p>保密协议｜未识别到显式修改，仅基于当前版本生成复核版</p>
+        </div>
+        <span class="muted">2026-05-22 06:38</span>
+      </div>
+      <div class="contract-row">
+        <div>
+          <strong>复核拟发送版本</strong>
+          <p>保密协议｜local</p>
+        </div>
+        <span class="muted">2026-05-22 06:37</span>
+      </div>
+      <div class="contract-row">
+        <div>
+          <strong>生成拟发送版本</strong>
+          <p>保密协议｜修改条款/小条款 1 项</p>
+        </div>
+        <span class="muted">2026-05-22 06:37</span>
+      </div>
+      <div class="contract-row">
+        <div>
+          <strong>保存条款修改/批注</strong>
+          <p>保密协议｜contract-1779418696387-f67adf:upd-1779418696387-b8906e:base-1::sub-1</p>
+        </div>
+        <span class="muted">2026-05-22 06:37</span>
+      </div>
+      </div>
+    </div>
+  </section>
+        <section class="view" id="contracts-view">
+    <div class="filters">
+      <input id="contract-search" placeholder="搜索合同、相对方、类型">
+      <select id="contract-type-filter">
+        <option value="">全部类型</option>
+        <option>保密协议；与数据采购/AI教育合作项目前期信息交换有关，但文本本身并非完整数据采购合同</option><option>SaaS 服务合同</option>
+      </select>
+      <button class="primary-button" data-open-upload="">新建审阅</button>
+    </div>
+    <div class="contract-list" id="contract-list">
+      
+    <div class="contract-row">
+      <div>
+        <h3>保密协议</h3>
+        <div class="meta-line">
+          <span class="tag">保密协议；与数据采购/AI教育合作项目前期信息交换有关，但文本本身并非完整数据采购合同</span>
+          <span class="risk medium">风险中</span>
+          <span>A公司</span>
+          <span>审阅中</span>
+          
+        </div>
+      </div>
+      <div class="row-actions">
+        <button class="small-button" data-open-contract="contract-1779418696387-f67adf">打开</button>
+        <button class="small-button" data-open-progress="contract-1779418696387-f67adf">进度更新</button>
+      </div>
+    </div>
+  
+    <div class="contract-row">
+      <div>
+        <h3>示例：智能客服 SaaS 服务协议</h3>
+        <div class="meta-line">
+          <span class="tag">SaaS 服务合同</span>
+          <span class="risk high">风险高</span>
+          <span>星河智能科技有限公司</span>
+          <span>审阅中</span>
+          
+        </div>
+      </div>
+      <div class="row-actions">
+        <button class="small-button" data-open-contract="contract-demo">打开</button>
+        <button class="small-button" data-open-progress="contract-demo">进度更新</button>
+      </div>
+    </div>
+  
+    </div>
+  </section>
+        <section class="view" id="review-view">
+    <div class="review-grid">
+      <aside class="panel">
+        <p class="eyebrow">Contract</p>
+        <h3 class="section-title">保密协议</h3>
+        <div class="chips">
+          <span class="tag">保密协议；与数据采购/AI教育合作项目前期信息交换有关，但文本本身并非完整数据采购合同</span>
+          <span class="risk medium">风险中</span>
+        </div>
+        <p class="muted">相对方：A公司</p>
+        <p class="muted contract-purpose-line" title="约定各拟设公司股东及未来合作公司在合作项目中的保密义务、AI用途限制、知识产权不转让、违约责任及争议解决安排。">目的：约定各拟设公司股东及未来合作公司在合作项目中的保密义务、AI用途限制、知识产权不转让、违约责任及争议解决安排。</p>
+        <h3 class="section-title">审阅模式</h3>
+        
+    <div class="reader-tabs" style="margin-bottom:14px">
+      <button class="reader-tab active" type="button" data-review-mode="clean">清洁模式</button>
+      <button class="reader-tab " type="button" data-review-mode="revision">修订模式</button>
+    </div>
+    
+  
+        <h3 class="section-title">版本时间线</h3>
+        
+    <div class="timeline">
+      
+          <button class="timeline-item " data-open-update="upd-1779418696387-b8906e" type="button">
+            <h4>初稿上传 <span class="muted">2026-05-22</span></h4>
+            <p>通过新建审阅上传合同初稿。</p>
+            <p><span class="status-pill">反馈期限：2026-05-31</span></p>
+          </button>
+          <button class="timeline-item active" data-open-update="upd-send-1779433022069-bc7829" type="button">
+            <h4>拟发送版本 <span class="muted">2026-05-22</span></h4>
+            <p>基于当前审阅台修订生成，用于发送前复核。未识别到显式修改，仅基于当前版本生成复核版</p>
+            
+          </button>
+    </div>
+  
+        <div style="margin-top:16px">
+          
+    <div class="export-panel">
+      <div>
+        <p class="eyebrow">Exports</p>
+        <h3 class="section-title">导出与产物</h3>
+      </div>
+      <span class="status-pill">Codex Skill Runner 已配置</span>
+      
+      <button class="ghost-button" type="button" data-run-legal-skill="contract-1779418696387-f67adf">运行 Legal Skill 分析</button>
+      <button class="ghost-button" type="button" data-export-skill-request="contract-1779418696387-f67adf">导出 Skill 请求包</button>
+      <button class="ghost-button" type="button" data-sync-backend="">同步到本地后端</button>
+      <button class="ghost-button" type="button" data-deposit-final-clauses="contract-1779418696387-f67adf" disabled="">终稿沉淀到条款库</button>
+      <button class="ghost-button" type="button" data-generate-send-version="contract-1779418696387-f67adf">生成拟发送版本</button>
+      <button class="primary-button" type="button" data-export-word-redline="contract-1779418696387-f67adf">导出 Word 红线/批注稿</button>
+      <div class="empty">尚未保存条款修改、删除或批注。</div>
+    </div>
+  
+        </div>
+      </aside>
+      <section class="review-main">
+        <div class="panel contract-risk-panel collapsed">
+          
+    <section class="risk-summary">
+      <button class="risk-summary-toggle" type="button" data-toggle-contract-risk="">
+        <span>
+          <span class="eyebrow">Contract Snapshot</span>
+          <strong>合同级风险提示</strong>
+        </span>
+        <span class="risk-summary-meta">
+          <span class="risk high">重大 2</span>
+          <span class="risk low">中 0</span>
+          <span class="tag">完成度 22%</span>
+          <span class="tag">差异 较低</span>
+          <span class="toggle-indicator">展开</span>
+        </span>
+      </button>
+      
+    </section>
+  
+        </div>
+        <div class="panel contract-text">
+          <h3 class="section-title">材料阅读</h3>
+          
+    <div class="panel" style="box-shadow:none;margin-bottom:12px">
+      <p class="eyebrow">Material</p>
+      <h3 class="section-title">清洁模式｜拟发送版本｜拟发送版本</h3>
+    </div>
+    <div class="clause-stack">
+      
+    <article class="inline-clause-card  " draggable="true" data-clause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-1" data-clause-stable-id="base-1">
+      <button class="inline-clause-button" type="button" data-workbench-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-1">
+        <div class="chips">
+          <span class="tag">当事人信息</span>
+          
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h4>保密协议</h4>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="inline-clause-body">
+        
+    <div class="parent-clause-heading">保密协议</div>
+    <div class="parent-clause-intro">本保密协议（“本协议”）由以下各方于2026年5月          日（“签署日”）签署：<br>甲方：[●]（身份证号：[●]）；<br>乙方：[●]（身份证号：[●]）；以及<br>丙方：[●]（身份证号：[●]）<br>（以上当事方各自单独称为“一方”，合称为“各方”）。<br>鉴于</div>
+    <div class="subclause-stack">
+      
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-1::sub-1" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-1">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-1::sub-1" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-1">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>（1） [甲方、乙方和丙方拟共同成立公司（“合作公司”，截至签署日仍在设立过...</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body">（1） [甲方、乙方和丙方拟共同成立公司（“合作公司”，截至签署日仍在设立过程中），由甲方作为多数股东、乙方和丙方作为少数股东，围绕出境留学等相关事项，提供人工智能（AI）教育产品服务并且开展相关经营活动（“合作项目”）]。</div>
+      
+    </article>
+  
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-1::sub-2" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-1">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-1::sub-2" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-1">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>（2） 为合作项目之目的，各方之间需要互相提供与合作项目有关的相关信息，并希...</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body">（2） 为合作项目之目的，各方之间需要互相提供与合作项目有关的相关信息，并希望避免该等信息被透露给公众或其他非法律授权及协议约定的任何其他方。<br>就此，各方本着平等自愿、公平诚信的原则，经友好协商，达成一致协议如下。</div>
+      
+    </article>
+  
+    </div>
+  
+      </div>
+      
+    </article>
+  
+    <article class="inline-clause-card active " draggable="true" data-clause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2" data-clause-stable-id="base-2">
+      <button class="inline-clause-button" type="button" data-workbench-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2">
+        <div class="chips">
+          <span class="tag">保密</span>
+          
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h4>第1条 定义</h4>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="inline-clause-body">
+        
+    <div class="parent-clause-heading">第1条 定义</div>
+    
+    <div class="subclause-stack">
+      
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2::sub-1" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2::sub-1" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>1.1 “合作公司”，具有“鉴于”条款所赋予其的含义。</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body">1.1 “合作公司”，具有“鉴于”条款所赋予其的含义。</div>
+      
+    </article>
+  
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2::sub-2" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2::sub-2" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>1.2 “合作项目”，具有“鉴于”条款所赋予其的含义。</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body">1.2 “合作项目”，具有“鉴于”条款所赋予其的含义。</div>
+      
+    </article>
+  
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2::sub-3" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2::sub-3" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>1.3 “保密信息”指，各方或一方为合作项目之目的而以书面、电子数据或口头方式向其余各方或一方提</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body">1.3 “保密信息”指，各方或一方为合作项目之目的而以书面、电子数据或口头方式向其余各方或一方提供的[商业秘密、商业模式、市场信息、财务信息、客户信息、人员信息、技术信息、代码文件、保密知识和任何种类的专有信息或资料（无论该等信息在被提供时是否明确标注保密），以及衍生于、来源于或反映了上述信息而形成的衍生信息和资料（包括但不限于会议纪要、分析报告、研究结论、模型输出等）。]<br>“保密信息”不包括在提供方向接收方披露之前，（1）已经为公众广泛知晓或可以公开获得的信息；（2���已经由接收方从其他任何渠道合法获取的信息，或（3）提供方在不违反本协议以及其他适用法律法规和协议的前提下、已经主动公开披露的信息。为免疑义，如果就某信息而言，其部分或个别要素虽已被披露成为公开信息，但其他部分或整体尚未成为公开信息的，未公开部分仍应被视为保密信息。</div>
+      
+    </article>
+  
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2::sub-4" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2::sub-4" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>1.4 “关联方”指，就本协议任何一方而言，（1）受该一方直接或间接控制的企...</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body">1.4 “关联方”指，就本协议任何一方而言，（1）受该一方直接或间接控制的企业；（2）该一方能够施加重大影响的企业；（3）基于协议或其他安排在相关事项上形成一致行动关系的企业或个人；以及（4）近亲属。“控制”是指对企业的管理或业务进行指挥的能力，无论该能力是通过股权权益、合同约定还是以其他任何方式行使。“重大影响”是指某一自然人虽不能单独或共同控制某一企业，但有能力通过持股比例、表决权安排、董事或高级管理人员任免、协议安排或其他方式，参与并对该企业的财务和经营决策产生实质性影响。</div>
+      
+    </article>
+  
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2::sub-5" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2::sub-5" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>1.5 “提供方”指，向本协议另一方提供保密信息、由另一方对保密信息予以接收...</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body">1.5 “提供方”指，向本协议另一方提供保密信息、由另一方对保密信息予以接收并承担保密义务的一方。</div>
+      
+    </article>
+  
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2::sub-6" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2::sub-6" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>1.6 “接收方”指，接受另一方所提供的保密信息、并应当按照本协议约定履行保...</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body">1.6 “接收方”指，接受另一方所提供的保密信息、并应当按照本协议约定履行保密义务的一方。为免疑义，本协议的各方互为保密信息的提供方和接收方。</div>
+      
+    </article>
+  
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2::sub-8" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2::sub-8" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>1.7 “守约方”，具有第6.1条所赋予其的含义。</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body"><div>1.<span class="reviewer-deleted">8</span><span class="reviewer-inserted">7</span> “守约方”，具有第6.1条所赋予其的含义。</div></div>
+      
+    </article>
+  
+    <article class="subclause-card active " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2::sub-7" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2::sub-7" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>1.8 “违约方”，具有第6.1条所赋予其的含义。</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body"><div>1.<span class="reviewer-deleted">7</span><span class="reviewer-inserted">8</span> “违约方”，具有第6.1条所赋予其的含义。</div></div>
+      <div class="inline-clause-tools subclause-tools">
+              <div class="reader-tabs" role="tablist" aria-label="小条款工具">
+                <button class="reader-tab active" type="button" data-reader-tab="index">索引</button>
+                <button class="reader-tab" type="button" data-reader-tab="analysis">分析</button>
+                <button class="reader-tab" type="button" data-reader-tab="redline">红线/批注稿</button>
+              </div>
+              <section class="reader-pane active" data-reader-pane="index">
+    <div class="reader-tabs" role="tablist" aria-label="条款索引">
+      <button class="reader-tab active" type="button" data-index-tab="history">本条款历史版本</button>
+      <button class="reader-tab" type="button" data-index-tab="related">本合同关联条款</button>
+      <button class="reader-tab" type="button" data-index-tab="playbook">同类条款口径</button>
+    </div>
+    <section class="reader-pane active" data-index-pane="history">
+      <div class="reference-list"><div class="empty">暂无本条款历史版本</div></div>
+    </section>
+    <section class="reader-pane" data-index-pane="related">
+      <div class="reference-list"><div class="empty">暂无明确引用、被引用或定义关系</div></div>
+    </section>
+    <section class="reader-pane" data-index-pane="playbook">
+      <div class="reference-list">
+    <div class="reference-item">
+      <strong>同类合同历史做法｜示例：智能客服 SaaS 服务协议</strong>
+      <p>第六条 保密
+双方对在合作过程中获知的商业秘密和非公开信息承担保密义务，保密期限为协议终止后三年。</p>
+      <span class="muted">SaaS 服务合同｜星河智能科技有限公司
+AI分析：该表达来自同类合同，可用于比较当前条款在义务范围、责任后果和例外设置上的差异。
+AI建议：如当前版本明显偏离，应记录偏离原因或业务审批结论。</span>
+    </div>
+  
+    <div class="reference-item">
+      <strong>被拒绝或被替换的历史表达</strong>
+      <p>第1条 定义
+1.1 “合作公司”，具有“鉴于”条款所赋予其的含义。
+1.2 “合作项目”，具有“鉴于”条款所赋予其的含义。
+1.3 “保密信息”指，各方或一方为合作项目之目的而以书面、电子数据或口头方式向其余各方或一方提供的[商业秘密、商业模式、市场信息、财务信息、客户信息、人员信息、技术信息、代码文件、保密知识和任何种类的专有信息或资料（无论该等信息在被提供时是否明确标注保密），以及衍生于、来源于或反映了上述信息而形成的衍生信息和资料（包括但不限于会议纪要、分析报告、研究结论、模型输出等）。]
+“保密信息”不包括在提供方向接收方披露之前，（1）已经为公众广泛知晓或可以公开获得的信息；（2）已经由接收方从其他任何渠道合法获取的信息，或（3）提供方在不违反本协议以及其他适用法律法规和协议的前提下、已经主动公开披露的信息。为免疑义，如果就某信息而言，其部分或个别要素虽已被披露成为公开信息，但其他部分或整体尚未成为公开信息的，未公开</p>
+      <span class="muted">来源：红线稿拒绝修订版本
+AI分析：该表达曾被后续版本替换，使用前应确认当时被拒绝的商业或法律原因。</span>
+    </div>
+  
+    <div class="reference-item">
+      <strong>被拒绝或被替换的历史表达</strong>
+      <p>第2条 保密义务
+2.1 接收方应就保密信息承担保密义务，不得将保密信息用于合作项目之外的任何目的或用途，不得将保密信息透露给各方之外的任何第三方主体，但下列情形除外：
+（1） 保密信息的提供方事先书面许可披露的；
+（2） 法律法规强制要求披露，前提是披露方应在可行范围内事先通知提供方，并且仅在必要范围内进行披露；
+（3） 向一方的律师、会计师等专业顾问披露，前提是该等专业顾问承诺就保密信息承担保密义务并采取必要保密措施；以及
+（4） 为促进合作项目的开展以及合作公司的运营之目的而必须披露的（例如向合作公司的客户、员工或供应商、各方的关联方披露），前提是披露方应在可行范围内事先通知提供方，并且仅在必要范围内进行披露。
+2.2 接收方应以对待自己同等重要的保密文件一样的谨慎态度对待提供方提供的保密信息，并且在任何情况下，对保密信息的照料程度均不得低于合理程度。
+2.3 [除非为合作项目之目的或经提供方事先书面同意，接收方不得：
+（</p>
+      <span class="muted">来源：红线稿拒绝修订版本
+AI分析：该表达曾被后续版本替换，使用前应确认当时被拒绝的商业或法律原因。</span>
+    </div>
+  
+    <div class="reference-item">
+      <strong>被拒绝或被替换的历史表达</strong>
+      <p>第3条 保密义务的期限
+3.1 无论本协议是否届满或终止，接收方在本协议项下的保密义务应持续有效，直到提供方以书面形式明确说明解除接收方此项义务。
+3.2 合作公司解散后或根据各方另行约定，保密信息的提供方有权要求接收方，在收到通知的10个工作日之内，将保密信息的原件或复印件（或对于保密信息的其他访问权限）予以返还、销毁和/或以其他适用的方式进行处理。接收方应当在按照提供方的合理要求完成上述措施后，向提供方予以书面确认。</p>
+      <span class="muted">来源：红线稿拒绝修订版本
+AI分析：该表达曾被后续版本替换，使用前应确认当时被拒绝的商业或法律原因。</span>
+    </div>
+  </div>
+    </section>
+  </section>
+              <section class="reader-pane" data-reader-pane="analysis">
+                <div class="editor-panel">
+                  <label>
+                    分析要求
+                    <textarea data-analysis-request="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829||contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2::sub-7" placeholder="例如：只分析本款是否应保留、补充例外或调整责任。"></textarea>
+                  </label>
+                  <button class="primary-button" type="button" data-run-clause-analysis="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829||contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2::sub-7">生成修改建议</button>
+                  <div class="reference-list">
+    <div class="reference-item">
+      <strong>通用修改建议</strong>
+      <p>建议将保密条款改写为：义务主体清楚、触发条件明确、期限和流程可操作、违约后果可执行，并列明必要例外。</p>
+      <span class="muted">未匹配到条款库口径</span>
+    </div>
+  </div>
+                </div>
+              </section>
+              <section class="reader-pane" data-reader-pane="redline">
+                <div class="editor-panel" style="margin-bottom:12px">
+                  <label>
+                    小条款文本
+                    <textarea data-clause-edit="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829||contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2::sub-7">1.8 “违约方”，具有第6.1条所赋予其的含义。</textarea>
+                  </label>
+                  <label>
+                    批注
+                    <textarea data-clause-comment="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829||contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2::sub-7" placeholder="记录修改理由、谈判意见、需业务确认事项。"></textarea>
+                  </label>
+                  <div class="row-actions">
+                    <button class="small-button" type="button" data-save-clause-action="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829||contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2::sub-7">保存修改/批注</button>
+                    <button class="small-button" type="button" data-toggle-clause-delete="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829||contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2::sub-7">删除小条款</button>
+                  </div>
+                </div>
+                <div class="redline-output">1.1 “合作公司”，具有“鉴于”条款所赋予其的含义。
+
+1.2 “合作项目”，具有“鉴于”条款所赋予其的含义。
+
+1.3 “保密信息”指，各方或一方为合作项目之目的而以书面、电子数据或口头方式向其余各方或一方提供的[商业秘密、商业模式、市场信息、财务信息、客户信息、人员信息、技术信息、代码文件、保密知识和任何种类的专有信息或资料（无论该等信息在被提供时是否明确标注保密），以及衍生于、来源于或反映了上述信息而形成的衍生信息和资料（包括但不限于会议纪要、分析报告、研究结论、模型输出等）。]
+“保密信息”不包括在提供方向接收方披露之前，（1）已经为公众广泛知晓或可以公开获得的信息；（2���已经由接收方从其他任何渠道合法获取的信息，或（3）提供方在不违反本协议以及其他适用法律法规和协议的前提下、已经主动公开披露的信息。为免疑义，如果就某信息而言，其部分或个别要素虽已被披露成为公开信息，但其他部分或整体尚未成为公开信息的，未公开部分仍应被视为保密信息。
+
+1.4 “关联方”指，就本协议任何一方而言，（1）受该一方直接或间接控制的企业；（2）该一方能够施加重大影响的企业；（3）基于协议或其他安排在相关事项上形成一致行动关系的企业或个人；以及（4）近亲属。“控制”是指对企业的管理或业务进行指挥的能力，无论该能力是通过股权权益、合同约定还是以其他任何方式行使。“重大影响”是指某一自然人虽不能单独或共同控制某一企业，但有能力通过持股比例、表决权安排、董事或高级管理人员任免、协议安排或其他方式，参与并对该企业的财务和经营决策产生实质性影响。
+
+1.5 “提供方”指，向本协议另一方提供保密信息、由另一方对保密信息予以接收并承担保密义务的一方。
+
+1.6 “接收方”指，接受另一方所提供的保密信息、并应当按照本协议约定履行保密义务的一方。为免疑义，本协议的各方互为保密信息的提供方和接收方。
+
+1.7 “守约方”，具有第6.1条所赋予其的含义。
+
+1.8 “违约方”，具有第6.1条所赋予其的含义。</div>
+              </section>
+            </div>
+    </article>
+  
+    </div>
+  
+      </div>
+      
+          <div class="inline-clause-tools">
+            <div class="reader-tabs" role="tablist" aria-label="条款工具">
+              <button class="reader-tab active" type="button" data-reader-tab="index">索引</button>
+              <button class="reader-tab" type="button" data-reader-tab="analysis">分析</button>
+              <button class="reader-tab" type="button" data-reader-tab="redline">红线/批注稿</button>
+            </div>
+            <section class="reader-pane active" data-reader-pane="index">
+              
+    <div class="reader-tabs" role="tablist" aria-label="条款索引">
+      <button class="reader-tab active" type="button" data-index-tab="history">本条款历史版本</button>
+      <button class="reader-tab" type="button" data-index-tab="related">本合同关联条款</button>
+      <button class="reader-tab" type="button" data-index-tab="playbook">同类条款口径</button>
+    </div>
+    <section class="reader-pane active" data-index-pane="history">
+      <div class="reference-list">
+    <div class="reference-item">
+      <strong>本条款历史版本｜初稿上传 2026-05-22</strong>
+      <p>第1条 定义
+1.1 “合作公司”，具有“鉴于”条款所赋予其的含义。
+1.2 “合作项目”，具有“鉴于”条款所赋予其的含义。
+1.3 “保密信息”指，各方或一方为合作项目之目的而以书面、电子数据或口头方式向其余各方或一方提供的[商业秘密、商业模式、市场信息、财务信息、客户信息、人员信息、技术信息、代码文件、保密知识和任何种类的专有信息或资料（无论该等信息在被提供时是否明确标注保密），以及衍生于、来源于或反映了上述信息而形成的衍生信息和资料（包括但不限于会议纪要、分析报告、研究结论、模型输出等）。]
+“保密信息”不包括在提供方向接收方披露之前，（1）已经为公众广泛知晓或可以公开获得的信息；（2）已经由接收方从其他任何渠道合法获取的信息，或（3）提供方在不违反本协议以及其他适用法律法规和协议的前提下、已经主动公开披露的信息。为免疑义，如果就某信息而言，其部分或个别要素虽已被披露成为公开信息，但其他部分或整体尚未成为公开信息的，未公开</p>
+      <span class="muted">疑似红线/修订稿｜第1条 定义
+AI分析：该版本可用于追踪本条款在谈判过程中的变化，建议重点比较义务范围、例外条件、责任后果和是否出现新增让步。</span>
+    </div>
+  </div>
+    </section>
+    <section class="reader-pane" data-index-pane="related">
+      <div class="reference-list">
+    <div class="reference-item">
+      <strong>本合同关联条款｜保密协议</strong>
+      <p>保密协议
+本保密协议（“本协议”）由以下各方于2026年5月          日（“签署日”）签署：
+甲方：[●]（身份证号：[●]）；
+乙方：[●]（身份证号：[●]）；以及
+丙方：[●]（身份证号：[●]）
+（以上当事方各自单独称为“一方”，合称为“各方”）。
+鉴于
+（1） [甲方、乙方和丙方拟共同成立公司（“合作公司”，截至签署日仍在设立过程中），由甲方作为多数股东、乙方和丙方作为少数股东，围绕出境留学等相关事项，提供人工智能（AI）教育产品服务并且开展相关经营活动（“合作项目”）]。
+（2） 为合作项目之目的，各方之间需要互相提供与合作项目有关的相关信息，并希望避免该等信息被透露给公众或其他非法律授权及协议约定的任何其他方。
+就此，各方本着平等自愿、公平诚信的原则，经友好协商，达成一致协议如下。</p>
+      <span class="muted">该条款与当前条款存在定义或概念承接关系，建议联动检查用语一致性和例外范围。
+AI建议：修改当前条款时，应同步检查该关联条款是否需要调整定义、引用范围、例外事项、终止后义务或违约后果。</span>
+    </div>
+  
+    <div class="reference-item">
+      <strong>本合同关联条款｜第2条 保密义务</strong>
+      <p>第2条 保密义务
+2.1 接收方应就保密信息承担保密义务，不得将保密信息用于合作项目之外的任何目的或用途，不得将保密信息透露给各方之外的任何第三方主体，但下列情形除外：
+（1） 保密信息的提供方事先书面许可披露的；
+（2） 法律法规强制要求披露，前提是披露方应在可行范围内事先通知提供方，并且仅在必要范围内进行披露；
+（3） 向一方的律师、会计师等专业顾问披露，前提是该等专业顾问承诺就保密信息承担保密义务并采取必要保密措施；以及
+（4） 为促进合作项目的开展以及合作公司的运营之目的而必须披露的（例如向合作公司的客户、员工或供应商、各方的关联方披露），前提是披露方应在可行范围内事先通知提供方，并且仅在必要范围内进行披露。
+2.2 接收方应以对待自己同等重要的保密文件一样的谨慎态度对待提供方提供的保密信息，并且在任何情况下，对保密信息的照料程度均不得低于合理程度。
+2.3 [除非为合作项目之目的或经提供方事先书面同意，接收方不得：
+（</p>
+      <span class="muted">该条款与当前条款存在定义或概念承接关系，建议联动检查用语一致性和例外范围。
+AI建议：修改当前条款时，应同步检查该关联条款是否需要调整定义、引用范围、例外事项、终止后义务或违约后果。</span>
+    </div>
+  
+    <div class="reference-item">
+      <strong>本合同关联条款｜第3条 保密义务的期限</strong>
+      <p>第3条 保密义务的期限
+3.1 无论本协议是否届满或终止，接收方在本协议项下的保密义务应持续有效，直到提供方以书面形式明确说明解除接收方此项义务。
+3.2 合作公司解散后或根据各方另行约定，保密信息的提供方有权要求接收方，在收到通知的10个工作日之内，将保密信息的原件或复印件（或对于保密信息的其他访问权限）予以返还、销毁和/或以其他适用的方式进行处理。接收方应当在按照提供方的合理要求完成上述措施后，向提供方予以书面确认。</p>
+      <span class="muted">该条款与当前条款存在定义或概念承接关系，建议联动检查用语一致性和例外范围。
+AI建议：修改当前条款时，应同步检查该关联条款是否需要调整定义、引用范围、例外事项、终止后义务或违约后果。</span>
+    </div>
+  
+    <div class="reference-item">
+      <strong>本合同关联条款｜第4条 知识产权</strong>
+      <p>第4条 知识产权
+4.1 提供方向接收方提供保密信息不构成向接收方的转让或授予接收方对其商业秘密、商标、专利、技术秘密或任何其它知识产权拥有的权益，也不构成向接收方转让或向接收方授予该方受第三方许可使用的商业秘密、商标、专利、技术秘密或任何其他知识产权的有关权益。</p>
+      <span class="muted">该条款与当前条款存在定义或概念承接关系，建议联动检查用语一致性和例外范围。
+AI建议：修改当前条款时，应同步检查该关联条款是否需要调整定义、引用范围、例外事项、终止后义务或违约后果。</span>
+    </div>
+  
+    <div class="reference-item">
+      <strong>本合同关联条款｜第5条 陈述与保证</strong>
+      <p>第5条 陈述与保证
+5.1 各方陈述与保证如下：
+（1） 该方作为提供方向接收方提供保密信息不会违反任何其与第三方之间签订的合同或协议，也不会使得接收方处于被任何第三方指责或指控的不利地位；
+（2） （作为自然人）该方心智健全，拥有完全民事权利能力和民事行为能力，自愿签署本协议，并理解其在本协议项下所承担义务的性质；（作为实体）该方按照中华人民共和国法律有效设立并存续，资质完备，并且具备一切必备权力和权限签署本协议并履行其在本协议项下的义务；
+（3） 本协议在经该方签署后对其具有法律约束力，并可按照本协议的条款对该方强制执行；以及
+（4） 该方签署和履行本协议不会（a）违反其章程或其任何类似组织文件的规定；或（b）违反适用于其或其任何资产或业务的适用法律。</p>
+      <span class="muted">该条款与当前条款存在定义或概念承接关系，建议联动检查用语一致性和例外范围。
+AI建议：修改当前条款时，应同步检查该关联条款是否需要调整定义、引用范围、例外事项、终止后义务或违约后果。</span>
+    </div>
+  
+    <div class="reference-item">
+      <strong>本合同关联条款｜第6条 违约责任</strong>
+      <p>第6条 违约责任
+6.1 任何一方违反本协议的任何约定（“违约方”），其他守约方（“守约方”）有权要求违约方立即停止违约行为、采取一切必要措施消除影响，并继续履行本协议项下相关义务。
+6.2 如违约方违反本协议项下的保密义务或其他类似限制性义务，违约方应向守约方支付违约金人民币[10万元]。该等违约金系各方结合守约方可能遭受的损失、维权成本、商誉影响及商业机会损失等因素所作的合理预估。如违约金不足以弥补守约方因此遭受的全部损失的，违约方仍应继续赔偿不足部分。守约方因违约方违约而遭受的可获赔损失，包括但不限于直接损失、可得利益损失、商誉损失，以及守约方为制止违约、调查取证、提起诉讼、申请财产保全或行为保全、聘请律师及其他专业顾问所支出的合理费用。
+6.3 本协议项下违约责任及救济方式均为非排他性。守约方有权根据本协议及适用法律，单独或同时主张违约金、损失赔偿、停止侵害、继续履行、返还不当利益、采取补救措施、申请行为保全/禁令救济以</p>
+      <span class="muted">该条款与当前条款存在定义或概念承接关系，建议联动检查用语一致性和例外范围。
+AI建议：修改当前条款时，应同步检查该关联条款是否需要调整定义、引用范围、例外事项、终止后义务或违约后果。</span>
+    </div>
+  
+    <div class="reference-item">
+      <strong>本合同关联条款｜第8条 其他</strong>
+      <p>第8条 其他
+8.1 本协议构成各方就本协议项下事项达成的完整约定，并取代各方此前就该等事项达成的全部口头或书面讨论、磋商及其他安排。
+8.2 任何一方未行使、迟延行使或部分行使其在本协议项下的任何权利、救济或主张，不构成对该等权利、救济或主张的放弃，也不影响其在任何时候继续行使该等权利、救济或主张。任何一方对某一违约行为的弃权，不应视为对任何其他违约行为或对同一违约行为后续再次发生的弃权。
+8.3 本协议自签署日起生效。
+8.4 如本协议任何条款被认定为无效、违法或不可执行，各方应在合法范围内尽最大努力以最接近原商业目的的有效条款予以替代，并且本协议的其他条款不受影响。
+8.5 未经其他方事先书面同意，任何一方均不得将其在本协议项下的权利或义务让与或转让给任何主体。
+8.6 合作公司正式设立后，各方应当，并且应当促使合作公司，在合作公司正式设立之日起10个工作日内共同签署格式如附件一所示的加入协议。
+8.7 本协议一式叁（3）</p>
+      <span class="muted">该条款与当前条款存在定义或概念承接关系，建议联动检查用语一致性和例外范围。
+AI建议：修改当前条款时，应同步检查该关联条款是否需要调整定义、引用范围、例外事项、终止后义务或违约后果。</span>
+    </div>
+  </div>
+    </section>
+    <section class="reader-pane" data-index-pane="playbook">
+      <div class="reference-list">
+    <div class="reference-item">
+      <strong>同类合同历史做法｜示例：智能客服 SaaS 服务协议</strong>
+      <p>第六条 保密
+双方对在合作过程中获知的商业秘密和非公开信息承担保密义务，保密期限为协议终止后三年。</p>
+      <span class="muted">SaaS 服务合同｜星河智能科技有限公司
+AI分析：该表达来自同类合同，可用于比较当前条款在义务范围、责任后果和例外设置上的差异。
+AI建议：如当前版本明显偏离，应记录偏离原因或业务审批结论。</span>
+    </div>
+  
+    <div class="reference-item">
+      <strong>被拒绝或被替换的历史表达</strong>
+      <p>第1条 定义
+1.1 “合作公司”，具有“鉴于”条款所赋予其的含义。
+1.2 “合作项目”，具有“鉴于”条款所赋予其的含义。
+1.3 “保密信息”指，各方或一方为合作项目之目的而以书面、电子数据或口头方式向其余各方或一方提供的[商业秘密、商业模式、市场信息、财务信息、客户信息、人员信息、技术信息、代码文件、保密知识和任何种类的专有信息或资料（无论该等信息在被提供时是否明确标注保密），以及衍生于、来源于或反映了上述信息而形成的衍生信息和资料（包括但不限于会议纪要、分析报告、研究结论、模型输出等）。]
+“保密信息”不包括在提供方向接收方披露之前，（1）已经为公众广泛知晓或可以公开获得的信息；（2）已经由接收方从其他任何渠道合法获取的信息，或（3）提供方在不违反本协议以及其他适用法律法规和协议的前提下、已经主动公开披露的信息。为免疑义，如果就某信息而言，其部分或个别要素虽已被披露成为公开信息，但其他部分或整体尚未成为公开信息的，未公开</p>
+      <span class="muted">来源：红线稿拒绝修订版本
+AI分析：该表达曾被后续版本替换，使用前应确认当时被拒绝的商业或法律原因。</span>
+    </div>
+  
+    <div class="reference-item">
+      <strong>被拒绝或被替换的历史表达</strong>
+      <p>第2条 保密义务
+2.1 接收方应就保密信息承担保密义务，不得将保密信息用于合作项目之外的任何目的或用途，不得将保密信息透露给各方之外的任何第三方主体，但下列情形除外：
+（1） 保密信息的提供方事先书面许可披露的；
+（2） 法律法规强制要求披露，前提是披露方应在可行范围内事先通知提供方，并且仅在必要范围内进行披露；
+（3） 向一方的律师、会计师等专业顾问披露，前提是该等专业顾问承诺就保密信息承担保密义务并采取必要保密措施；以及
+（4） 为促进合作项目的开展以及合作公司的运营之目的而必须披露的（例如向合作公司的客户、员工或供应商、各方的关联方披露），前提是披露方应在可行范围内事先通知提供方，并且仅在必要范围内进行披露。
+2.2 接收方应以对待自己同等重要的保密文件一样的谨慎态度对待提供方提供的保密信息，并且在任何情况下，对保密信息的照料程度均不得低于合理程度。
+2.3 [除非为合作项目之目的或经提供方事先书面同意，接收方不得：
+（</p>
+      <span class="muted">来源：红线稿拒绝修订版本
+AI分析：该表达曾被后续版本替换，使用前应确认当时被拒绝的商业或法律原因。</span>
+    </div>
+  
+    <div class="reference-item">
+      <strong>被拒绝或被替换的历史表达</strong>
+      <p>第3条 保密义务的期限
+3.1 无论本协议是否届满或终止，接收方在本协议项下的保密义务应持续有效，直到提供方以书面形式明确说明解除接收方此项义务。
+3.2 合作公司解散后或根据各方另行约定，保密信息的提供方有权要求接收方，在收到通知的10个工作日之内，将保密信息的原件或复印件（或对于保密信息的其他访问权限）予以返还、销毁和/或以其他适用的方式进行处理。接收方应当在按照提供方的合理要求完成上述措施后，向提供方予以书面确认。</p>
+      <span class="muted">来源：红线稿拒绝修订版本
+AI分析：该表达曾被后续版本替换，使用前应确认当时被拒绝的商业或法律原因。</span>
+    </div>
+  </div>
+    </section>
+  
+            </section>
+            <section class="reader-pane" data-reader-pane="analysis">
+              <div class="editor-panel">
+                <label>
+                  分析要求
+                  <textarea data-analysis-request="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829||contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2" placeholder="例如：从服务提供方角度，给出更保守的数据使用条款。"></textarea>
+                </label>
+                <button class="primary-button" type="button" data-run-clause-analysis="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829||contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2">生成修改建议</button>
+                <div class="reference-list">
+                  
+    <div class="reference-item">
+      <strong>通用修改建议</strong>
+      <p>建议将保密条款改写为：义务主体清楚、触发条件明确、期限和流程可操作、违约后果可执行，并列明必要例外。</p>
+      <span class="muted">未匹配到条款库口径</span>
+    </div>
+  
+                </div>
+              </div>
+            </section>
+            <section class="reader-pane" data-reader-pane="redline">
+              <div class="editor-panel" style="margin-bottom:12px">
+                <label>
+                  条款文本
+                  <textarea data-clause-edit="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829||contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2">第1条 定义
+1.1 “合作公司”，具有“鉴于”条款所赋予其的含义。
+1.2 “合作项目”，具有“鉴于”条款所赋予其的含义。
+1.3 “保密信息”指，各方或一方为合作项目之目的而以书面、电子数据或口头方式向其余各方或一方提供的[商业秘密、商业模式、市场信息、财务信息、客户信息、人员信息、技术信息、代码文件、保密知识和任何种类的专有信息或资料（无论该等信息在被提供时是否明确标注保密），以及衍生于、来源于或反映了上述信息而形成的衍生信息和资料（包括但不限于会议纪要、分析报告、研究结论、模型输出等）。]
+“保密信息”不包括在提供方向接收方披露之前，（1）已经为公众广泛知晓或可以公开获得的信息；（2���已经由接收方从其他任何渠道合法获取的信息，或（3）提供方在不违反本协议以及其他适用法律法规和协议的前提下、已经主动公开披露的信息。为免疑义，如果就某信息而言，其部分或个别要素虽已被披露成为公开信息，但其他部分或整体尚未成为公开信息的，未公开部分仍应被视为保密信息。
+1.4 “关联方”指，就本协议任何一方而言，（1）受该一方直接或间接控制的企业；（2）该一方能够施加重大影响的企业；（3）基于协议或其他安排在相关事项上形成一致行动关系的企业或个人；以及（4）近亲属。“控制”是指对企业的管理或业务进行指挥的能力，无论该能力是通过股权权益、合同约定还是以其他任何方式行使。“重大影响”是指某一自然人虽不能单独或共同控制某一企业，但有能力通过持股比例、表决权安排、董事或高级管理人员任免、协议安排或其他方式，参与并对该企业的财务和经营决策产生实质性影响。
+1.5 “提供方”指，向本协议另一方提供保密信息、由另一方对保密信息予以接收并承担保密义务的一方。
+1.6 “接收方”指，接受另一方所提供的保密信息、并应当按照本协议约定履行保密义务的一方。为免疑义，本协议的各方互为保密信息的提供方和接收方。
+1.8 “违约方”，具有第6.1条所赋予其的含义。
+1.7 “守约方”，具有第6.1条所赋予其的含义。</textarea>
+                </label>
+                <label>
+                  批注
+                  <textarea data-clause-comment="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829||contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2" placeholder="记录修改理由、谈判意见、需业务确认事项。"></textarea>
+                </label>
+                <div class="row-actions">
+                  <button class="small-button" type="button" data-save-clause-action="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829||contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2">保存修改/批注</button>
+                  <button class="small-button" type="button" data-toggle-clause-delete="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829||contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2">删除条款</button>
+                  <button class="small-button" type="button" data-open-add-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829||contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-2">新增条款</button>
+                </div>
+              </div>
+              <div class="redline-output">保密协议
+本保密协议（“本协议”）由以下各方于2026年5月          日（“签署日”）签署：
+甲方：[●]（身份证号：[●]）；
+乙方：[●]（身份证号：[●]）；以及
+丙方：[●]（身份证号：[●]）
+（以上当事方各自单独称为“一方”，合称为“各方”）。
+鉴于
+（1） [甲方、乙方和丙方拟共同成立公司（“合作公司”，截至签署日仍在设立过程中），由甲方作为多数股东、乙方和丙方作为少数股东，围绕出境留学等相关事项，提供人工智能（AI）教育产品服务并且开展相关经营活动（“合作项目”）]。
+（2） 为合作项目之目的，各方之间需要互相提供与合作项目有关的相关信息，并希望避免该等信息被透露给公众或其他非法律授权及协议约定的任何其他方。
+就此，各方本着平等自愿、公平诚信的原则，经友好协商，达成一致协议如下。
+
+[原文]
+第1条 定义
+1.1 “合作公司”，具有“鉴于”条款所赋予其的含义。
+1.2 “合作项目”，具有“鉴于”条款所赋予其的含义。
+1.3 “保密信息”指，各方或一方为合作项目之目的而以书面、电子数据或口头方式向其余各方或一方提供的[商业秘密、商业模式、市场信息、财务信息、客户信息、人员信息、技术信息、代码文件、保密知识和任何种类的专有信息或资料（无论该等信息在被提供时是否明确标注保密），以及衍生于、来源于或反映了上述信息而形成的衍生信息和资料（包括但不限于会议纪要、分析报告、研究结论、模型输出等）。]
+“保密信息”不包括在提供方向接收方披露之前，（1）已经为公众广泛知晓或可以公开获得的信息；（2���已经由接收方从其他任何渠道合法获取的信息，或（3）提供方在不违反本协议以及其他适用法律法规和协议的前提下、已经主动公开披露的信息。为免疑义，如果就某信息而言，其部分或个别要素虽已被披露成为公开信息，但其他部分或整体尚未成为公开信息的，未公开部分仍应被视为保密信息。
+1.4 “关联方”指，就本协议任何一方而言，（1）受该一方直接或间接控制的企业；（2）该一方能够施加重大影响的企业；（3）基于协议或其他安排在相关事项上形成一致行动关系的企业或个人；以及（4）近亲属。“控制”是指对企业的管理或业务进行指挥的能力，无论该能力是通过股权权益、合同约定还是以其他任何方式行使。“重大影响”是指某一自然人虽不能单独或共同控制某一企业，但有能力通过持股比例、表决权安排、董事或高级管理人员任免、协议安排或其他方式，参与并对该企业的财务和经营决策产生实质性影响。
+1.5 “提供方”指，向本协议另一方提供保密信息、由另一方对保密信息予以接收并承担保密义务的一方。
+1.6 “接收方”指，接受另一方所提供的保密信息、并应当按照本协议约定履行保密义务的一方。为免疑义，本协议的各方互为保密信息的提供方和接收方。
+1.7 “违约方”，具有第6.1条所赋予其的含义。
+1.8 “守约方”，具有第6.1条所赋予其的含义。
+[修改为]
+第1条 定义
+1.1 “合作公司”，具有“鉴于”条款所赋予其的含义。
+1.2 “合作项目”，具有“鉴于”条款所赋予其的含义。
+1.3 “保密信息”指，各方或一方为合作项目之目的而以书面、电子数据或口头方式向其余各方或一方提供的[商业秘密、商业模式、市场信息、财务信息、客户信息、人员信息、技术信息、代码文件、保密知识和任何种类的专有信息或资料（无论该等信息在被提供时是否明确标注保密），以及衍生于、来源于或反映了上述信息而形成的衍生信息和资料（包括但不限于会议纪要、分析报告、研究结论、模型输出等）。]
+“保密信息”不包括在提供方向接收方披露之前，（1）已经为公众广泛知晓或可以公开获得的信息；（2���已经由接收方从其他任何渠道合法获取的信息，或（3）提供方在不违反本协议以及其他适用法律法规和协议的前提下、已经主动公开披露的信息。为免疑义，如果就某信息而言，其部分或个别要素虽已被披露成为公开信息，但其他部分或整体尚未成为公开信息的，未公开部分仍应被视为保密信息。
+1.4 “关联方”指，就本协议任何一方而言，（1）受该一方直接或间接控制的企业；（2）该一方能够施加重大影响的企业；（3）基于协议或其他安排在相关事项上形成一致行动关系的企业或个人；以及（4）近亲属。“控制”是指对企业的管理或业务进行指挥的能力，无论该能力是通过股权权益、合同约定还是以其他任何方式行使。“重大影响”是指某一自然人虽不能单独或共同控制某一企业，但有能力通过持股比例、表决权安排、董事或高级管理人员任免、协议安排或其他方式，参与并对该企业的财务和经营决策产生实质性影响。
+1.5 “提供方”指，向本协议另一方提供保密信息、由另一方对保密信息予以接收并承担保密义务的一方。
+1.6 “接收方”指，接受另一方所提供的保密信息、并应当按照本协议约定履行保密义务的一方。为免疑义，本协议的各方互为保密信息的提供方和接收方。
+1.8 “违约方”，具有第6.1条所赋予其的含义。
+1.7 “守约方”，具有第6.1条所赋予其的含义。
+
+第2条 保密义务
+2.1 接收方应就保密信息承担保密义务，不得将保密信息用于合作项目之外的任何目的或用途，不得将保密信息透露给各方之外的任何第三方主体，但下列情形除外：
+（1） 保密信息的提供方事先书面许可披露的；
+（2） 法律法规强制要求披露，前提是披露方应在可行范围内事先通知提供方，并且仅在必要范围内进行披露；
+（3） 向一方的律师、会计师等专业顾问披露，前提是该等专业顾问承诺就保密信息承担保密义务并采取必要保密措施；以及
+（4） 为促进合作项目的开展以及合作公司的运营之目的而必须披露的（例如向合作公司的客户、员工或供应商、各方的关联方披露），前提是披露方应在可行范围内事先通知提供方，并且仅在必要范围内进行披露。
+2.2 接收方应以对待自己同等重要的保密文件一样的谨慎态度对待提供方提供的保密信息，并且在任何情况下，对保密信息的照料程度均不得低于合理程度。
+2.3 [除非为合作项目之目的或经提供方事先书面同意，接收方不得：
+（1） 自行或促使、协助任何第三方对任何保密信息及其所涉产品、服务、软件、代码、算法、模型、数据集或技术资料实施反向工程、反汇编或其他类似行为；
+（2） 直接或间接利用保密信息开发、委托开发、优化、训练、测试、验证任何算法、模型、软件、产品或解决方案；或者
+（3） 将保密信息用于训练、微调、评估、优化任何人工智能（AI）模型、算法、系统或产品，也不得将保密信息作为提示词、训练样本、测评数据、知识库内容或其他机器学习或人工智能用途。]
+2.4 为免疑义，接收方对于其在签署日之前已经接触到的保密信息，同样应当依据本协议约定履行保密义务。
+
+第3条 保密义务的期限
+3.1 无论本协议是否届满或终止，接收方在本协议项下的保密义务应持续有效，直到提供方以书面形式明确说明解除接收方此项义务。
+3.2 合作公司解散后或根据各方另行约定，保密信息的提供方有权要求接收方，在收到通知的10个工作日之内，将保密信息的原件或复印件（或对于保密信息的其他访问权限）予以返还、销毁和/或以其他适用的方式进行处理。接收方应当在按照提供方的合理要求完成上述措施后，向提供方予以书面确认。
+
+第4条 知识产权
+4.1 提供方向接收方提供保密信息不构成向接收方的转让或授予接收方对其商业秘密、商标、专利、技术秘密或任何其它知识产权拥有的权益，也不构成向接收方转让或向接收方授予该方受第三方许可使用的商业秘密、商标、专利、技术秘密或任何其他知识产权的有关权益。
+
+第5条 陈述与保证
+5.1 各方陈述与保证如下：
+（1） 该方作为提供方向接收方提供保密信息不会违反任何其与第三方之间签订的合同或协议，也不会使得接收方处于被任何第三方指责或指控的不利地位；
+（2） （作为自然人）该方心智健全，拥有完全民事权利能力和民事行为能力，自愿签署本协议，并理解其在本协议项下所承担义务的性质；（作为实体）该方按照中华人民共和国法律有效设立并存续，资质完备，并且具备一切必备权力和权限签署本协议并履行其在本协议项下的义务；
+（3） 本协议在经该方签署后对其具有法律约束力，并可按照本协议的条款对该方强制执行；以及
+（4） 该方签署和履行本协议不会（a）违反其章程或其任何类似组织文件的规定；或（b）违反适用于其或其任何资产或业务的适用法律。
+
+第6条 违约责任
+6.1 任何一方违反本协议的任何约定（“违约方”），其他守约方（“守约方”）有权要求违约方立即停止违约行为、采取一切必要措施消除影响，并继续履行本协议项下相关义务。
+6.2 如违约方违反本协议项下的保密义务或其他类似限制性义务，违约方应向守约方支付违约金人民币[10万元]。该等违约金系各方结合守约方可能遭受的损失、维权成本、商誉影响及商业机会损失等因素所作的合理预估。如违约金不足以弥补守约方因此遭受的全部损失的，违约方仍应继续赔偿不足部分。守约方因违约方违约而遭受的可获赔损失，包括但不限于直接损失、可得利益损失、商誉损失，以及守约方为制止违约、调查取证、提起诉讼、申请财产保全或行为保全、聘请律师及其他专业顾问所支出的合理费用。
+6.3 本协议项下违约责任及救济方式均为非排他性。守约方有权根据本协议及适用法律，单独或同时主张违约金、损失赔偿、停止侵害、继续履行、返还不当利益、采取补救措施、申请行为保全/禁令救济以及其他一切可得救济。
+6.4 各方确认，任何违反保密义务或其他限制性义务的行为，均可能对守约方造成难以通过金钱充分弥补的损害；因此，在不影响守约方主张违约金、损失赔偿及其他救济的前提下，守约方有权依法请求人民法院采取行为保全、责令停止侵害或其他临时/最终禁令救济措施。
+
+第7条 法律适用与争议解决
+7.1 本协议的订立、效力、解释、履行和争议的解决应受中华人民共和国法律的管辖，并依其进行解释。
+7.2 因本协议引起或与本协议有关的任何争议，由各方协商解决。协商不成的，应向[本协议签署地（深圳）]有管辖权的人民法院起诉。
+
+第8条 其他
+8.1 本协议构成各方就本协议项下事项达成的完整约定，并取代各方此前就该等事项达成的全部口头或书面讨论、磋商及其他安排。
+8.2 任何一方未行使、迟延行使或部分行使其在本协议项下的任何权利、救济或主张，不构成对该等权利、救济或主张的放弃，也不影响其在任何时候继续行使该等权利、救济或主张。任何一方对某一违约行为的弃权，不应视为对任何其他违约行为或对同一违约行为后续再次发生的弃权。
+8.3 本协议自签署日起生效。
+8.4 如本协议任何条款被认定为无效、违法或不可执行，各方应在合法范围内尽最大努力以最接近原商业目的的有效条款予以替代，并且本协议的其他条款不受影响。
+8.5 未经其他方事先书面同意，任何一方均不得将其在本协议项下的权利或义务让与或转让给任何主体。
+8.6 合作公司正式设立后，各方应当，并且应当促使合作公司，在合作公司正式设立之日起10个工作日内共同签署格式如附件一所示的加入协议。
+8.7 本协议一式叁（3）份，由各方各持壹（1）份，具有同等法律效力。
+[本页以下无正文，后附签字页]
+甲方签字：                                 .
+时间：2026年5月          日
+乙方签字：                                 .
+时间：2026年5月          日
+丙方签字：                                 .
+时间：2026年5月          日
+附件一 加入协议示范文本
+本加入协议（“加入协议”）由以下各方于2026年        月        日签署：
+甲方：[●]（身份证号：[●]）；
+乙方：[●]（身份证号：[●]）；
+丙方：[●]（身份证号：[●]）；以及
+丁方：[●]（注册地址：[●]；统一社会信用代码：[●]）
+（以上当事方各自单独称为“一方”，合称为“各方”）。
+其中，丁方的成立日期为2026年          月          日（以下简称“加入生效日”）。
+各方特此同意和确认：
+（1）本加入协议由各方根据2026年5月         日签署的《保密协议》（经不时修订或者修改，以下称“保密协议”）而签署。本加入协议中所使用但未定义的术语应当具有其在保密协议中的含义。
+（2）通过签署本加入协议，自加入生效日起，丁方应当被视为保密协议的一方当事人，并应当享有保密协议项下所约定的权利、承担保密协议项下所约定的义务，如同其自身签署了保密协议。自加入生效日起，丁方同意接受保密协议的全部条款和条件，并且同意受其约束；其余各方认可丁方在保密协议项下的当事方地位和其根据保密协议约定所享有的合同权利。
+（3）本加入协议一式肆（4）份，由各方各持壹（1）份，具有同等法律效力。
+甲方签字：                                 .
+时间：2026年          月          日
+乙方签字：                                 .
+时间：2026年          月          日
+丙方签字：                                 .
+时间：2026年          月          日
+丁方签字：                                 .
+姓名/职务：                                 .
+（公司盖章）
+时间：2026年          月          日
+严格保密
+8.8 草稿
+2
+《保密协议》签字页
+加入协议签字页</div>
+            </section>
+          </div>
+    </article>
+  
+    <article class="inline-clause-card  " draggable="true" data-clause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3" data-clause-stable-id="base-3">
+      <button class="inline-clause-button" type="button" data-workbench-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3">
+        <div class="chips">
+          <span class="tag">保密</span>
+          
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h4>第2条 保密义务</h4>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="inline-clause-body">
+        
+    <div class="parent-clause-heading">第2条 保密义务</div>
+    
+    <div class="subclause-stack">
+      
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3::sub-1" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3::sub-1" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>2.1 接收方应就保密信息承担保密义务，不得将保密信息用于合作项目之外的任何...</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body">2.1 接收方应就保密信息承担保密义务，不得将保密信息用于合作项目之外的任何目的或用途，不得将保密信息透露给各方之外的任何第三方主体，但下列情形除外：</div>
+      
+    </article>
+  
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3::sub-2" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3::sub-2" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>（1） 保密信息的提供方事先书面许可披露的；</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body">（1） 保密信息的提供方事先书面许可披露的；</div>
+      
+    </article>
+  
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3::sub-3" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3::sub-3" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>（2） 法律法规强制要求披露，前提是披露方应在可行范围内事先通知提供方，并且...</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body">（2） 法律法规强制要求披露，前提是披露方应在可行范围内事先通知提供方，并且仅在必要范围内进行披露；</div>
+      
+    </article>
+  
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3::sub-4" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3::sub-4" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>（3） 向一方的律师、会计师等专业顾问披露，前提是该等专业顾问承诺就保密信息...</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body">（3） 向一方的律师、会计师等专业顾问披露，前提是该等专业顾问承诺就保密信息承担保密义务并采取必要保密措施；以及</div>
+      
+    </article>
+  
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3::sub-5" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3::sub-5" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>（4） 为促进合作项目的开展以及合作公司的运营之目的而必须披露的（例如向合作...</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body">（4） 为促进合作项目的开展以及合作公司的运营之目的而必须披露的（例如向合作公司的客户、员工或供应商、各方的关联方披露），前提是披露方应在可行范围内事先通知提供方，并且仅在必要范围内进行披露。</div>
+      
+    </article>
+  
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3::sub-6" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3::sub-6" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>2.2 接收方应以对待自己同等重要的保密文件一样的谨慎态度对待提供方提供的保...</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body">2.2 接收方应以对待自己同等重要的保密文件一样的谨慎态度对待提供方提供的保密信息，并且在任何情况下，对保密信息的照料程度均不得低于合理程度。</div>
+      
+    </article>
+  
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3::sub-7" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3::sub-7" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>2.3 [除非为合作项目之目的或经提供方事先书面同意，接收方不得：</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body">2.3 [除非为合作项目之目的或经提供方事先书面同意，接收方不得：</div>
+      
+    </article>
+  
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3::sub-8" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3::sub-8" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>（1） 自行或促使、协助任何第三方对任何保密信息及其所涉产品、服务、软件、代...</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body">（1） 自行或促使、协助任何第三方对任何保密信息及其所涉产品、服务、软件、代码、算法、模型、数据集或技术资料实施反向工程、反汇编或其他类似行为；</div>
+      
+    </article>
+  
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3::sub-9" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3::sub-9" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>（2） 直接或间接利用保密信息开发、委托开发、优化、训练、测试、验证任何算法...</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body">（2） 直接或间接利用保密信息开发、委托开发、优化、训练、测试、验证任何算法、模型、软件、产品或解决方案；或者</div>
+      
+    </article>
+  
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3::sub-10" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3::sub-10" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>（3） 将保密信息用于训练、微调、评估、优化任何人工智能（AI）模型、算法、...</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body">（3） 将保密信息用于训练、微调、评估、优化任何人工智能（AI）模型、算法、系统或产品，也不得将保密信息作为提示词、训练样本、测评数据、知识库内容或其他机器学习或人工智能用途。]</div>
+      
+    </article>
+  
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3::sub-11" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3::sub-11" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-3">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>2.4 为免疑义，接收方对于其在签署日之前已经接触到的保密信息，同样应当依据...</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body">2.4 为免疑义，接收方对于其在签署日之前已经接触到的保密信息，同样应当依据本协议约定履行保密义务。</div>
+      
+    </article>
+  
+    </div>
+  
+      </div>
+      
+    </article>
+  
+    <article class="inline-clause-card  " draggable="true" data-clause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-4" data-clause-stable-id="base-4">
+      <button class="inline-clause-button" type="button" data-workbench-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-4">
+        <div class="chips">
+          <span class="tag">保密</span>
+          
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h4>第3条 保密义务的期限</h4>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="inline-clause-body">
+        
+    <div class="parent-clause-heading">第3条 保密义务的期限</div>
+    
+    <div class="subclause-stack">
+      
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-4::sub-1" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-4">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-4::sub-1" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-4">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>3.1 无论本协议是否届满或终止，接收方在本协议项下的保密义务应持续有效，直...</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body">3.1 无论本协议是否届满或终止，接收方在本协议项下的保密义务应持续有效，直到提供方以书面形式明确说明解除接收方此项义务。</div>
+      
+    </article>
+  
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-4::sub-2" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-4">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-4::sub-2" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-4">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>3.2 合作公司解散后或根据各方另行约定，保密信息的提供方有权要求接收方，在...</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body">3.2 合作公司解散后或根据各方另行约定，保密信息的提供方有权要求接收方，在收到通知的10个工作日之内，将保密信息的原件或复印件（或对于保密信息的其他访问权限）予以返还、销毁和/或以其他适用的方式进行处理。接收方应当在按照提供方的合理要求完成上述措施后，向提供方予以书面确认。</div>
+      
+    </article>
+  
+    </div>
+  
+      </div>
+      
+    </article>
+  
+    <article class="inline-clause-card  " draggable="true" data-clause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-5" data-clause-stable-id="base-5">
+      <button class="inline-clause-button" type="button" data-workbench-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-5">
+        <div class="chips">
+          <span class="tag">保密</span>
+          
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h4>第4条 知识产权</h4>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="inline-clause-body">
+        第4条 知识产权<br>4.1 提供方向接收方提供保密信息不构成向接收方的转让或授予接收方对其商业秘密、商标、专利、技术秘密或任何其它知识产权拥有的权益，也不构成向接收方转让或向接收方授予该方受第三方许可使用的商业秘密、商标、专利、技术秘密或任何其他知识产权的有关权益。
+      </div>
+      
+    </article>
+  
+    <article class="inline-clause-card  " draggable="true" data-clause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-6" data-clause-stable-id="base-6">
+      <button class="inline-clause-button" type="button" data-workbench-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-6">
+        <div class="chips">
+          <span class="tag">保密</span>
+          
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h4>第5条 陈述与保证</h4>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="inline-clause-body">
+        
+    <div class="parent-clause-heading">第5条 陈述与保证</div>
+    
+    <div class="subclause-stack">
+      
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-6::sub-1" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-6">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-6::sub-1" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-6">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>5.1 各方陈述与保证如下：</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body">5.1 各方陈述与保证如下：</div>
+      
+    </article>
+  
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-6::sub-2" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-6">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-6::sub-2" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-6">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>（1） 该方作为提供方向接收方提供保密信息不会违反任何其与第三方之间签订的合...</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body">（1） 该方作为提供方向接收方提供保密信息不会违反任何其与第三方之间签订的合同或协议，也不会使得接收方处于被任何第三方指责或指控的不利地位；</div>
+      
+    </article>
+  
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-6::sub-3" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-6">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-6::sub-3" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-6">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>（2） （作为自然人）该方心智健全，拥有完全民事权利能力和民事行为能力，自愿...</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body">（2） （作为自然人）该方心智健全，拥有完全民事权利能力和民事行为能力，自愿签署本协议，并理解其在本协议项下所承担义务的性质；（作为实体）该方按照中华人民共和国法律有效设立并存续，资质完备，并且具备一切必备权力和权限签署本协议并履行其在本协议项下的义务；</div>
+      
+    </article>
+  
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-6::sub-4" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-6">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-6::sub-4" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-6">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>（3） 本协议在经该方签署后对其具有法律约束力，并可按照本协议的条款对该方强...</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body">（3） 本协议在经该方签署后对其具有法律约束力，并可按照本协议的条款对该方强制执行；以及</div>
+      
+    </article>
+  
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-6::sub-5" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-6">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-6::sub-5" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-6">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>（4） 该方签署和履行本协议不会（a）违反其章程或其任何类似组织文件的规定；...</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body">（4） 该方签署和履行本协议不会（a）违反其章程或其任何类似组织文件的规定；或（b）违反适用于其或其任何资产或业务的适用法律。</div>
+      
+    </article>
+  
+    </div>
+  
+      </div>
+      
+    </article>
+  
+    <article class="inline-clause-card  " draggable="true" data-clause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-7" data-clause-stable-id="base-7">
+      <button class="inline-clause-button" type="button" data-workbench-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-7">
+        <div class="chips">
+          <span class="tag">保密</span>
+          
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h4>第6条 违约责任</h4>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="inline-clause-body">
+        
+    <div class="parent-clause-heading">第6条 违约责任</div>
+    
+    <div class="subclause-stack">
+      
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-7::sub-1" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-7">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-7::sub-1" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-7">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>6.1 任何一方违反本协议的任何约定（“违约方”），其他守约方（“守约方”）...</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body">6.1 任何一方违反本协议的任何约定（“违约方”），其他守约方（“守约方”）有权要求违约方立即停止违约行为、采取一切必要措施消除影响，并继续履行本协议项下相关义务。</div>
+      
+    </article>
+  
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-7::sub-2" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-7">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-7::sub-2" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-7">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>6.2 如违约方违反本协议项下的保密义务或其他类似限制性义务，违约方应向守约...</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body">6.2 如违约方违反本协议项下的保密义务或其他类似限制性义务，违约方应向守约方支付违约金人民币[10万元]。该等违约金系各方结合守约方可能遭受的损失、维权成本、商誉影响及商业机会损失等因素所作的合理预估。如违约金不足以弥补守约方因此遭受的全部损失的，违约方仍应继续赔偿不足部分。守约方因违约方违约而遭受的可获赔损失，包括但不限于直接损失、可得利益损失、商誉损失，以及守约方为制止违约、调查取证、提起诉讼、申请财产保全或行为保全、聘请律师及其他专业顾问所支出的合理费用。</div>
+      
+    </article>
+  
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-7::sub-3" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-7">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-7::sub-3" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-7">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>6.3 本协议项下违约责任及救济方式均为非排他性。守约方有权根据本协议及适用...</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body">6.3 本协议项下违约责任及救济方式均为非排他性。守约方有权根据本协议及适用法律，单独或同时主张违约金、损失赔偿、停止侵害、继续履行、返还不当利益、采取补救措施、申请行为保全/禁令救济以及其他一切可得救济。</div>
+      
+    </article>
+  
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-7::sub-4" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-7">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-7::sub-4" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-7">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>6.4 各方确认，任何违反保密义务或其他限制性义务的行为，均可能对守约方造成...</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body">6.4 各方确认，任何违反保密义务或其他限制性义务的行为，均可能对守约方造成难以通过金钱充分弥补的损害；因此，在不影响守约方主张违约金、损失赔偿及其他救济的前提下，守约方有权依法请求人民法院采取行为保全、责令停止侵害或其他临时/最终禁令救济措施。</div>
+      
+    </article>
+  
+    </div>
+  
+      </div>
+      
+    </article>
+  
+    <article class="inline-clause-card  " draggable="true" data-clause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-8" data-clause-stable-id="base-8">
+      <button class="inline-clause-button" type="button" data-workbench-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-8">
+        <div class="chips">
+          <span class="tag">争议解决</span>
+          
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h4>第7条 法律适用与争议解决</h4>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="inline-clause-body">
+        
+    <div class="parent-clause-heading">第7条 法律适用与争议解决</div>
+    
+    <div class="subclause-stack">
+      
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-8::sub-1" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-8">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-8::sub-1" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-8">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>7.1 本协议的订立、效力、解释、履行和争议的解决应受中华人民共和国法律的管...</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body">7.1 本协议的订立、效力、解释、履行和争议的解决应受中华人民共和国法律的管辖，并依其进行解释。</div>
+      
+    </article>
+  
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-8::sub-2" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-8">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-8::sub-2" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-8">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>7.2 因本协议引起或与本协议有关的任何争议，由各方协商解决。协商不成的，应...</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body">7.2 因本协议引起或与本协议有关的任何争议，由各方协商解决。协商不成的，应向[本协议签署地（深圳）]有管辖权的人民法院起诉。</div>
+      
+    </article>
+  
+    </div>
+  
+      </div>
+      
+    </article>
+  
+    <article class="inline-clause-card  " draggable="true" data-clause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9" data-clause-stable-id="base-9">
+      <button class="inline-clause-button" type="button" data-workbench-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9">
+        <div class="chips">
+          <span class="tag">当事人信息</span>
+          
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h4>第8条 其他</h4>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="inline-clause-body">
+        
+    <div class="parent-clause-heading">第8条 其他</div>
+    
+    <div class="subclause-stack">
+      
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9::sub-1" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9::sub-1" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>8.1 本协议构成各方就本协议项下事项达成的完整约定，并取代各方此前就该等事...</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body">8.1 本协议构成各方就本协议项下事项达成的完整约定，并取代各方此前就该等事项达成的全部口头或书面讨论、磋商及其他安排。</div>
+      
+    </article>
+  
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9::sub-2" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9::sub-2" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>8.2 任何一方未行使、迟延行使或部分行使其在本协议项下的任何权利、救济或主...</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body">8.2 任何一方未行使、迟延行使或部分行使其在本协议项下的任何权利、救济或主张，不构成对该等权利、救济或主张的放弃，也不影响其在任何时候继续行使该等权利、救济或主张。任何一方对某一违约行为的弃权，不应视为对任何其他违约行为或对同一违约行为后续再次发生的弃权。</div>
+      
+    </article>
+  
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9::sub-3" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9::sub-3" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>8.3 本协议自签署日起生效。</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body">8.3 本协议自签署日起生效。</div>
+      
+    </article>
+  
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9::sub-4" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9::sub-4" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>8.4 如本协议任何条款被认定为无效、违法或不可执行，各方应在合法范围内尽最...</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body">8.4 如本协议任何条款被认定为无效、违法或不可执行，各方应在合法范围内尽最大努力以最接近原商业目的的有效条款予以替代，并且本协议的其他条款不受影响。</div>
+      
+    </article>
+  
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9::sub-5" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9::sub-5" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>8.5 未经其他方事先书面同意，任何一方均不得将其在本协议项下的权利或义务让...</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body">8.5 未经其他方事先书面同意，任何一方均不得将其在本协议项下的权利或义务让与或转让给任何主体。</div>
+      
+    </article>
+  
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9::sub-6" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9::sub-6" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>8.6 合作公司正式设立后，各方应当，并且应当促使合作公司，在合作公司正式设...</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body">8.6 合作公司正式设立后，各方应当，并且应当促使合作公司，在合作公司正式设立之日起10个工作日内共同签署格式如附件一所示的加入协议。</div>
+      
+    </article>
+  
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9::sub-7" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9::sub-7" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>8.7 本协议一式叁（3）份，由各方各持壹（1）份，具有同等法律效力。
+[本页以下无正文，后附签</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body">8.7 本协议一式叁（3）份，由各方各持壹（1）份，具有同等法律效力。<br>[本页以下无正文，后附签字页]<br>甲方签字：                                 .<br>时间：2026年5月          日<br>乙方签字：                                 .<br>时间：2026年5月          日<br>丙方签字：                                 .<br>时间：2026年5月          日<br>附件一 加入协议示范文本<br>本加入协议（“加入协议”）由以下各方于2026年        月        日签署：<br>甲方：[●]（身份证号：[●]）；<br>乙方：[●]（身份证号：[●]）；<br>丙方：[●]（身份证号：[●]）；以及<br>丁方：[●]（注册地址：[●]；统一社会信用代码：[●]）<br>（以上当事方各自单独称为“一方”，合称为“各方”）。<br>其中，丁方的成立日期为2026年          月          日（以下简称“加入生效日”）。<br>各方特此同意和确认：</div>
+      
+    </article>
+  
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9::sub-8" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9::sub-8" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>（1） 本加入协议由各方根据2026年5月         日签署的《保密协...</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body">（1）本加入协议由各方根据2026年5月         日签署的《保密协议》（经不时修订或者修改，以下称“保密协议”）而签署。本加入协议中所使用但未定义的术语应当具有其在保密协议中的含义。</div>
+      
+    </article>
+  
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9::sub-9" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9::sub-9" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>（2） 通过签署本加入协议，自加入生效日起，丁方应当被视为保密协议的一方当事...</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body">（2）通过签署本加入协议，自加入生效日起，丁方应当被视为保密协议的一方当事人，并应当享有保密协议项下所约定的权利、承担保密协议项下所约定的义务，如同其自身签署了保密协议。自加入生效日起，丁方同意接受保密协议的全部条款和条件，并且同意受其约束；其余各方认可丁方在保密协议项下的当事方地位和其根据保密协议约定所享有的合同权利。</div>
+      
+    </article>
+  
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9::sub-10" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9::sub-10" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>（3） 本加入协议一式肆（4）份，由各方各持壹（1）份，具有同等法律效力。</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body">（3）本加入协议一式肆（4）份，由各方各持壹（1）份，具有同等法律效力。<br>甲方签字：                                 .<br>时间：2026年          月          日<br>乙方签字：                                 .<br>时间：2026年          月          日<br>丙方签字：                                 .<br>时间：2026年          月          日<br>丁方签字：                                 .<br>姓名/职务：                                 .<br>（公司盖章）<br>时间：2026年          月          日<br>严格保密</div>
+      
+    </article>
+  
+    <article class="subclause-card  " draggable="true" data-subclause-card="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9::sub-11" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9">
+      <button class="subclause-button" type="button" data-workbench-subclause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9::sub-11" data-parent-clause="contract-1779418696387-f67adf:upd-send-1779433022069-bc7829:base-9">
+        <div class="chips">
+          <span class="tag">小条款</span>
+          <span class="risk low">风险低</span>
+          
+          
+          
+        </div>
+        <h5>8.8 草稿
+2
+《保密协议》签字页
+加入协议签字页</h5>
+        <p class="muted">未识别到显著风险，仍建议结合交易背景复核。</p>
+      </button>
+      <div class="subclause-body">8.8 草稿<br>2<br>《保密协议》签字页<br>加入协议签字页</div>
+      
+    </article>
+  
+    </div>
+  
+      </div>
+      
+    </article>
+  
+    </div>
+  
+        </div>
+      </section>
+    </div>
+  </section>
+        <section class="view" id="drafting-view">
+    <div class="two-col">
+      <section class="panel">
+        <p class="eyebrow">Drafting</p>
+        <h3 class="section-title">合同起草输入</h3>
+        <form class="inline-form" id="draft-form">
+          <label>
+            合同类型
+            <input id="draft-contract-type" list="draft-contract-types" placeholder="例如：SaaS 服务合同">
+            <datalist id="draft-contract-types"><option value="SaaS 服务合同"></option><option value="数据采购合同"></option><option value="商业服务合同"></option><option value="保密协议；与数据采购/AI教育合作项目前期信息交换有关，但文本本身并非完整数据采购合同"></option></datalist>
+          </label>
+          <label>
+            交易背景
+            <textarea id="draft-background" rows="4" placeholder="说明交易目的、服务/数据/产品内容、关键商业安排。"></textarea>
+          </label>
+          <label>
+            我方角色
+            <input id="draft-role" list="draft-role-list" placeholder="例如：服务提供方 / 采购方">
+            <datalist id="draft-role-list"><option value="服务提供方"></option><option value="采购方"></option><option value="数据接收方"></option><option value="数据提供方"></option><option value="出资方"></option></datalist>
+          </label>
+          <label>
+            相对方
+            <input id="draft-counterparty" list="draft-counterparty-list" placeholder="选择或输入相对方">
+            <datalist id="draft-counterparty-list"><option value="星河智能科技有限公司"></option><option value="A公司"></option></datalist>
+          </label>
+          <button class="primary-button" type="submit">生成合同初稿</button>
+        </form>
+      </section>
+      <section class="panel">
+        <p class="eyebrow">Draft Output</p>
+        <h3 class="section-title">起草结果</h3>
+        <div id="draft-output"><div class="empty">填写左侧信息后生成初稿。系统会优先调用同类合同、同一相对方历史做法和条款库口径。</div></div>
+      </section>
+    </div>
+  </section>
+        <section class="view" id="playbooks-view">
+    <div class="panel" style="margin-bottom:14px">
+      <p class="eyebrow">Knowledge Rule</p>
+      <h3 class="section-title">条款库只索引终稿</h3>
+      <p class="muted">新建审阅中的初稿、进度更新中的过程稿、邮件、修改建议和谈判反馈只能作为审阅材料或进度记录；只有用户标记为终稿的合同版本可以进入条款库反向索引。</p>
+    </div>
+    <div class="filters">
+      <input id="playbook-search" placeholder="搜索条款、关键词、谈判说明">
+      <select id="playbook-type-filter">
+        <option value="">全部类别</option>
+        <option>数据使用</option><option>责任限制</option>
+      </select>
+      <select id="playbook-role-filter">
+        <option value="">全部我方角色</option>
+        <option>服务提供方</option>
+      </select>
+      <select id="playbook-review-filter">
+        <option value="">全部治理状态</option>
+        <option value="active">已生效</option>
+        <option value="pending_review">待复核</option>
+        <option value="disabled">已禁用</option>
+      </select>
+    </div>
+    <div class="playbook-grid" id="playbook-list">
+      
+      <article class="playbook-card">
+        <div class="chips">
+          <span class="tag">数据使用</span>
+          <span class="status-pill">标准版本</span>
+          <span class="status-pill">已生效</span>
+          <span class="status-pill">使用 3 次</span>
+        </div>
+        <h4>数据使用｜服务提供方</h4>
+        <p><strong>适用场景：</strong>SaaS 服务合同、数据采购合同、模型训练合作协议</p>
+        <p><strong>标准版本：</strong>未经客户事先书面同意，服务提供方不得将客户数据用于通用模型训练；仅可在提供、维护、改进本客户服务的必要范围内处理客户数据。</p>
+        <p><strong>备选版本：</strong>可使用经匿名化、去标识化且无法识别客户或个人的数据用于产品安全、性能优化和统计分析。</p>
+        <p><strong>禁用版本：</strong>服务提供方可不受限制地使用客户输入、输出及业务数据训练或优化任何模型。</p>
+        <p><strong>谈判底线：</strong>优先区分客户业务数据、个人信息、匿名化统计数据和模型改进数据，避免笼统授权。</p>
+        <p><strong>版本/复核：</strong>v1｜已生效｜上次 2026-05-21｜下次 未设置</p>
+        <div class="row-actions">
+          <button class="small-button" data-playbook-review="pb-data-use:active">标记已复核</button>
+          <button class="small-button" data-playbook-review="pb-data-use:pending_review">待复核</button>
+          <button class="small-button" data-playbook-review="pb-data-use:disabled">禁用</button>
+        </div>
+        <div class="reference-list">
+          <strong>终稿反向索引</strong>
+          <div class="empty">暂无来自终稿的出现位置</div>
+        </div>
+      </article>
+      <article class="playbook-card">
+        <div class="chips">
+          <span class="tag">责任限制</span>
+          <span class="status-pill">标准版本</span>
+          <span class="status-pill">已生效</span>
+          <span class="status-pill">使用 5 次</span>
+        </div>
+        <h4>责任限制｜服务提供方</h4>
+        <p><strong>适用场景：</strong>SaaS 服务合同、技术服务合同</p>
+        <p><strong>标准版本：</strong>任一方累计赔偿责任以过去十二个月已支付或应支付费用为限，但保密、知识产权侵权、数据安全、故意或重大过失责任除外。</p>
+        <p><strong>备选版本：</strong>任一方累计赔偿责任以过去六个月已支付费用为限，核心例外事项不适用责任上限。</p>
+        <p><strong>禁用版本：</strong>任何情况下服务方均不承担任何赔偿责任，或所有责任均以三个月费用为绝对上限且无例外。</p>
+        <p><strong>谈判底线：</strong>金额过低时容易被客户拒绝，可用六个月或十二个月费用换取明确间接损失排除。</p>
+        <p><strong>版本/复核：</strong>v1｜已生效｜上次 2026-05-21｜下次 未设置</p>
+        <div class="row-actions">
+          <button class="small-button" data-playbook-review="pb-liability-cap:active">标记已复核</button>
+          <button class="small-button" data-playbook-review="pb-liability-cap:pending_review">待复核</button>
+          <button class="small-button" data-playbook-review="pb-liability-cap:disabled">禁用</button>
+        </div>
+        <div class="reference-list">
+          <strong>终稿反向索引</strong>
+          <div class="empty">暂无来自终稿的出现位置</div>
+        </div>
+      </article>
+    </div>
+  </section>
+        <section class="view" id="counterparties-view">
+    <div class="filters">
+      <input id="counterparty-search" placeholder="搜索相对方、行业、备注、谈判偏好">
+      <select id="counterparty-type-filter">
+        <option value="">全部类型</option>
+        <option>客户</option>
+      </select>
+      <select id="counterparty-risk-filter">
+        <option value="">全部风险</option>
+        <option value="high">高风险</option>
+        <option value="medium">中风险</option>
+        <option value="low">低风险</option>
+      </select>
+    </div>
+    <div id="counterparty-list">
+      
+    <div class="counterparty-grid">
+      
+          <article class="panel">
+            <div class="chips">
+              <span class="tag">客户</span>
+              <span class="risk medium">风险中</span>
+            </div>
+            <h3>星河智能科技有限公司</h3>
+            <p class="muted">企业软件｜重要</p>
+            <p>历史上较关注责任上限和数据使用范围，接受过乙方所在地法院管辖。</p>
+            <p><strong>历史合同：</strong>1 份</p>
+            <p><strong>谈判记录：</strong>1 条</p>
+            <div class="reference-list">
+              <div class="reference-item">
+                <strong>相对方偏好总结</strong>
+                <p>历史上更关注责任限制/赔偿、数据使用/模型训练/个人信息、知识产权、争议解决，谈判中建议先准备这些条款的强保护版和平衡版。</p>
+              </div>
+              <div class="reference-item">
+                <strong>常争议条款</strong>
+                <p>责任限制/赔偿、数据使用/模型训练/个人信息、知识产权、争议解决</p>
+              </div>
+              <div class="reference-item">
+                <strong>可接受口径 / 让步空间</strong>
+                <p>建议接受六个月服务费作为折中，但数据侵权、保密和故意违约不适用责任上限。</p>
+              </div>
+              <div class="reference-item">
+                <strong>历史拒绝口径</strong>
+                <p>暂无明确拒绝口径。</p>
+              </div>
+              <div class="reference-item">
+                <strong>风险偏好 / 谈判耗时</strong>
+                <p>偏审慎：建议提前准备强保护版本和管理层可让步边界｜谈判轮次正常：累计 1 条记录</p>
+              </div>
+              <div class="reference-item">
+                <strong>下次谈判提示</strong>
+                <p>该相对方存在高风险合同记录，建议优先复核数据、责任限制、知识产权和终止条款。</p>
+              </div>
+              <div class="reference-item">
+                <strong>相对方维度合同时间线</strong>
+                <p>2026-05-21 示例：智能客服 SaaS 服务协议（审阅中）</p>
+              </div>
+            </div>
+            <div class="reference-list">
+              
+    <div class="reference-item">
+      <strong>谈判记忆</strong>
+      <p>建议接受六个月服务费作为折中，但数据侵权、保密和故意违约不适用责任上限。</p>
+      <span class="muted">待谈判</span>
+    </div>
+  
+            </div>
+          </article>
+          <article class="panel">
+            <div class="chips">
+              <span class="tag">客户</span>
+              <span class="risk low">风险低</span>
+            </div>
+            <h3>A公司</h3>
+            <p class="muted">未分类｜普通</p>
+            <p>由合同审阅流程自动创建。</p>
+            <p><strong>历史合同：</strong>1 份</p>
+            <p><strong>谈判记录：</strong>0 条</p>
+            <div class="reference-list">
+              <div class="reference-item">
+                <strong>相对方偏好总结</strong>
+                <p>历史偏好数据仍较少，建议在后续谈判中补充记录对方关注点和接受口径。</p>
+              </div>
+              <div class="reference-item">
+                <strong>常争议条款</strong>
+                <p>暂无稳定记录</p>
+              </div>
+              <div class="reference-item">
+                <strong>可接受口径 / 让步空间</strong>
+                <p>暂无明确可接受口径，可从公司平衡版条款开始。</p>
+              </div>
+              <div class="reference-item">
+                <strong>历史拒绝口径</strong>
+                <p>暂无明确拒绝口径。</p>
+              </div>
+              <div class="reference-item">
+                <strong>风险偏好 / 谈判耗时</strong>
+                <p>偏中性：可按标准口径推进，并记录新增偏离｜谈判轮次正常：累计 0 条记录</p>
+              </div>
+              <div class="reference-item">
+                <strong>下次谈判提示</strong>
+                <p>可先对比同类合同历史口径，确认是否存在需要业务让步的商业条件。</p>
+              </div>
+              <div class="reference-item">
+                <strong>相对方维度合同时间线</strong>
+                <p>2026-05-22 保密协议（审阅中）</p>
+              </div>
+            </div>
+            <div class="reference-list">
+              
+            </div>
+          </article>
+    </div>
+  
+    </div>
+  </section>
+      </main>
+    </div>
+
+    <dialog class="modal" id="upload-modal">
+      <form class="modal-panel" id="upload-form">
+        <div class="modal-header">
+          <div>
+            <p class="eyebrow">New Review</p>
+            <h3>上传或粘贴合同文本</h3>
+          </div>
+          <button class="icon-button" type="button" data-close-upload="" aria-label="关闭">×</button>
+        </div>
+        <label>
+          合同名称
+          <input id="contract-name-input" placeholder="例如：某客户 SaaS 服务协议">
+        </label>
+        <label>
+          相对方
+          <input id="counterparty-input" placeholder="例如：星河智能科技有限公司">
+        </label>
+        <label>
+          我方角色
+          <input id="party-role-input" placeholder="例如：服务提供方 / 采购方 / 数据接收方 / 甲方 / 乙方">
+        </label>
+        <label>
+          反馈期限
+          <input id="contract-deadline-input" type="date">
+        </label>
+        <label>
+          业务负责人
+          <input id="contract-owner-input" placeholder="例如：业务负责人 / 产品负责人">
+        </label>
+        <label>
+          上传合同初稿文本文件
+          <input id="clean-file-input" type="file" accept=".txt,.md,.text,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" data-file-target="clean-text-input">
+        </label>
+        <label>
+          合同初稿文本
+          <textarea id="clean-text-input" rows="10" placeholder="粘贴合同初稿正文。通过新建审阅进入的材料一律视为初稿，不进入条款库。"></textarea>
+        </label>
+        <div class="modal-actions">
+          <button class="ghost-button" type="button" data-close-upload="">取消</button>
+          <button class="primary-button" type="submit">开始审阅</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="modal" id="progress-modal">
+      <form class="modal-panel" id="progress-form">
+        <div class="modal-header">
+          <div>
+            <p class="eyebrow">Progress Update</p>
+            <h3>更新已有审阅路径</h3>
+          </div>
+          <button class="icon-button" type="button" data-close-progress="" aria-label="关闭">×</button>
+        </div>
+        <label>
+          关联合同
+          <select id="progress-contract-id"></select>
+        </label>
+        <label>
+          版本性质
+          <select id="progress-type-input">
+            <option value="过程稿">过程稿</option>
+            <option value="终稿">终稿</option>
+          </select>
+        </label>
+        <label>
+          进展说明
+          <textarea id="progress-note-input" rows="4" placeholder="例如：对方发来第二轮版本，主要修改责任限制和数据使用条款。"></textarea>
+        </label>
+        <label>
+          反馈期限
+          <input id="progress-deadline-input" type="date">
+        </label>
+        <label>
+          当前状态
+          <select id="progress-status-input">
+            <option value="业务确认">业务确认</option>
+            <option value="对方反馈">对方反馈</option>
+            <option value="定稿">定稿</option>
+            <option value="签署">签署</option>
+          </select>
+        </label>
+        <label>
+          上传版本文本文件
+          <input type="file" accept=".txt,.md,.eml,.text,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" data-file-target="progress-version-text-input">
+        </label>
+        <label>
+          合同版本 / 邮件 / 修改建议文本
+          <textarea id="progress-version-text-input" rows="9" placeholder="粘贴本次收到或形成的版本文本。系统会自行识别是否像红线/修订稿或邮件建议。"></textarea>
+        </label>
+        <div class="modal-actions">
+          <button class="ghost-button" type="button" data-close-progress="">取消</button>
+          <button class="primary-button" type="submit">保存进度</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="modal" id="add-clause-modal">
+      <form class="modal-panel" id="add-clause-form">
+        <div class="modal-header">
+          <div>
+            <p class="eyebrow">Add Clause</p>
+            <h3>新增条款</h3>
+          </div>
+          <button class="icon-button" type="button" data-close-add-clause="" aria-label="关闭">×</button>
+        </div>
+        <input id="add-clause-source-key" type="hidden">
+        <label>
+          插入位置
+          <select id="add-clause-position">
+            <option value="before">插入到所选条款之前</option>
+            <option value="after">插入到所选条款之后</option>
+            <option value="end">插入到合同末尾</option>
+          </select>
+        </label>
+        <label>
+          选择条款
+          <select id="add-clause-target"></select>
+        </label>
+        <label>
+          条款类型
+          <select id="add-clause-type"></select>
+        </label>
+        <label>
+          条款标题
+          <input id="add-clause-title" placeholder="例如：数据安全与个人信息保护">
+        </label>
+        <label>
+          条款文本
+          <textarea id="add-clause-text" rows="8" placeholder="填写新增条款正文。系统会保存后重新调整条款序号和引用关系。"></textarea>
+        </label>
+        <label>
+          新增理由 / 批注
+          <textarea id="add-clause-comment" rows="3" placeholder="例如：补充数据安全义务，回应客户训练数据使用限制。"></textarea>
+        </label>
+        <div class="modal-actions">
+          <button class="ghost-button" type="button" data-close-add-clause="">取消</button>
+          <button class="primary-button" type="submit">保存新增条款</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="modal" id="skill-result-modal">
+      <form class="modal-panel" method="dialog">
+        <div class="modal-header">
+          <div>
+            <p class="eyebrow">Legal Skill</p>
+            <h3>本地 Skill 分析结果</h3>
+          </div>
+          <button class="icon-button" type="button" data-close-skill-result="" aria-label="关闭">×</button>
+        </div>
+        <pre class="json-preview" id="skill-result-preview"></pre>
+        <div class="modal-actions">
+          <button class="primary-button" type="button" data-close-skill-result="">确定</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="./js/state.js?v=20260522-purpose-clip"></script>
+    <script src="./js/api.js?v=20260522-purpose-clip"></script>
+    <script src="./js/word-docx.js?v=20260522-purpose-clip"></script>
+    <script src="./js/playbook.js?v=20260522-purpose-clip"></script>
+    <script src="./js/render-review.js?v=20260522-purpose-clip"></script>
+    <script src="./app.js?v=20260522-purpose-clip"></script>
+  
+
+</body></html>

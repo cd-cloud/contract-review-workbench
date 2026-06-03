@@ -1,0 +1,145 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["response"],
+  "properties": {
+    "response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contractSummary", "clauseSegmentation", "contractLevelRisks", "clauseAnalyses", "missingFacts", "businessSummary"],
+      "properties": {
+        "contractSummary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["contractName", "contractType", "purpose", "ourRole", "counterparty", "riskLevel", "completionScore", "positionDeviationLevel"],
+          "properties": {
+            "contractName": { "type": "string" },
+            "contractType": { "type": "string" },
+            "purpose": { "type": "string" },
+            "ourRole": { "type": "string" },
+            "counterparty": { "type": "string" },
+            "riskLevel": { "type": "string", "enum": ["high", "medium", "low"] },
+            "completionScore": { "type": "number" },
+            "positionDeviationLevel": { "type": "string" }
+          }
+        },
+        "clauseSegmentation": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["stableId", "order", "title", "text", "type", "chapterTitle", "hierarchyLevel"],
+            "properties": {
+              "stableId": { "type": "string" },
+              "order": { "type": "number" },
+              "title": { "type": "string" },
+              "text": { "type": "string" },
+              "type": { "type": "string" },
+              "chapterTitle": { "type": "string" },
+              "hierarchyLevel": { "type": "string" }
+            }
+          }
+        },
+        "contractLevelRisks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "severity",
+              "actionType",
+              "title",
+              "issue",
+              "consequence",
+              "suggestion",
+              "proposedClauseText",
+              "targetInsertPosition",
+              "businessRationale",
+              "adoptionNote",
+              "negotiationBottomLine",
+              "acceptableFallback",
+              "linkedClauseIds",
+              "qualityScore"
+            ],
+            "properties": {
+              "severity": { "type": "string", "enum": ["high", "medium", "low"] },
+              "actionType": { "type": "string", "enum": ["add_clause", "comment_only"] },
+              "title": { "type": "string" },
+              "issue": { "type": "string" },
+              "consequence": { "type": "string" },
+              "suggestion": { "type": "string" },
+              "proposedClauseText": { "type": "string" },
+              "targetInsertPosition": { "type": "string" },
+              "businessRationale": { "type": "string" },
+              "adoptionNote": { "type": "string" },
+              "negotiationBottomLine": { "type": "string" },
+              "acceptableFallback": { "type": "string" },
+              "linkedClauseIds": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "qualityScore": { "type": "number" }
+            }
+          }
+        },
+        "clauseAnalyses": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "clauseId",
+              "title",
+              "clauseType",
+              "severity",
+              "actionType",
+              "issue",
+              "consequence",
+              "proposedRevision",
+              "targetText",
+              "replacementText",
+              "commentText",
+              "negotiationPosition",
+              "fallbackText",
+              "businessDecision",
+              "adoptionNote",
+              "negotiationBottomLine",
+              "acceptableFallback",
+              "linkedClauseIds",
+              "qualityScore"
+            ],
+            "properties": {
+              "clauseId": { "type": "string" },
+              "title": { "type": "string" },
+              "clauseType": { "type": "string" },
+              "severity": { "type": "string", "enum": ["high", "medium", "low"] },
+              "actionType": { "type": "string", "enum": ["replace_clause", "revise_clause", "delete_clause", "comment_only"] },
+              "issue": { "type": "string" },
+              "consequence": { "type": "string" },
+              "proposedRevision": { "type": "string" },
+              "targetText": { "type": "string" },
+              "replacementText": { "type": "string" },
+              "commentText": { "type": "string" },
+              "negotiationPosition": { "type": "string" },
+              "fallbackText": { "type": "string" },
+              "businessDecision": { "type": "string" },
+              "adoptionNote": { "type": "string" },
+              "negotiationBottomLine": { "type": "string" },
+              "acceptableFallback": { "type": "string" },
+              "linkedClauseIds": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "qualityScore": { "type": "number" }
+            }
+          }
+        },
+        "missingFacts": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "businessSummary": { "type": "string" }
+      }
+    }
+  }
+}
