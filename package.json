@@ -4,6 +4,10 @@
   "private": true,
   "description": "AI 合同审阅工作台 — 法务桌面应用",
   "main": "electron/main.js",
+  "engines": {
+    "node": ">=20 <23",
+    "npm": ">=10"
+  },
   "scripts": {
     "server": "node server/server.js",
     "server:skill": "set LEGAL_SKILL_RUNNER_SCRIPT=scripts/legal-skill-runner.js&& node server/server.js",

@@ -46,7 +46,7 @@ npm run server:kimi
 | `better-sqlite3` 安装失败 / node-gyp 报错 | 该包包含 C++ 原生扩展，需要 Python 和 Visual Studio Build Tools 编译 | Windows 下先执行 `npm install --global windows-build-tools`（管理员 PowerShell），或安装 [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/?q=build+tools) 并勾选"使用 C++ 的桌面开发" |
 | Electron 下载极慢或超时 | Electron 预编译二进制文件托管在 GitHub，国内访问受限 | 设置镜像源：`npm config set electron_mirror https://npmmirror.com/mirrors/electron/` 后重新 `npm install` |
 | 整体安装速度慢 | npm 默认 registry 在国外 | 使用国内镜像：`npm config set registry https://registry.npmmirror.com` |
-| 安装后 `better-sqlite3` 运行时报错 `The specified module could not be found` | Node 版本与预编译二进制不匹配，或缺少 VC++ 运行时 | 确保 Node.js 版本为 **v18.x LTS** 或 **v20.x LTS**；如仍报错，删除 `node_modules/better-sqlite3` 后执行 `npm rebuild better-sqlite3` |
+| 安装后 `better-sqlite3` 运行时报错 `The specified module could not be found` | Node 版本与预编译二进制不匹配，或缺少 VC++ 运行时 | 确保 Node.js 版本为 **v20.x** 或 **v22.x**；如仍报错，删除 `node_modules/better-sqlite3` 后执行 `npm rebuild better-sqlite3` |
 | Playwright 浏览器下载失败 | Playwright 需要下载 Chromium 浏览器，网络问题导致 | 设置环境变量后安装：`set PLAYWRIGHT_DOWNLOAD_HOST=https://npmmirror.com/mirrors/playwright`（CMD）或 `$env:PLAYWRIGHT_DOWNLOAD_HOST="https://npmmirror.com/mirrors/playwright"`（PowerShell），然后 `npx playwright install chromium` |
 
 > **推荐安装顺序**（若整体 `npm install` 失败）：
@@ -57,6 +57,17 @@ npm run server:kimi
 > npm install
 > npx playwright install chromium
 > ```
+
+### Node.js version
+
+The current Windows desktop workflow is tested with Node.js 22.20.0 and supports Node.js 20 through 22. After changing Node.js versions, run:
+
+```powershell
+npm install
+npm run electron:smoke
+```
+
+`electron:smoke` rebuilds `better-sqlite3` for the active Node runtime and verifies the desktop/backend startup path.
 
 更多迁移和配置见 [RUNNING.md](./RUNNING.md) 与 [PORTABILITY.md](./PORTABILITY.md)。
 

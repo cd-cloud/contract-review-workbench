@@ -62,8 +62,15 @@ Step "Checking Node.js"
 try {
   $nodeVersion = (& node --version)
   Write-Host "Node: $nodeVersion"
+  $nodeMajor = [int]($nodeVersion -replace "^v(\d+)\..*$", '$1')
+  if ($nodeMajor -lt 20) {
+    Fail "Node.js $nodeVersion is too old. Install Node.js 20 or 22, then rerun this script."
+  }
+  if ($nodeMajor -gt 22) {
+    Write-Host "[WARN] Node.js $nodeVersion is newer than the tested range. Run npm run electron:smoke after install/build." -ForegroundColor Yellow
+  }
 } catch {
-  Fail "Node.js is not available. Install Node.js 20 LTS or another supported Node version first."
+  Fail "Node.js is not available. Install Node.js 20 or 22 first."
 }
 
 Step "Using Electron mirror"

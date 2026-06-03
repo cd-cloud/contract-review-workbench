@@ -47,6 +47,19 @@ It rebuilds `better-sqlite3` for the current Node runtime, then verifies that th
 
 This rebuild step is intentional: `npm run build:win` rebuilds native modules for Electron, while the smoke test starts the development backend with system Node.
 
+## Node.js version
+
+This workspace is tested with Node.js 22.20.0 and supports Node.js 20 through 22.
+
+After changing or upgrading Node.js, run:
+
+```powershell
+npm install
+npm run electron:smoke
+```
+
+The smoke test rebuilds `better-sqlite3` for the active Node runtime and catches the most common native-module mismatch.
+
 ## Data location
 
 The app stores working data outside the repo:
