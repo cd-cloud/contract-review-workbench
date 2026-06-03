@@ -3,3 +3,4 @@ dist/
 build-win*.log
 dist-build-artifacts.zip
 .electron-smoke.log
+.packaged-launch.*.log

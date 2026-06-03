@@ -93,14 +93,21 @@ if (-not (Test-Path $electronExe)) {
 }
 Write-Host "Electron: $electronExe"
 
+$appExe = Find-UnpackedExe
+$smokeRan = $false
 if (-not $SkipSmoke) {
-  Step "Running desktop smoke test"
-  & npm.cmd run electron:smoke
-  if ($LASTEXITCODE -ne 0) { Fail "Electron smoke test failed." }
+  if ($SkipBuild -and $appExe) {
+    Step "Skipping desktop smoke test"
+    Write-Host "SkipBuild is set and win-unpacked already exists. Skipping electron:smoke so packaged native modules keep the Electron ABI." -ForegroundColor Yellow
+  } else {
+    Step "Running desktop smoke test"
+    & npm.cmd run electron:smoke
+    if ($LASTEXITCODE -ne 0) { Fail "Electron smoke test failed." }
+    $smokeRan = $true
+  }
 }
 
-$appExe = Find-UnpackedExe
-if (-not $SkipBuild -and -not $appExe) {
+if (-not $SkipBuild -and (-not $appExe -or $smokeRan)) {
   Step "Building win-unpacked desktop app"
   & npm.cmd run build:win
   if ($LASTEXITCODE -ne 0) { Fail "Windows build failed." }
