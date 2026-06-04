@@ -298,6 +298,7 @@ function normalizeWorkbenchState(candidate) {
   parsed.aiSuggestionFeedback = parsed.aiSuggestionFeedback || [];
   parsed.auditLogsCollapsed = parsed.auditLogsCollapsed !== false;
   parsed.expandedTreeNodes = parsed.expandedTreeNodes || {};
+  parsed.readerPaneTabs = parsed.readerPaneTabs || {};
   parsed.contractRiskDecisions = parsed.contractRiskDecisions || {};
   parsed.storageMeta = parsed.storageMeta || {};
   parsed.playbooks = (parsed.playbooks || []).map(normalizePlaybook);

@@ -217,6 +217,37 @@ test("handleModalClick triggers local autofill", () => {
   assert.strictEqual(called, true);
 });
 
+test("handleReviewClick persists reader tab per clause scope", () => {
+  let saved = false;
+  global.saveState = () => { saved = true; };
+  global.state = { readerPaneTabs: {} };
+  const buttons = [
+    { dataset: { readerTab: "index" }, classList: { toggle: () => {} } },
+    { dataset: { readerTab: "analysis" }, classList: { toggle: () => {} } },
+  ];
+  const panes = [
+    { dataset: { readerPane: "index" }, classList: { toggle: () => {} } },
+    { dataset: { readerPane: "analysis" }, classList: { toggle: () => {} } },
+  ];
+  const reader = {
+    dataset: { readerScope: "source-1||clause-1" },
+    querySelectorAll: (selector) => selector === "[data-reader-tab]" ? buttons : panes,
+  };
+  const event = {
+    target: {
+      closest: (selector) => selector === "[data-reader-tab]"
+        ? { dataset: { readerTab: "analysis" }, closest: () => reader }
+        : null,
+    },
+    preventDefault: () => {},
+    stopPropagation: () => {},
+  };
+  const result = handleReviewClick(event);
+  assert.strictEqual(result, true);
+  assert.strictEqual(saved, true);
+  assert.strictEqual(state.readerPaneTabs["source-1||clause-1"], "analysis");
+});
+
 // --- handleContractNavClick ---
 test("handleContractNavClick opens contract", () => {
   let activated = null;

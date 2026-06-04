@@ -211,6 +211,11 @@ function handleReviewClick(event) {
     event.stopPropagation();
     const tabName = readerTab.dataset.readerTab;
     const reader = readerTab.closest(".inline-clause-tools") || readerTab.closest(".contract-text");
+    if (reader?.dataset.readerScope) {
+      state.readerPaneTabs = state.readerPaneTabs || {};
+      state.readerPaneTabs[reader.dataset.readerScope] = tabName;
+      saveState();
+    }
     reader.querySelectorAll("[data-reader-tab]").forEach((button) => {
       button.classList.toggle("active", button.dataset.readerTab === tabName);
     });

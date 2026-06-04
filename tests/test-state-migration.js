@@ -85,6 +85,7 @@ test("normalizeWorkbenchState initializes missing top-level arrays", () => {
   assert.deepStrictEqual(result.auditLogs, []);
   assert.deepStrictEqual(result.aiSuggestionFeedback, []);
   assert.deepStrictEqual(result.expandedTreeNodes, {});
+  assert.deepStrictEqual(result.readerPaneTabs, {});
   assert.deepStrictEqual(result.contractRiskDecisions, {});
 });
 

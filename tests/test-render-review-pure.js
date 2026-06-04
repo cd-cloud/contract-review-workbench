@@ -158,6 +158,11 @@ test("formatReviewJobSummary: failed legal analysis hides detailed message", () 
   assert.strictEqual(value, "AI 审阅暂未完成，可稍后重试。");
 });
 
+test("getReaderToolTab persists analysis tab by clause scope", () => {
+  global.state.readerPaneTabs = { "source-1||clause-1": "analysis" };
+  assert.strictEqual(getReaderToolTab("source-1", "clause-1"), "analysis");
+  assert.strictEqual(getReaderToolTab("source-1", "clause-2"), "index");
+});
 // --- jobTone ---
 test("jobTone: failed returns 'medium'", () => {
   assert.strictEqual(jobTone({ status: "failed" }), "medium");

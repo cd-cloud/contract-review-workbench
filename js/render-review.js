@@ -775,6 +775,15 @@ function wrapClauseBodyAnchor(sourceKey, clauseId, html) {
   return `<div class="clause-body-anchor ${state.focusedAdviceKey === key ? "focused" : ""}" data-clause-body-anchor="${key}">${html}</div>`;
 }
 
+function getReaderToolKey(sourceKey, clauseId) {
+  return `${sourceKey || ""}||${clauseId || ""}`;
+}
+
+function getReaderToolTab(sourceKey, clauseId) {
+  const tab = state.readerPaneTabs?.[getReaderToolKey(sourceKey, clauseId)];
+  return tab === "analysis" ? "analysis" : "index";
+}
+
 function renderInlineClauseCard(contract, material, clause, clauses, active) {
   const actions = getClauseActions(material.sourceKey);
   const action = actions[clause.id] || {};
@@ -786,6 +795,7 @@ function renderInlineClauseCard(contract, material, clause, clauses, active) {
   const clauseRisk = getClauseRiskSummary(contract, clause, material.sourceKey, clause.id, placementClauses);
   const indexGroups = active ? buildClauseIndexGroups(contract, material, clause, clauses) : { history: [], related: [], playbook: [] };
   const analysis = active ? buildClauseAnalysis(contract, clause, action.analysisRequest || "") : [];
+  const activeReaderTab = getReaderToolTab(material.sourceKey, clause.id);
   const redline = active ? buildRedlineDraft(material.sourceKey, clauses) : "";
   const hasNested = subclauses.length >= 2;
   const expanded = !hasNested || isTreeNodeExpanded(clause.id);
@@ -835,15 +845,15 @@ function renderInlineClauseCard(contract, material, clause, clauses, active) {
       ${
         active
           ? `
-          <div class="inline-clause-tools">
+          <div class="inline-clause-tools" data-reader-scope="${escapeHtml(getReaderToolKey(material.sourceKey, clause.id))}">
             <div class="reader-tabs" role="tablist" aria-label="条款工具">
-              <button class="reader-tab active" type="button" data-reader-tab="index">索引</button>
-              <button class="reader-tab" type="button" data-reader-tab="analysis">分析</button>
+              <button class="reader-tab ${activeReaderTab === "index" ? "active" : ""}" type="button" data-reader-tab="index">索引</button>
+              <button class="reader-tab ${activeReaderTab === "analysis" ? "active" : ""}" type="button" data-reader-tab="analysis">分析</button>
             </div>
-            <section class="reader-pane active" data-reader-pane="index">
+            <section class="reader-pane ${activeReaderTab === "index" ? "active" : ""}" data-reader-pane="index">
               ${renderClauseIndexTabs(indexGroups)}
             </section>
-            <section class="reader-pane" data-reader-pane="analysis">
+            <section class="reader-pane ${activeReaderTab === "analysis" ? "active" : ""}" data-reader-pane="analysis">
               <div class="editor-panel">
                 <label>
                   分析要求
@@ -886,6 +896,7 @@ function renderSubclauseCard(contract, material, parentClause, subclause, subcla
   const clauseRisk = getClauseRiskSummary(contract, effectiveSubclause, material.sourceKey, subclause.id, placementClauses);
   const indexGroups = active ? buildClauseIndexGroups(contract, material, effectiveSubclause, currentContractClauses) : { history: [], related: [], playbook: [] };
   const analysis = active ? buildClauseAnalysis(contract, effectiveSubclause, action.analysisRequest || "") : [];
+  const activeReaderTab = getReaderToolTab(material.sourceKey, subclause.id);
   const hasSubclauseTitle = Boolean(effectiveTitle);
   const subclauseBody = wrapClauseBodyAnchor(material.sourceKey, subclause.id, renderDirectClauseEditor(material, subclause, action, effectiveSubclause.text, "小条款正文"));
   const subclauseHeadBody = renderClauseBodyWithTrace(subclause, action, material.mode);
@@ -924,13 +935,13 @@ function renderSubclauseCard(contract, material, parentClause, subclause, subcla
       }
       ${
         active
-          ? `<div class="inline-clause-tools subclause-tools">
+          ? `<div class="inline-clause-tools subclause-tools" data-reader-scope="${escapeHtml(getReaderToolKey(material.sourceKey, subclause.id))}">
               <div class="reader-tabs" role="tablist" aria-label="小条款工具">
-                <button class="reader-tab active" type="button" data-reader-tab="index">索引</button>
-                <button class="reader-tab" type="button" data-reader-tab="analysis">分析</button>
+                <button class="reader-tab ${activeReaderTab === "index" ? "active" : ""}" type="button" data-reader-tab="index">索引</button>
+                <button class="reader-tab ${activeReaderTab === "analysis" ? "active" : ""}" type="button" data-reader-tab="analysis">分析</button>
               </div>
-              <section class="reader-pane active" data-reader-pane="index">${renderClauseIndexTabs(indexGroups)}</section>
-              <section class="reader-pane" data-reader-pane="analysis">
+              <section class="reader-pane ${activeReaderTab === "index" ? "active" : ""}" data-reader-pane="index">${renderClauseIndexTabs(indexGroups)}</section>
+              <section class="reader-pane ${activeReaderTab === "analysis" ? "active" : ""}" data-reader-pane="analysis">
                 <div class="editor-panel">
                   <label>
                     分析要求
