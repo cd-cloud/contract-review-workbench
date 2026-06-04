@@ -127,6 +127,7 @@ global.document = {
   },
   addEventListener: () => {},
 };
+global.requestAnimationFrame = (callback) => callback();
 
 // Mock event factory
 function mockEvent(selectorMap) {
@@ -246,6 +247,48 @@ test("handleReviewClick persists reader tab per clause scope", () => {
   assert.strictEqual(result, true);
   assert.strictEqual(saved, true);
   assert.strictEqual(state.readerPaneTabs["source-1||clause-1"], "analysis");
+});
+
+test("handleReviewClick expands parent before scrolling to subclause advice target", () => {
+  let saved = false;
+  let rendered = false;
+  let scrolled = false;
+  global.saveState = () => { saved = true; };
+  global.renderReview = () => { rendered = true; };
+  global.findByDataAttribute = (attribute, value) => {
+    assert.strictEqual(attribute, "data-clause-body-anchor");
+    assert.strictEqual(value, "source-1||clause-1::sub-2");
+    return { scrollIntoView: () => { scrolled = true; } };
+  };
+  global.state = {
+    expandedTreeNodes: {},
+    activeWorkbenchClauseId: null,
+    activeSubclauseId: null,
+    focusedAdviceKey: null,
+  };
+  const adviceAnchor = {
+    dataset: { clauseAdviceAnchor: "source-1||clause-1::sub-2" },
+  };
+  const event = {
+    target: {
+      closest: (selector) => {
+        if (selector === "[data-clause-advice-anchor]") return adviceAnchor;
+        if (selector === "button, textarea, input, select") return null;
+        return null;
+      },
+    },
+    preventDefault: () => {},
+    stopPropagation: () => {},
+  };
+  const result = handleReviewClick(event);
+  assert.strictEqual(result, true);
+  assert.strictEqual(saved, true);
+  assert.strictEqual(rendered, true);
+  assert.strictEqual(scrolled, true);
+  assert.strictEqual(state.focusedAdviceKey, "source-1||clause-1::sub-2");
+  assert.strictEqual(state.expandedTreeNodes["clause-1"], true);
+  assert.strictEqual(state.activeWorkbenchClauseId, "clause-1");
+  assert.strictEqual(state.activeSubclauseId, "clause-1::sub-2");
 });
 
 // --- handleContractNavClick ---

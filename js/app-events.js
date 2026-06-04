@@ -35,6 +35,11 @@ const nav = event.target.closest(".nav-item");
   return false;
 }
 
+function getClauseIdFromAdviceKey(adviceKey) {
+  const parts = String(adviceKey || "").split("||");
+  return parts.length >= 2 ? parts.slice(1).join("||") : "";
+}
+
 function handleModalClick(event) {
   const uploadButton = event.target.closest("[data-open-upload]");
   if (uploadButton) openUploadModal();
@@ -122,7 +127,19 @@ function handleReviewClick(event) {
   if (adviceAnchor && !event.target.closest("button, textarea, input, select")) {
     event.preventDefault();
     event.stopPropagation();
-    state.focusedAdviceKey = adviceAnchor.dataset.clauseAdviceAnchor;
+    const adviceKey = adviceAnchor.dataset.clauseAdviceAnchor;
+    const clauseId = getClauseIdFromAdviceKey(adviceKey);
+    state.focusedAdviceKey = adviceKey;
+    if (clauseId?.includes("::sub-")) {
+      const parentId = String(clauseId).split("::sub-")[0];
+      state.expandedTreeNodes = state.expandedTreeNodes || {};
+      state.expandedTreeNodes[parentId] = true;
+      state.activeWorkbenchClauseId = parentId;
+      state.activeSubclauseId = clauseId;
+    } else if (clauseId) {
+      state.activeWorkbenchClauseId = clauseId;
+      state.activeSubclauseId = null;
+    }
     saveState();
     renderReview();
     requestAnimationFrame(() => {
