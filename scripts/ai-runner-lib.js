@@ -3,6 +3,8 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
+const appRoot = path.resolve(__dirname, "..");
+
 function readStdinJson() {
   return new Promise((resolve, reject) => {
     let input = "";
@@ -134,16 +136,16 @@ function runCodexJsonTask({ prompt, schemaPath, outputPrefix, signal }) {
     "--sandbox",
     process.env.CODEX_RUNNER_SANDBOX || "read-only",
     "--cd",
-    process.cwd(),
+    appRoot,
     "--output-schema",
-    path.resolve(process.cwd(), schemaPath),
+    path.resolve(appRoot, schemaPath),
     "--output-last-message",
     outputFile,
     "-",
   ];
   return new Promise((resolve, reject) => {
     const child = spawn(getCodexCommand(), args, {
-      cwd: process.cwd(),
+      cwd: appRoot,
       shell: false,
       env: { ...process.env, NO_COLOR: "1" },
     });

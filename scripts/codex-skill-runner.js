@@ -3,6 +3,8 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
+const appRoot = path.resolve(__dirname, "..");
+
 function readStdin() {
   return new Promise((resolve, reject) => {
     let input = "";
@@ -72,14 +74,14 @@ function runCodexExec(prompt, outputFile) {
     ? path.join(process.env.LOCALAPPDATA, "OpenAI", "Codex", "bin", "codex.exe")
     : "";
   const codexCommand = process.env.CODEX_CLI_COMMAND || (defaultCodexExe && fs.existsSync(defaultCodexExe) ? defaultCodexExe : "codex");
-  const schemaPath = path.resolve(process.cwd(), "schemas", "legal-skill-response.schema.json");
+  const schemaPath = path.resolve(appRoot, "schemas", "legal-skill-response.schema.json");
   const args = [
     "exec",
     "--skip-git-repo-check",
     "--sandbox",
     "read-only",
     "--cd",
-    process.cwd(),
+    appRoot,
     "--output-schema",
     schemaPath,
     "--output-last-message",
@@ -88,7 +90,7 @@ function runCodexExec(prompt, outputFile) {
   ];
   return new Promise((resolve, reject) => {
     const child = spawn(codexCommand, args, {
-      cwd: process.cwd(),
+      cwd: appRoot,
       shell: false,
       env: {
         ...process.env,
