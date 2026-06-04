@@ -814,7 +814,6 @@ function renderInlineClauseCard(contract, material, clause, clauses, active) {
           <button class="inline-clause-button" type="button" data-workbench-clause="${clause.id}">
             <div class="chips">
               <span class="tag">${escapeHtml(clause.type)}</span>
-              ${clause.sourceKind === "ai-segmented" ? `<span class="status-pill">AI 切分</span>` : ""}
               ${clause.chapterTitle ? `<span class="status-pill">${escapeHtml(clause.chapterTitle)}</span>` : ""}
               <span class="risk ${escapeHtml(clauseRisk.severity)}">风险${riskLabel(clauseRisk.severity)}</span>
               ${hasNested ? `<span class="status-pill">${subclauses.length} 小条款</span>` : ""}
