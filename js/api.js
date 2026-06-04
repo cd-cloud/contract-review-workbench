@@ -224,6 +224,38 @@ function clearAnalysisStatus(contractId) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
+function setManualLegalSkillRunStatus(contract, material, status, message = "") {
+  if (!contract || !material) return;
+  const jobKey = material.sourceKey || contract.id;
+  state.autoReviewJobs = state.autoReviewJobs || {};
+  state.autoReviewJobs[jobKey] = {
+    ...(state.autoReviewJobs[jobKey] || {}),
+    status,
+    reason: "manual",
+    message,
+    updatedAt: new Date().toISOString(),
+    ...(status === "running" ? { startedAt: new Date().toISOString() } : {}),
+    ...(status === "completed" ? { completedAt: new Date().toISOString() } : {}),
+    ...(status === "failed" ? { failedAt: new Date().toISOString() } : {}),
+  };
+}
+
+function markLegalSkillRunCompleted(contract, material) {
+  if (!contract || !material) return;
+  const jobKey = material.sourceKey || contract.id;
+  setManualLegalSkillRunStatus(contract, material, "completed", "AI Legal Skill 审阅已完成。");
+  const segmentation = state.legalSkillResults?.[contract.id]?.response?.clauseSegmentation || [];
+  if (segmentation.length) {
+    state.segmentationJobs = state.segmentationJobs || {};
+    state.segmentationJobs[jobKey] = {
+      ...(state.segmentationJobs[jobKey] || {}),
+      status: "completed",
+      message: "AI 语义切分已完成。",
+      completedAt: new Date().toISOString(),
+    };
+  }
+}
+
 function hasUsableCodexSegmentation(contract, material) {
   return getClauseSegmentationStatus(material.text, material.sourceKey).source === "ai";
 }

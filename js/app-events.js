@@ -631,6 +631,7 @@ async function handleExportClick(event) {
     runLegalSkill.disabled = true;
     runLegalSkill.textContent = "\u5206\u6790\u4e2d...";
     try {
+      setManualLegalSkillRunStatus(contract, material, "running", "AI Legal Skill 正在审阅合同。");
       setAnalysisStatus(contract.id, "queued", "正在提交 AI Legal Skill 审阅分析任务...");
       runLegalSkill.textContent = "AI 审阅中...";
       const result = await runLegalSkillAnalysis(contract, material.text);
@@ -639,11 +640,13 @@ async function handleExportClick(event) {
       const updatedClauses = splitVersionClauses(prepared.text, prepared.sourceKey);
       state.findings = (state.findings || []).filter((finding) => finding.contractId !== contract.id);
       state.findings.push(...getStoredSkillFindings(contract, updatedClauses));
+      markLegalSkillRunCompleted(contract, prepared);
       recordAudit("运行 AI Legal Skill 分析", { contractName: contract.name, note: result.source || result.response?.source || "ai" });
       saveState();
       renderReview();
       showToast("AI Legal Skill 分析完成，结果已更新到审阅台。");
     } catch (error) {
+      setManualLegalSkillRunStatus(contract, material, "failed", error.message || String(error));
       setAnalysisStatus(contract.id, "failed", error.message || String(error));
       renderReview();
       showToast(`AI Legal Skill 分析失败：${error.message || String(error)}`, "error");

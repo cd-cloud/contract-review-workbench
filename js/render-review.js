@@ -272,6 +272,10 @@ function latestTimestamp(values) {
 
 function renderCodexStatusPanel(status) {
   const workflowSteps = buildCodexWorkflowSteps(status);
+  const autoJob = status.legalResult && status.auto?.status === "failed" ? null : status.auto;
+  const analysisJob = status.legalResult && status.analysis?.status === "failed" ? null : status.analysis;
+  const hasAiSegmentation = Boolean(status.legalResult?.response?.clauseSegmentation?.length);
+  const segmentationJob = hasAiSegmentation && status.segmentation?.status === "failed" ? null : status.segmentation;
   const rows = [
     {
       label: "后端",
@@ -280,18 +284,18 @@ function renderCodexStatusPanel(status) {
     },
     {
       label: "自动审阅",
-      value: formatReviewJobSummary(status.auto, "auto", status.legalResult ? "已生成结果" : "未运行"),
-      tone: status.stale ? "medium" : jobTone(status.auto),
+      value: formatReviewJobSummary(autoJob, "auto", status.legalResult ? "已生成结果" : "未运行"),
+      tone: status.stale ? "medium" : jobTone(autoJob),
     },
     {
       label: "Legal Skill",
-      value: formatReviewJobSummary(status.analysis, "analysis", status.legalResult ? "审阅结果已写入" : "等待运行"),
-      tone: status.stale ? "medium" : jobTone(status.analysis),
+      value: formatReviewJobSummary(analysisJob, "analysis", status.legalResult ? "审阅结果已写入" : "等待运行"),
+      tone: status.stale ? "medium" : jobTone(analysisJob),
     },
     {
       label: "语义切分",
-      value: formatReviewJobSummary(status.segmentation, "segmentation", status.legalResult?.response?.clauseSegmentation?.length ? "已有 AI 切分" : "等待切分"),
-      tone: jobTone(status.segmentation),
+      value: formatReviewJobSummary(segmentationJob, "segmentation", hasAiSegmentation ? "已有 AI 切分" : "等待切分"),
+      tone: jobTone(segmentationJob),
     },
     {
       label: "Visual QA",
