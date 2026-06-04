@@ -113,6 +113,11 @@ function buildLegalSkillClauseList(text, sourceKey) {
   });
 }
 
+function extractLeadingDecimalNumber(text) {
+  const match = String(text || "").trim().match(/^(\d+(?:\.\d+)*)(?:[.．、\s]|$)/);
+  return match?.[1] || "";
+}
+
 async function runLegalSkillAnalysis(contract, materialText, extraRequirements = "", options = {}) {
   const request = buildLegalSkillRequest(contract, materialText, extraRequirements, options);
   try {
