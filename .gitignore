@@ -4,3 +4,8 @@ build-win*.log
 dist-build-artifacts.zip
 .electron-smoke.log
 .packaged-launch.*.log
+.local-workbench/
+server*.log
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal

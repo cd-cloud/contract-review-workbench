@@ -94,3 +94,21 @@ npm run portability:check
 ```
 
 它会检查 runner、schema、skill、Codex CLI 以及 OpenAI-compatible API 配置是否可用。
+# Portable runtime layer
+
+The repository includes a project-owned portable startup layer for new machines:
+
+- `scripts/start-ai-server.js`: cross-platform server launcher. It sets runner scripts, defaults data to `.local-workbench/`, selects a free port starting from `8787`, then starts the backend.
+- `scripts/preflight.js`: checks Node, npm, required dependencies, writable data directory, available port, Codex CLI, and `legal-work-orchestrator`.
+- `scripts/health-check.js`: reads `/js/runtime-config.js`, extracts the runtime API token, and checks `/api/health` plus runner status.
+- `start-portable.bat`: Windows double-click entry point for portable local testing.
+
+Recommended Windows flow:
+
+```powershell
+npm.cmd install
+npm.cmd run preflight
+npm.cmd run server:ai
+```
+
+If PowerShell blocks `npm.ps1`, use `npm.cmd`. If the server chooses a fallback port because `8787` is occupied, use the URL printed by the launcher.

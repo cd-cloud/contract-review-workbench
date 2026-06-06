@@ -76,3 +76,22 @@ npm run check
 2. Kimi/OpenAI-compatible 模式下确认 base url、api key、model 正确。
 3. 长合同可能需要数分钟，先等待任务完成。
 4. 如仍失败，运行 `npm run check` 排除本地代码问题。
+## Portable start on a new machine
+
+Recommended Windows commands:
+
+```powershell
+npm.cmd install
+npm.cmd run preflight
+npm.cmd run server:ai
+```
+
+The portable launcher writes runtime data to `.local-workbench/` by default and chooses a free port starting from `8787`. Use the URL printed by the server, for example `http://127.0.0.1:8787/` or `http://127.0.0.1:8788/`.
+
+Windows users can also double-click `start-portable.bat`.
+
+To check a running backend without being confused by API token `401` responses:
+
+```powershell
+npm.cmd run health
+```
