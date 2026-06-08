@@ -117,7 +117,7 @@ function checkCodexSkill() {
   return {
     label: "Codex CLI and legal skill",
     ok: providerStatus.codexRunnable && skillExists,
-    detail: `codex=${providerStatus.codexCommand} (${codexState}${providerStatus.codexDetail ? `; ${providerStatus.codexDetail}` : ""}), skill=${skillPath} (${skillExists ? "found" : "missing"})`,
+    detail: `codex=${providerStatus.codexCommand} (${codexState}${providerStatus.codexDetail ? `; ${providerStatus.codexDetail}` : ""}${providerStatus.codexDiagnosis ? `; diagnosis=${providerStatus.codexDiagnosis}` : ""}${providerStatus.codexConfidence ? `; confidence=${providerStatus.codexConfidence}` : ""}), skill=${skillPath} (${skillExists ? "found" : "missing"})`,
     fix: "Install Codex CLI and the legal-work-orchestrator skill, or configure an OpenAI-compatible provider.",
   };
 }

@@ -35,6 +35,18 @@ function getConfiguredProvider() {
   return String(process.env.LEGAL_AI_PROVIDER || process.env.AI_PROVIDER || "").trim().toLowerCase();
 }
 
+function getExecutionContext() {
+  const isCodexShell = process.env.CODEX_SHELL === "1";
+  const sandboxNetworkDisabled = process.env.CODEX_SANDBOX_NETWORK_DISABLED === "1";
+  const internalOriginator = process.env.CODEX_INTERNAL_ORIGINATOR_OVERRIDE || "";
+  return {
+    isCodexShell,
+    sandboxNetworkDisabled,
+    internalOriginator,
+    sandboxLikely: isCodexShell || sandboxNetworkDisabled,
+  };
+}
+
 function getPreferredCodexCommand() {
   const configured = process.env.CODEX_CLI_COMMAND || process.env.CODEX_COMMAND;
   if (configured) return configured;
@@ -90,17 +102,21 @@ function buildCodexLaunch(command, args = []) {
 function inspectCodexCommand(command) {
   if (!command) return { command: "codex", exists: false, runnable: false, detail: "Codex CLI not configured." };
   if (path.isAbsolute(command) && !fs.existsSync(command)) {
-    return { command, exists: false, runnable: false, detail: "Configured Codex CLI path does not exist." };
+    return { command, exists: false, runnable: false, detail: "Configured Codex CLI path does not exist.", diagnosis: "machine" };
   }
+  const execution = getExecutionContext();
   const launch = buildCodexLaunch(command, ["--version"]);
   const result = spawnSync(launch.command, launch.args, { encoding: "utf8", timeout: 8000, windowsHide: true });
   if (result.error) {
     const code = String(result.error.code || "");
+    const sandboxLimited = execution.sandboxLikely && ["EPERM", "EACCES"].includes(code);
     return {
       command,
       exists: code !== "ENOENT",
       runnable: false,
       detail: result.error.message || String(result.error),
+      diagnosis: sandboxLimited ? "sandbox-limited" : "machine",
+      confidence: sandboxLimited ? "low" : "high",
     };
   }
   if (result.status === 0) {
@@ -108,10 +124,10 @@ function inspectCodexCommand(command) {
       .split(/\r?\n/)
       .map((line) => line.trim())
       .find(Boolean) || "codex --version succeeded";
-    return { command, exists: true, runnable: true, detail };
+    return { command, exists: true, runnable: true, detail, diagnosis: "ok", confidence: "high" };
   }
   const detail = String(result.stderr || result.stdout || "").trim() || `codex --version exited with code ${result.status}`;
-  return { command, exists: true, runnable: false, detail };
+  return { command, exists: true, runnable: false, detail, diagnosis: "machine", confidence: "high" };
 }
 
 function resolveCodexCommandStatus() {
@@ -127,7 +143,7 @@ function resolveCodexCommandStatus() {
     if (status.runnable) return status;
     if (!firstExisting && status.exists) firstExisting = status;
   }
-  return firstExisting || { command: fallbackCommand, exists: false, runnable: false, detail: "Codex CLI not found in PATH or configured location." };
+  return firstExisting || { command: fallbackCommand, exists: false, runnable: false, detail: "Codex CLI not found in PATH or configured location.", diagnosis: "machine", confidence: "high" };
 }
 
 function getCodexCommand() {
@@ -222,6 +238,9 @@ function getProviderStatus() {
     codexExists: codex.exists,
     codexRunnable: Boolean(codex.runnable),
     codexDetail: codex.detail || "",
+    codexDiagnosis: codex.diagnosis || "",
+    codexConfidence: codex.confidence || "high",
+    executionContext: getExecutionContext(),
   };
 }
 
@@ -468,6 +487,7 @@ module.exports = {
   appRoot,
   buildCodexLaunch,
   compact,
+  getExecutionContext,
   getApiProviderStatus,
   getProvider,
   getCodexCommand,

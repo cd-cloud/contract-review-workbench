@@ -253,6 +253,7 @@ function getCodexRunStatus(contract, material) {
   const auto = state.autoReviewJobs?.[sourceKey] || null;
   const segmentation = state.segmentationJobs?.[sourceKey] || null;
   const visual = state.visualQaJobs?.[sourceKey] || null;
+  const visualReport = state.visualQaReports?.[sourceKey] || null;
   const runner = state.runnerStatus || {};
   const legalResult = state.legalSkillResults?.[contract.id] || null;
   const legalSummary = summarizeLegalSkillResult(legalResult);
@@ -268,6 +269,7 @@ function getCodexRunStatus(contract, material) {
     auto,
     segmentation,
     visual,
+    visualReport,
     legalResult,
     legalSummary,
     running,
@@ -331,7 +333,7 @@ function renderCodexStatusPanel(status) {
     },
     {
       label: "Visual QA",
-      value: formatVisualQaStatusForProgress(status.visual),
+      value: formatVisualQaStatusForProgress(status.visual, status.visualReport),
       tone: status.visual?.status === "failed" ? "medium" : jobTone(status.visual),
     },
   ];
@@ -359,10 +361,13 @@ function renderCodexStatusPanel(status) {
   `;
 }
 
-function formatVisualQaStatusForProgress(visual) {
+function formatVisualQaStatusForProgress(visual, report = null) {
   if (!visual) return "按需检查";
   if (["queued", "running", "deferred", "failed"].includes(visual.status)) return formatReviewJobSummary(visual, "visual", "按需检查");
-  if (visual.status === "completed") return "最近已检查";
+  if (visual.status === "completed") {
+    if (report?.source === "visual-qa-fallback") return "本地兜底已检查";
+    return "Agent B 最近已检查";
+  }
   return "按需检查";
 }
 
@@ -392,6 +397,8 @@ function buildCodexWorkflowSteps(status) {
   const segmentationRunning = ["queued", "running"].includes(status.segmentation?.status);
   const analysisRunning = ["queued", "running"].includes(status.analysis?.status) || ["queued", "running"].includes(status.auto?.status);
   const visualRunning = ["queued", "running"].includes(status.visual?.status);
+  const visualFallback = status.visualReport?.source === "visual-qa-fallback";
+  const visualCompleted = status.visual?.status === "completed";
   return [
     {
       label: "阅读合同",
@@ -415,8 +422,8 @@ function buildCodexWorkflowSteps(status) {
     },
     {
       label: "界面校验",
-      text: visualRunning ? "检查中" : status.visual?.status === "completed" ? "已检查" : "后台兜底",
-      status: visualRunning ? "running" : status.visual?.status === "completed" ? "done" : "pending",
+      text: visualRunning ? "检查中" : visualCompleted ? (visualFallback ? "本地兜底已检查" : "Agent B 已检查") : "后台兜底",
+      status: visualRunning ? "running" : visualCompleted ? "done" : "pending",
     },
   ];
 }

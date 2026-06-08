@@ -19,6 +19,8 @@ function main() {
     exists: Boolean(providerStatus.codexExists),
     runnable: Boolean(providerStatus.codexRunnable),
     detail: providerStatus.codexDetail || "",
+    diagnosis: providerStatus.codexDiagnosis || "",
+    confidence: providerStatus.codexConfidence || "high",
   };
   const skillPath =
     process.env.LEGAL_WORK_ORCHESTRATOR_SKILL ||
@@ -49,6 +51,7 @@ function main() {
       (provider === "codex-cli" || provider === "codex" ? codex.runnable : openAiCompatibleReady || kimiImplicitReady),
     provider,
     automaticSelection,
+    executionContext: providerStatus.executionContext,
     codex,
     openAiCompatible: {
       baseUrlConfigured: Boolean(process.env.LEGAL_AI_BASE_URL || process.env.OPENAI_COMPATIBLE_BASE_URL || process.env.KIMI_BASE_URL || process.env.MOONSHOT_BASE_URL || provider === "kimi" || provider === "moonshot"),

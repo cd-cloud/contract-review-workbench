@@ -229,9 +229,20 @@ test("buildCodexWorkflowSteps: findings result marks risk matching and suggestio
 });
 
 test("buildCodexWorkflowSteps: visual completed sets step 5 to done", () => {
-  const steps = buildCodexWorkflowSteps({ visual: { status: "completed" } });
+  const steps = buildCodexWorkflowSteps({ visual: { status: "completed" }, visualReport: { source: "agent-b" } });
   assert.strictEqual(steps[4].status, "done");
-  assert.strictEqual(steps[4].text, "已检查");
+  assert.strictEqual(steps[4].text.includes("Agent B"), true);
+});
+
+test("buildCodexWorkflowSteps: fallback visual report labels local guard completion", () => {
+  const steps = buildCodexWorkflowSteps({ visual: { status: "completed" }, visualReport: { source: "visual-qa-fallback" } });
+  assert.strictEqual(steps[4].status, "done");
+  assert.strictEqual(steps[4].text.includes("本地"), true);
+});
+
+test("formatVisualQaStatusForProgress distinguishes fallback vs agent report", () => {
+  assert.strictEqual(formatVisualQaStatusForProgress({ status: "completed" }, { source: "visual-qa-fallback" }).includes("本地"), true);
+  assert.strictEqual(formatVisualQaStatusForProgress({ status: "completed" }, { source: "agent-b" }).includes("Agent B"), true);
 });
 
 // --- getClauseQueueStatus ---
