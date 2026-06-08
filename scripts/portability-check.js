@@ -1,6 +1,6 @@
 const fs = require("fs");
 const path = require("path");
-const { getProviderStatus } = require("./ai-runner-lib");
+const { getProviderStatus, resolveAutomaticProviderSelection } = require("./ai-runner-lib");
 
 function exists(filePath) {
   return Boolean(filePath && fs.existsSync(filePath));
@@ -13,6 +13,7 @@ function checkFile(label, filePath) {
 function main() {
   const provider = (process.env.LEGAL_AI_PROVIDER || process.env.AI_PROVIDER || (process.env.KIMI_API_KEY || process.env.MOONSHOT_API_KEY ? "kimi" : "codex-cli")).toLowerCase();
   const providerStatus = getProviderStatus();
+  const automaticSelection = resolveAutomaticProviderSelection();
   const codex = {
     command: providerStatus.codexCommand,
     exists: Boolean(providerStatus.codexExists),
@@ -47,6 +48,7 @@ function main() {
       checks.every((item) => item.ok) &&
       (provider === "codex-cli" || provider === "codex" ? codex.runnable : openAiCompatibleReady || kimiImplicitReady),
     provider,
+    automaticSelection,
     codex,
     openAiCompatible: {
       baseUrlConfigured: Boolean(process.env.LEGAL_AI_BASE_URL || process.env.OPENAI_COMPATIBLE_BASE_URL || process.env.KIMI_BASE_URL || process.env.MOONSHOT_BASE_URL || provider === "kimi" || provider === "moonshot"),

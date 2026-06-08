@@ -50,6 +50,8 @@ const testFiles = [
   "tests/test-suggestion-action-pure.js",
   "tests/test-visual-qa-pure.js",
   "tests/test-legal-skill-pure.js",
+  "tests/test-portable-runtime-pure.js",
+  "tests/test-contract-intake-adapter.js",
   "tests/test-contract-library-pure.js",
   "tests/test-drafting-pure.js",
   "tests/test-counterparties-pure.js",

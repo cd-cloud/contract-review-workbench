@@ -98,10 +98,49 @@ npm run portability:check
 
 The repository includes a project-owned portable startup layer for new machines:
 
-- `scripts/start-ai-server.js`: cross-platform server launcher. It sets runner scripts, defaults data to `.local-workbench/`, selects a free port starting from `8787`, then starts the backend.
+- `scripts/start-ai-server.js`: cross-platform server launcher. It sets runner scripts, defaults data to `.local-workbench/`, selects a free port starting from `8787`, auto-selects the healthiest AI provider, then starts the backend.
 - `scripts/preflight.js`: checks Node, npm, required dependencies, writable data directory, available port, Codex CLI, and `legal-work-orchestrator`.
 - `scripts/health-check.js`: reads `/js/runtime-config.js`, extracts the runtime API token, and checks `/api/health` plus runner status.
 - `start-portable.bat`: Windows double-click entry point for portable local testing.
+
+## Automatic provider selection
+
+`npm.cmd run server:ai` is now the recommended migration entry point on Windows.
+
+At startup, the launcher probes the local environment and chooses a runtime mode in this order:
+
+1. A runnable local `Codex CLI`
+2. A configured OpenAI-compatible provider such as Kimi / Moonshot
+3. Controlled fallback mode if neither side is healthy
+
+The launcher prints its decision before the server starts, for example:
+
+```text
+[portable] profile=codex
+[portable] runtime_mode=codex-cli
+[portable] provider=codex-cli
+[portable] reason=Codex CLI is runnable.
+```
+
+or:
+
+```text
+[portable] profile=kimi
+[portable] runtime_mode=openai-compatible
+[portable] provider=kimi
+[portable] reason=Codex CLI is unavailable; falling back to configured API provider.
+```
+
+or:
+
+```text
+[portable] profile=fallback
+[portable] runtime_mode=fallback
+[portable] provider=codex-cli
+[portable] reason=No healthy AI provider detected.
+```
+
+In fallback mode, the app still starts and keeps local fallback behavior available, but model-backed review quality will be reduced until a healthy provider is configured.
 
 Recommended Windows flow:
 
@@ -112,3 +151,15 @@ npm.cmd run server:ai
 ```
 
 If PowerShell blocks `npm.ps1`, use `npm.cmd`. If the server chooses a fallback port because `8787` is occupied, use the URL printed by the launcher.
+
+## Recommended migration strategy
+
+For a stable daily-use machine, local `Codex CLI` is fine if `preflight` shows it as runnable.
+
+For a newly migrated Windows machine, the safest path is:
+
+1. Run `npm.cmd run portability:check`
+2. If `Codex CLI` is blocked but API credentials are available, use `npm.cmd run server:ai` and let the launcher switch to the API provider automatically
+3. If both local Codex and API provider are unavailable, start the app anyway to inspect local data and UI flow, then finish provider setup afterward
+
+`scripts/portability-check.js` now also reports `automaticSelection`, which shows what the launcher would choose on that machine and why.

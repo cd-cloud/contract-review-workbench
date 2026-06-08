@@ -80,6 +80,10 @@ function getRunnerStatus() {
     codexDetail: PROVIDER_STATUS.codexDetail || "",
     baseUrlConfigured: PROVIDER_STATUS.baseUrlConfigured,
     apiKeyConfigured: PROVIDER_STATUS.apiKeyConfigured,
+    launcherProfile: process.env.LEGAL_WORKBENCH_RUNTIME_PROFILE || null,
+    launcherMode: process.env.LEGAL_WORKBENCH_RUNTIME_MODE || null,
+    launcherReason: process.env.LEGAL_WORKBENCH_RUNTIME_REASON || "",
+    effectiveProvider: process.env.LEGAL_WORKBENCH_EFFECTIVE_PROVIDER || PROVIDER_STATUS.provider,
     mode: RUNNER_COMMAND ? (usesCodexCli ? "codex-cli-local-skill" : `configured-runner:${PROVIDER_STATUS.provider}`) : "fallback",
   };
 }

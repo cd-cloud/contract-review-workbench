@@ -31,6 +31,10 @@ function getProvider() {
   return "codex-cli";
 }
 
+function getConfiguredProvider() {
+  return String(process.env.LEGAL_AI_PROVIDER || process.env.AI_PROVIDER || "").trim().toLowerCase();
+}
+
 function getPreferredCodexCommand() {
   const configured = process.env.CODEX_CLI_COMMAND || process.env.CODEX_COMMAND;
   if (configured) return configured;
@@ -51,12 +55,45 @@ function lookupCodexCandidates() {
     .filter(Boolean);
 }
 
+function rankCodexCandidate(command) {
+  const normalized = String(command || "").toLowerCase().replace(/\\/g, "/");
+  let score = 0;
+  if (/\/openai\/codex\/bin\/codex\.exe$/.test(normalized)) score += 50;
+  if (/\.cmd$/.test(normalized)) score += 35;
+  if (/\.bat$/.test(normalized)) score += 30;
+  if (/\.exe$/.test(normalized)) score += 20;
+  if (/windowsapps/.test(normalized)) score -= 20;
+  if (/\/codex$/.test(normalized) && !/\.(cmd|bat|exe)$/.test(normalized)) score -= 10;
+  return score;
+}
+
+function quoteForCmd(value) {
+  const text = String(value || "");
+  if (!text) return '""';
+  if (!/[\s"&()^%!]/.test(text)) return text;
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function buildCodexLaunch(command, args = []) {
+  const normalized = String(command || "");
+  if (process.platform === "win32" && /\.(cmd|bat)$/i.test(normalized)) {
+    const comspec = process.env.ComSpec || process.env.COMSPEC || "cmd.exe";
+    const commandLine = [quoteForCmd(normalized), ...args.map(quoteForCmd)].join(" ");
+    return {
+      command: comspec,
+      args: ["/d", "/s", "/c", commandLine],
+    };
+  }
+  return { command: normalized, args };
+}
+
 function inspectCodexCommand(command) {
   if (!command) return { command: "codex", exists: false, runnable: false, detail: "Codex CLI not configured." };
   if (path.isAbsolute(command) && !fs.existsSync(command)) {
     return { command, exists: false, runnable: false, detail: "Configured Codex CLI path does not exist." };
   }
-  const result = spawnSync(command, ["--version"], { encoding: "utf8", timeout: 8000, windowsHide: true });
+  const launch = buildCodexLaunch(command, ["--version"]);
+  const result = spawnSync(launch.command, launch.args, { encoding: "utf8", timeout: 8000, windowsHide: true });
   if (result.error) {
     const code = String(result.error.code || "");
     return {
@@ -81,7 +118,8 @@ function resolveCodexCommandStatus() {
   const preferred = getPreferredCodexCommand();
   const localAppData = process.env.LOCALAPPDATA || "";
   const desktopCodex = localAppData ? path.join(localAppData, "OpenAI", "Codex", "bin", "codex.exe") : "";
-  const candidates = [...new Set([preferred, desktopCodex, ...lookupCodexCandidates()].filter(Boolean))];
+  const candidates = [...new Set([preferred, desktopCodex, ...lookupCodexCandidates()].filter(Boolean))]
+    .sort((a, b) => rankCodexCandidate(b) - rankCodexCandidate(a));
   const fallbackCommand = preferred || desktopCodex || "codex";
   let firstExisting = null;
   for (const candidate of candidates.length ? candidates : [fallbackCommand]) {
@@ -119,6 +157,51 @@ function getModelName() {
   return process.env.LEGAL_AI_MODEL || process.env.KIMI_MODEL || process.env.MOONSHOT_MODEL || "moonshot-v1-32k";
 }
 
+function getApiProviderStatus() {
+  const configuredProvider = getConfiguredProvider();
+  const implicitProvider = process.env.KIMI_API_KEY || process.env.MOONSHOT_API_KEY ? "kimi" : "openai-compatible";
+  const provider =
+    ["openai", "openai-compatible", "kimi", "moonshot"].includes(configuredProvider)
+      ? configuredProvider
+      : implicitProvider;
+  const baseUrlConfigured = Boolean(
+    process.env.LEGAL_AI_BASE_URL ||
+    process.env.OPENAI_COMPATIBLE_BASE_URL ||
+    process.env.KIMI_BASE_URL ||
+    process.env.MOONSHOT_BASE_URL ||
+    provider === "kimi" ||
+    provider === "moonshot"
+  );
+  const apiKeyConfigured = Boolean(getApiKey());
+  const modelConfigured = Boolean(
+    process.env.LEGAL_AI_MODEL ||
+    process.env.KIMI_MODEL ||
+    process.env.MOONSHOT_MODEL ||
+    provider === "kimi" ||
+    provider === "moonshot"
+  );
+  const ready =
+    provider === "kimi" || provider === "moonshot"
+      ? apiKeyConfigured
+      : baseUrlConfigured && apiKeyConfigured && modelConfigured;
+  let baseUrl = "";
+  try {
+    if (ready || baseUrlConfigured) baseUrl = resolveChatCompletionsUrl();
+  } catch (error) {
+    baseUrl = "";
+  }
+  return {
+    provider,
+    mode: "openai-compatible",
+    baseUrlConfigured,
+    apiKeyConfigured,
+    modelConfigured,
+    ready,
+    baseUrl,
+    model: modelConfigured ? getModelName() : "",
+  };
+}
+
 function getProviderStatus() {
   const provider = getProvider();
   const apiKey = getApiKey();
@@ -139,6 +222,81 @@ function getProviderStatus() {
     codexExists: codex.exists,
     codexRunnable: Boolean(codex.runnable),
     codexDetail: codex.detail || "",
+  };
+}
+
+function resolveAutomaticProviderSelection() {
+  const current = getProviderStatus();
+  const api = getApiProviderStatus();
+  if (current.mode === "openai-compatible" && api.ready) {
+    return {
+      profile: api.provider === "kimi" || api.provider === "moonshot" ? "kimi" : "ai",
+      provider: api.provider,
+      mode: "openai-compatible",
+      reason: "Configured API provider is ready.",
+      providerStatus: current,
+      apiStatus: api,
+    };
+  }
+  if (current.mode === "codex-cli" && current.codexRunnable) {
+    return {
+      profile: "codex",
+      provider: "codex-cli",
+      mode: "codex-cli",
+      reason: "Codex CLI is runnable.",
+      providerStatus: current,
+      apiStatus: api,
+    };
+  }
+  if (current.mode === "openai-compatible" && !api.ready && current.codexRunnable) {
+    return {
+      profile: "codex",
+      provider: "codex-cli",
+      mode: "codex-cli",
+      reason: "Configured API provider is incomplete; falling back to local Codex CLI.",
+      providerStatus: current,
+      apiStatus: api,
+    };
+  }
+  if (current.mode === "codex-cli" && !current.codexRunnable && api.ready) {
+    return {
+      profile: api.provider === "kimi" || api.provider === "moonshot" ? "kimi" : "ai",
+      provider: api.provider,
+      mode: "openai-compatible",
+      reason: "Codex CLI is unavailable; falling back to configured API provider.",
+      providerStatus: current,
+      apiStatus: api,
+    };
+  }
+  if (current.codexRunnable) {
+    return {
+      profile: "codex",
+      provider: "codex-cli",
+      mode: "codex-cli",
+      reason: "Codex CLI is runnable.",
+      providerStatus: current,
+      apiStatus: api,
+    };
+  }
+  if (api.ready) {
+    return {
+      profile: api.provider === "kimi" || api.provider === "moonshot" ? "kimi" : "ai",
+      provider: api.provider,
+      mode: "openai-compatible",
+      reason: "Using configured API provider because local Codex CLI is unavailable.",
+      providerStatus: current,
+      apiStatus: api,
+    };
+  }
+  return {
+    profile: "fallback",
+    provider: current.provider,
+    mode: "fallback",
+    reason: current.codexExists
+      ? `No healthy AI provider detected. Codex CLI exists but is not runnable: ${current.codexDetail || "unknown error"}.`
+      : "No healthy AI provider detected. Configure Codex CLI or an OpenAI-compatible API provider.",
+    providerStatus: current,
+    apiStatus: api,
   };
 }
 
@@ -188,11 +346,13 @@ function runCodexJsonTask({ prompt, schemaPath, outputPrefix, signal }) {
     outputFile,
     "-",
   ];
+  const launch = buildCodexLaunch(getCodexCommand(), args);
   return new Promise((resolve, reject) => {
-    const child = spawn(getCodexCommand(), args, {
+    const child = spawn(launch.command, launch.args, {
       cwd: appRoot,
       shell: false,
       env: { ...process.env, NO_COLOR: "1" },
+      windowsHide: true,
     });
     let stdout = "";
     let stderr = "";
@@ -305,10 +465,15 @@ function printJson(value) {
 }
 
 module.exports = {
+  appRoot,
+  buildCodexLaunch,
   compact,
+  getApiProviderStatus,
   getProvider,
   getCodexCommand,
   getProviderStatus,
+  getConfiguredProvider,
+  resolveAutomaticProviderSelection,
   resolveCodexCommandStatus,
   readStdinJson,
   runJsonTask,

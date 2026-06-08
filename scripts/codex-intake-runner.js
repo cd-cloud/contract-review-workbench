@@ -1,9 +1,8 @@
-const { spawn } = require("child_process");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-
-const appRoot = path.resolve(__dirname, "..");
+const { appRoot, buildCodexLaunch } = require("./ai-runner-lib");
+const ROOT = appRoot();
 
 function readStdin() {
   return new Promise((resolve, reject) => {
@@ -41,29 +40,27 @@ function buildPrompt(payload) {
   ].join("\n");
 }
 function runCodexExec(prompt, outputFile) {
-  const defaultCodexExe = process.env.LOCALAPPDATA
-    ? path.join(process.env.LOCALAPPDATA, "OpenAI", "Codex", "bin", "codex.exe")
-    : "";
-  const codexCommand = process.env.CODEX_CLI_COMMAND || (defaultCodexExe && fs.existsSync(defaultCodexExe) ? defaultCodexExe : "codex");
-  const schemaPath = path.resolve(appRoot, "schemas", "contract-intake-response.schema.json");
+  const schemaPath = path.resolve(ROOT, "schemas", "contract-intake-response.schema.json");
   const args = [
     "exec",
     "--skip-git-repo-check",
     "--sandbox",
     "read-only",
     "--cd",
-    appRoot,
+    ROOT,
     "--output-schema",
     schemaPath,
     "--output-last-message",
     outputFile,
     "-",
   ];
+  const launch = buildCodexLaunch(process.env.CODEX_CLI_COMMAND || "codex", args);
   return new Promise((resolve, reject) => {
-    const child = spawn(codexCommand, args, {
-      cwd: appRoot,
+    const child = require("child_process").spawn(launch.command, launch.args, {
+      cwd: ROOT,
       shell: false,
       env: { ...process.env, NO_COLOR: "1" },
+      windowsHide: true,
     });
     let stdout = "";
     let stderr = "";

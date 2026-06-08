@@ -88,6 +88,23 @@ npm.cmd run server:ai
 
 The portable launcher writes runtime data to `.local-workbench/` by default and chooses a free port starting from `8787`. Use the URL printed by the server, for example `http://127.0.0.1:8787/` or `http://127.0.0.1:8788/`.
 
+`server:ai` no longer assumes one fixed backend. It automatically probes the machine and chooses:
+
+1. Local `Codex CLI` when runnable
+2. Kimi / OpenAI-compatible API when configured and healthier
+3. Fallback mode when neither side is healthy
+
+Watch the launcher lines in the terminal:
+
+```text
+[portable] profile=...
+[portable] runtime_mode=...
+[portable] provider=...
+[portable] reason=...
+```
+
+Those four lines tell you which path the server actually chose.
+
 Windows users can also double-click `start-portable.bat`.
 
 To check a running backend without being confused by API token `401` responses:
@@ -95,3 +112,20 @@ To check a running backend without being confused by API token `401` responses:
 ```powershell
 npm.cmd run health
 ```
+
+## New-machine troubleshooting
+
+If `Codex CLI` works on one Windows machine but not another, that is usually an environment difference, not a contract-review logic bug. Common causes include:
+
+- PowerShell execution policy choosing `codex.ps1`
+- Windows command wrappers such as `codex.cmd`
+- local process-execution policy or endpoint protection blocking subprocesses
+- missing login/auth state for Codex
+
+Use this order:
+
+1. `npm.cmd run portability:check`
+2. `npm.cmd run preflight`
+3. `npm.cmd run server:ai`
+
+If the launcher selects `openai-compatible`, that is expected and supported. If it selects `fallback`, the app can still open, but AI-backed review should be treated as degraded until either local Codex or API provider setup is fixed.
