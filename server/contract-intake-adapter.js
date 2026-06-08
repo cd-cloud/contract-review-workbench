@@ -1,16 +1,35 @@
 const { execFile } = require("child_process");
+const fs = require("fs");
 const path = require("path");
 const { getProviderStatus } = require("../scripts/ai-runner-lib");
 const { parseRunnerJson } = require("./utils");
 
-const PROVIDER_STATUS = getProviderStatus();
-const RUNNER = process.env.CONTRACT_INTAKE_RUNNER_SCRIPT || (PROVIDER_STATUS.mode === "openai-compatible" ? "scripts/ai-intake-runner.js" : "scripts/codex-intake-runner.js");
-const ALLOW_FALLBACK = process.env.CONTRACT_INTAKE_ALLOW_FALLBACK === "1";
+function getRunnerConfig() {
+  const providerStatus = getProviderStatus();
+  return {
+    providerStatus,
+    runner: process.env.CONTRACT_INTAKE_RUNNER_SCRIPT || (providerStatus.mode === "openai-compatible" ? "scripts/ai-intake-runner.js" : "scripts/codex-intake-runner.js"),
+    allowFallback: process.env.CONTRACT_INTAKE_ALLOW_FALLBACK === "1",
+  };
+}
+
+function getRunnerStatus() {
+  const runnerConfig = getRunnerConfig();
+  return {
+    configured: Boolean(runnerConfig.runner),
+    runnerScript: runnerConfig.runner,
+    runnerScriptExists: Boolean(runnerConfig.runner && fs.existsSync(path.resolve(process.cwd(), runnerConfig.runner))),
+    provider: runnerConfig.providerStatus.provider,
+    mode: runnerConfig.providerStatus.mode,
+    allowFallback: runnerConfig.allowFallback,
+  };
+}
 
 function runContractIntake(request) {
-  return runConfiguredContractIntake(request).catch((error) => {
-    if (!ALLOW_FALLBACK) {
-      throw new Error(`AI 合同信息填充失败：${error.message || String(error)}`);
+  const runnerConfig = getRunnerConfig();
+  return runConfiguredContractIntake(request, runnerConfig).catch((error) => {
+    if (!runnerConfig.allowFallback) {
+      throw new Error(`AI contract intake failed: ${error.message || String(error)}`);
     }
     return {
       ok: true,
@@ -21,9 +40,9 @@ function runContractIntake(request) {
   });
 }
 
-function runConfiguredContractIntake(request) {
+function runConfiguredContractIntake(request, runnerConfig = getRunnerConfig()) {
   return new Promise((resolve, reject) => {
-    const runnerPath = path.resolve(process.cwd(), RUNNER);
+    const runnerPath = path.resolve(process.cwd(), runnerConfig.runner);
     const child = execFile(process.execPath, [runnerPath], { maxBuffer: 20 * 1024 * 1024 }, (error, stdout, stderr) => {
       if (error) {
         reject(new Error(`${error.message}\n${stderr || ""}`.trim()));
@@ -32,7 +51,7 @@ function runConfiguredContractIntake(request) {
       try {
         resolve({
           ok: true,
-          source: path.basename(RUNNER),
+          source: path.basename(runnerConfig.runner),
           ...parseRunnerJson(stdout),
         });
       } catch (parseError) {
@@ -55,9 +74,9 @@ function buildFallbackContractIntake(request = {}) {
   const contractType = inferContractType(text);
   const purpose = inferPurpose(contractType, text);
   const missingFacts = [];
-  if (!counterparty) missingFacts.push("相对方名称");
-  if (!partyA && !partyB) missingFacts.push("我方角色");
-  if (!text) missingFacts.push("合同正文");
+  if (!counterparty) missingFacts.push("counterparty");
+  if (!partyA && !partyB) missingFacts.push("our_role");
+  if (!text) missingFacts.push("contract_text");
   return {
     contractName: cleanupValue(titleLine).slice(0, 80) || "待确认合同",
     contractType,
@@ -65,10 +84,10 @@ function buildFallbackContractIntake(request = {}) {
     ourRole: partyA && partyB ? "待确认" : partyA ? "甲方（待确认）" : partyB ? "乙方（待确认）" : "待确认",
     purpose,
     businessBackground: [
-      `系统根据上传文本生成了本地兜底识别结果：合同类型暂定为${contractType}。`,
-      counterparty ? `当前识别到的相对方可能为：${counterparty}。` : "当前未能稳定识别相对方名称。",
-      `合同目的初步判断为：${purpose}。`,
-      missingFacts.length ? `正式审阅前仍建议确认：${missingFacts.join("、")}。` : "建议在正式审阅前确认我方角色、交易背景和谈判底线。",
+      `Local fallback identified the contract as ${contractType}.`,
+      counterparty ? `Possible counterparty: ${counterparty}.` : "Counterparty could not be identified reliably.",
+      `Possible purpose: ${purpose}.`,
+      missingFacts.length ? `Please confirm: ${missingFacts.join(", ")}.` : "Please confirm role, business background, and negotiation priorities before formal review.",
     ].join("\n"),
     confidence: text ? 48 : 0,
     missingFacts,
@@ -101,12 +120,12 @@ function inferContractType(text) {
 
 function inferPurpose(contractType, text) {
   const source = `${contractType}\n${String(text || "").slice(0, 1200)}`;
-  if (/保密|NDA|Confidential/i.test(source)) return "约定双方在合作、接洽或资料交换中的保密义务";
-  if (/SaaS|API|软件|平台|系统|技术服务/i.test(source)) return "约定软件、平台、API 或技术服务的提供和使用安排";
-  if (/股权|增资|投资|股东|治理/.test(source)) return "约定投资、股权安排及公司治理机制";
-  if (/数据|个人信息|隐私|处理协议/.test(source)) return "约定数据、个人信息或相关服务的处理与使用规则";
+  if (/保密|NDA|Confidential/i.test(source)) return "约定合作中的保密义务";
+  if (/SaaS|API|软件|平台|系统|技术服务/i.test(source)) return "约定软件、平台、API 或技术服务的提供与使用";
+  if (/股权|增资|投资|股东|治理/.test(source)) return "约定投资、股权安排及公司治理";
+  if (/数据|个人信息|隐私|处理协议/.test(source)) return "约定数据或个人信息处理规则";
   if (/采购|供货|订单/.test(source)) return "约定采购、供货或交付安排";
-  return `处理${contractType}相关的交易安排`;
+  return `处理${contractType}相关交易安排`;
 }
 
-module.exports = { runContractIntake, buildFallbackContractIntake };
+module.exports = { runContractIntake, getRunnerStatus, buildFallbackContractIntake };

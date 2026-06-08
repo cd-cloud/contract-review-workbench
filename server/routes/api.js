@@ -1,9 +1,9 @@
 const { sendJson, readJson, isAuthorizedApiRequest } = require("../http-utils");
 const { readDb, replaceDb, saveFile, DB_PATH, FILE_DIR, WORKBENCH_ROOT, saveContractFile, getContractFiles, getFileById, deleteFile, getContractFolder, listAllContractsWithPaths, runAutoBackup, search, searchContracts, searchClauses, searchGlobal } = require("../store");
 const { analyzeLegalReview, getRunnerStatus } = require("../legal-skill-adapter");
-const { runSuggestionAction } = require("../suggestion-action-adapter");
-const { runContractIntake } = require("../contract-intake-adapter");
-const { runVisualQa } = require("../visual-qa-adapter");
+const { runSuggestionAction, getRunnerStatus: getSuggestionRunnerStatus } = require("../suggestion-action-adapter");
+const { runContractIntake, getRunnerStatus: getIntakeRunnerStatus } = require("../contract-intake-adapter");
+const { runVisualQa, getRunnerStatus: getVisualQaRunnerStatus } = require("../visual-qa-adapter");
 const { extractDocxPackage } = require("../../scripts/docx-extract");
 const { createAnalysisJob, cancelJob, summarizeJob, getJob } = require("../jobs");
 
@@ -139,7 +139,20 @@ async function handleApi(req, res, url) {
   }
 
   if (req.method === "GET" && url.pathname === "/api/legal-review/runner-status") {
-    sendJson(res, 200, { ok: true, runner: getRunnerStatus() }, req);
+    const legal = getRunnerStatus();
+    const intake = getIntakeRunnerStatus();
+    const suggestion = getSuggestionRunnerStatus();
+    const visualQa = getVisualQaRunnerStatus();
+    sendJson(res, 200, {
+      ok: true,
+      runner: legal,
+      runners: {
+        legal,
+        intake,
+        suggestion,
+        visualQa,
+      },
+    }, req);
     return true;
   }
 

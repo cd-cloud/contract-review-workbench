@@ -9,6 +9,7 @@ const path = require("path");
 const fs = require("fs");
 const os = require("os");
 const net = require("net");
+const { configureRunnerProfile } = require("../scripts/portable-runtime");
 
 const isDev = !app.isPackaged;
 const isTest = process.env.NODE_ENV === "test" || process.env.ELECTRON_SMOKE_TEST === "1";
@@ -119,19 +120,41 @@ function startBackend() {
     ELECTRON_RUN_AS_NODE: "1",
   };
 
-  // Desktop production: wire built-in AI runners so review works out-of-the-box
-  if (!isDev) {
-    const appRoot = path.join(process.resourcesPath, "app");
-    const runnerMap = {
-      LEGAL_SKILL_RUNNER_SCRIPT: "scripts/codex-skill-runner.js",
-      SUGGESTION_ACTION_RUNNER_SCRIPT: "scripts/codex-suggestion-runner.js",
-      CONTRACT_INTAKE_RUNNER_SCRIPT: "scripts/codex-intake-runner.js",
-      VISUAL_QA_RUNNER_SCRIPT: "scripts/ai-visual-qa-runner.js",
-    };
-    for (const [key, relPath] of Object.entries(runnerMap)) {
-      if (!env[key]) env[key] = path.join(appRoot, relPath);
-    }
-  }
+  const previousEnv = {
+    LEGAL_AI_PROVIDER: process.env.LEGAL_AI_PROVIDER,
+    LEGAL_SKILL_RUNNER_SCRIPT: process.env.LEGAL_SKILL_RUNNER_SCRIPT,
+    SUGGESTION_ACTION_RUNNER_SCRIPT: process.env.SUGGESTION_ACTION_RUNNER_SCRIPT,
+    CONTRACT_INTAKE_RUNNER_SCRIPT: process.env.CONTRACT_INTAKE_RUNNER_SCRIPT,
+    VISUAL_QA_RUNNER_SCRIPT: process.env.VISUAL_QA_RUNNER_SCRIPT,
+    LEGAL_SKILL_ALLOW_FALLBACK: process.env.LEGAL_SKILL_ALLOW_FALLBACK,
+    SUGGESTION_ACTION_ALLOW_FALLBACK: process.env.SUGGESTION_ACTION_ALLOW_FALLBACK,
+    CONTRACT_INTAKE_ALLOW_FALLBACK: process.env.CONTRACT_INTAKE_ALLOW_FALLBACK,
+    VISUAL_QA_ALLOW_FALLBACK: process.env.VISUAL_QA_ALLOW_FALLBACK,
+    LEGAL_WORKBENCH_RUNTIME_PROFILE: process.env.LEGAL_WORKBENCH_RUNTIME_PROFILE,
+    LEGAL_WORKBENCH_RUNTIME_MODE: process.env.LEGAL_WORKBENCH_RUNTIME_MODE,
+    LEGAL_WORKBENCH_RUNTIME_REASON: process.env.LEGAL_WORKBENCH_RUNTIME_REASON,
+    LEGAL_WORKBENCH_EFFECTIVE_PROVIDER: process.env.LEGAL_WORKBENCH_EFFECTIVE_PROVIDER,
+  };
+  Object.assign(process.env, env);
+  const selectedProfile = configureRunnerProfile("ai");
+  env.LEGAL_AI_PROVIDER = process.env.LEGAL_AI_PROVIDER;
+  env.LEGAL_SKILL_RUNNER_SCRIPT = process.env.LEGAL_SKILL_RUNNER_SCRIPT;
+  env.SUGGESTION_ACTION_RUNNER_SCRIPT = process.env.SUGGESTION_ACTION_RUNNER_SCRIPT;
+  env.CONTRACT_INTAKE_RUNNER_SCRIPT = process.env.CONTRACT_INTAKE_RUNNER_SCRIPT;
+  env.VISUAL_QA_RUNNER_SCRIPT = process.env.VISUAL_QA_RUNNER_SCRIPT;
+  env.LEGAL_SKILL_ALLOW_FALLBACK = process.env.LEGAL_SKILL_ALLOW_FALLBACK;
+  env.SUGGESTION_ACTION_ALLOW_FALLBACK = process.env.SUGGESTION_ACTION_ALLOW_FALLBACK;
+  env.CONTRACT_INTAKE_ALLOW_FALLBACK = process.env.CONTRACT_INTAKE_ALLOW_FALLBACK;
+  env.VISUAL_QA_ALLOW_FALLBACK = process.env.VISUAL_QA_ALLOW_FALLBACK;
+  env.LEGAL_WORKBENCH_RUNTIME_PROFILE = process.env.LEGAL_WORKBENCH_RUNTIME_PROFILE;
+  env.LEGAL_WORKBENCH_RUNTIME_MODE = process.env.LEGAL_WORKBENCH_RUNTIME_MODE;
+  env.LEGAL_WORKBENCH_RUNTIME_REASON = process.env.LEGAL_WORKBENCH_RUNTIME_REASON;
+  env.LEGAL_WORKBENCH_EFFECTIVE_PROVIDER = process.env.LEGAL_WORKBENCH_EFFECTIVE_PROVIDER;
+  Object.entries(previousEnv).forEach(([key, value]) => {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  });
+  console.log(`[Electron] Selected AI runtime profile: ${selectedProfile} | ${env.LEGAL_WORKBENCH_RUNTIME_MODE || "unknown"} | ${env.LEGAL_WORKBENCH_EFFECTIVE_PROVIDER || "unknown"}`);
 
   console.log("[Electron] Starting backend...", serverScript, "with", backendRuntime, "on port", BACKEND_PORT);
   backendProcess = spawn(backendRuntime, [serverScript], {

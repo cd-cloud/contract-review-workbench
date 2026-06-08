@@ -5,24 +5,8 @@ const { getProviderStatus } = require("../scripts/ai-runner-lib");
 const { parseRunnerJson } = require("./utils");
 const { splitClauses, classifyClause } = require("../lib/contract-splitter");
 
-const SKILL_PATH = process.env.LEGAL_WORK_ORCHESTRATOR_SKILL || path.join(process.env.USERPROFILE || "", ".codex", "skills", "legal-work-orchestrator", "SKILL.md");
-const PROVIDER_STATUS = getProviderStatus();
-const EXPLICIT_RUNNER_SCRIPT = Object.prototype.hasOwnProperty.call(process.env, "LEGAL_SKILL_RUNNER_SCRIPT");
-const DEFAULT_RUNNER_SCRIPT = PROVIDER_STATUS.mode === "openai-compatible" ? "scripts/ai-skill-runner.js" : "scripts/codex-skill-runner.js";
-const RUNNER_SCRIPT = process.env.LEGAL_SKILL_ALLOW_FALLBACK === "1" && !EXPLICIT_RUNNER_SCRIPT
-  ? ""
-  : EXPLICIT_RUNNER_SCRIPT
-    ? process.env.LEGAL_SKILL_RUNNER_SCRIPT
-    : DEFAULT_RUNNER_SCRIPT;
-const RUNNER_COMMAND = process.env.LEGAL_SKILL_COMMAND || (RUNNER_SCRIPT ? process.execPath : "");
-const RUNNER_ARGS = RUNNER_SCRIPT ? [path.resolve(process.cwd(), RUNNER_SCRIPT), ...parseRunnerArgs(process.env.LEGAL_SKILL_ARGS_JSON)] : parseRunnerArgs(process.env.LEGAL_SKILL_ARGS_JSON);
-
-// Desktop / packaged builds: if no AI runner is actually configured, allow local fallback
-// so the app remains usable out-of-the-box (local rule-based review instead of crashing).
-// NOTE: Only auto-enable fallback in packaged (production) builds; in dev/test, keep strict.
-const isPackaged = process.env.NODE_ENV === "production" || process.env.ELECTRON_IS_PACKAGED === "1";
-if (!RUNNER_COMMAND && isPackaged && process.env.LEGAL_SKILL_ALLOW_FALLBACK !== "1") {
-  process.env.LEGAL_SKILL_ALLOW_FALLBACK = "1";
+function getSkillPath() {
+  return process.env.LEGAL_WORK_ORCHESTRATOR_SKILL || path.join(process.env.USERPROFILE || "", ".codex", "skills", "legal-work-orchestrator", "SKILL.md");
 }
 
 function parseRunnerArgs(value) {
@@ -35,9 +19,36 @@ function parseRunnerArgs(value) {
   }
 }
 
+function getRunnerConfig() {
+  const providerStatus = getProviderStatus();
+  const explicitRunnerScript = Object.prototype.hasOwnProperty.call(process.env, "LEGAL_SKILL_RUNNER_SCRIPT");
+  const defaultRunnerScript = providerStatus.mode === "openai-compatible" ? "scripts/ai-skill-runner.js" : "scripts/codex-skill-runner.js";
+  const runnerScript = process.env.LEGAL_SKILL_ALLOW_FALLBACK === "1" && !explicitRunnerScript
+    ? ""
+    : explicitRunnerScript
+      ? process.env.LEGAL_SKILL_RUNNER_SCRIPT
+      : defaultRunnerScript;
+  const runnerCommand = process.env.LEGAL_SKILL_COMMAND || (runnerScript ? process.execPath : "");
+  const runnerArgs = runnerScript
+    ? [path.resolve(process.cwd(), runnerScript), ...parseRunnerArgs(process.env.LEGAL_SKILL_ARGS_JSON)]
+    : parseRunnerArgs(process.env.LEGAL_SKILL_ARGS_JSON);
+  const isPackaged = process.env.NODE_ENV === "production" || process.env.ELECTRON_IS_PACKAGED === "1";
+  if (!runnerCommand && isPackaged && process.env.LEGAL_SKILL_ALLOW_FALLBACK !== "1") {
+    process.env.LEGAL_SKILL_ALLOW_FALLBACK = "1";
+  }
+  return {
+    providerStatus,
+    skillPath: getSkillPath(),
+    runnerScript,
+    runnerCommand,
+    runnerArgs,
+  };
+}
+
 async function analyzeLegalReview(request, options = {}) {
-  if (RUNNER_COMMAND) {
-    return runConfiguredSkillCommand(request, options);
+  const runnerConfig = getRunnerConfig();
+  if (runnerConfig.runnerCommand) {
+    return runConfiguredSkillCommand(request, options, runnerConfig);
   }
   if (process.env.LEGAL_SKILL_ALLOW_FALLBACK !== "1") {
     throw new Error("AI Legal Skill Runner 未配置。请使用 npm run server:ai / npm run server:kimi，或配置 LEGAL_SKILL_RUNNER_SCRIPT。");
@@ -48,53 +59,54 @@ async function analyzeLegalReview(request, options = {}) {
 }
 
 function getRunnerStatus() {
-  const runnerScriptExists = RUNNER_SCRIPT ? fs.existsSync(path.resolve(process.cwd(), RUNNER_SCRIPT)) : false;
-  const skillExists = fs.existsSync(SKILL_PATH);
-  const usesCodexCli = PROVIDER_STATUS.mode === "codex-cli";
+  const runnerConfig = getRunnerConfig();
+  const runnerScriptExists = runnerConfig.runnerScript ? fs.existsSync(path.resolve(process.cwd(), runnerConfig.runnerScript)) : false;
+  const skillExists = fs.existsSync(runnerConfig.skillPath);
+  const usesCodexCli = runnerConfig.providerStatus.mode === "codex-cli";
   const ready = Boolean(
-    RUNNER_COMMAND &&
-    (!RUNNER_SCRIPT || runnerScriptExists) &&
-    (!usesCodexCli || PROVIDER_STATUS.codexRunnable) &&
+    runnerConfig.runnerCommand &&
+    (!runnerConfig.runnerScript || runnerScriptExists) &&
+    (!usesCodexCli || runnerConfig.providerStatus.codexRunnable) &&
     (!usesCodexCli || skillExists)
   );
   const summary = ready
     ? "本机 Codex CLI + legal-work-orchestrator 已就绪。"
-    : RUNNER_COMMAND
+    : runnerConfig.runnerCommand
       ? "本机 AI 审阅未就绪，请检查 Codex CLI 和 legal-work-orchestrator skill。"
       : "本机 AI 审阅未启用，当前使用本地规则兜底。";
   return {
-    configured: Boolean(RUNNER_COMMAND),
+    configured: Boolean(runnerConfig.runnerCommand),
     ready,
     summary,
-    command: RUNNER_COMMAND || null,
-    args: RUNNER_ARGS,
-    runnerScript: RUNNER_SCRIPT || null,
+    command: runnerConfig.runnerCommand || null,
+    args: runnerConfig.runnerArgs,
+    runnerScript: runnerConfig.runnerScript || null,
     runnerScriptExists,
-    skillPath: SKILL_PATH,
+    skillPath: runnerConfig.skillPath,
     skillExists,
-    provider: PROVIDER_STATUS.provider,
-    model: PROVIDER_STATUS.model,
-    codexCommand: PROVIDER_STATUS.codexCommand || null,
-    codexExists: Boolean(PROVIDER_STATUS.codexExists),
-    codexRunnable: Boolean(PROVIDER_STATUS.codexRunnable),
-    codexDetail: PROVIDER_STATUS.codexDetail || "",
-    codexDiagnosis: PROVIDER_STATUS.codexDiagnosis || "",
-    codexConfidence: PROVIDER_STATUS.codexConfidence || "high",
-    executionContext: PROVIDER_STATUS.executionContext || null,
-    baseUrlConfigured: PROVIDER_STATUS.baseUrlConfigured,
-    apiKeyConfigured: PROVIDER_STATUS.apiKeyConfigured,
+    provider: runnerConfig.providerStatus.provider,
+    model: runnerConfig.providerStatus.model,
+    codexCommand: runnerConfig.providerStatus.codexCommand || null,
+    codexExists: Boolean(runnerConfig.providerStatus.codexExists),
+    codexRunnable: Boolean(runnerConfig.providerStatus.codexRunnable),
+    codexDetail: runnerConfig.providerStatus.codexDetail || "",
+    codexDiagnosis: runnerConfig.providerStatus.codexDiagnosis || "",
+    codexConfidence: runnerConfig.providerStatus.codexConfidence || "high",
+    executionContext: runnerConfig.providerStatus.executionContext || null,
+    baseUrlConfigured: runnerConfig.providerStatus.baseUrlConfigured,
+    apiKeyConfigured: runnerConfig.providerStatus.apiKeyConfigured,
     launcherProfile: process.env.LEGAL_WORKBENCH_RUNTIME_PROFILE || null,
     launcherMode: process.env.LEGAL_WORKBENCH_RUNTIME_MODE || null,
     launcherReason: process.env.LEGAL_WORKBENCH_RUNTIME_REASON || "",
-    effectiveProvider: process.env.LEGAL_WORKBENCH_EFFECTIVE_PROVIDER || PROVIDER_STATUS.provider,
-    mode: RUNNER_COMMAND ? (usesCodexCli ? "codex-cli-local-skill" : `configured-runner:${PROVIDER_STATUS.provider}`) : "fallback",
+    effectiveProvider: process.env.LEGAL_WORKBENCH_EFFECTIVE_PROVIDER || runnerConfig.providerStatus.provider,
+    mode: runnerConfig.runnerCommand ? (usesCodexCli ? "codex-cli-local-skill" : `configured-runner:${runnerConfig.providerStatus.provider}`) : "fallback",
   };
 }
 
-function runConfiguredSkillCommand(request, options = {}) {
+function runConfiguredSkillCommand(request, options = {}, runnerConfig = getRunnerConfig()) {
   return new Promise((resolve, reject) => {
     const payload = buildRunnerPayload(request);
-    const child = execFile(RUNNER_COMMAND, RUNNER_ARGS, { maxBuffer: 40 * 1024 * 1024 }, (error, stdout, stderr) => {
+    const child = execFile(runnerConfig.runnerCommand, runnerConfig.runnerArgs, { maxBuffer: 40 * 1024 * 1024 }, (error, stdout, stderr) => {
       if (error) {
         reject(new Error(`${error.message}\n${stderr || ""}`.trim()));
         return;
@@ -140,7 +152,8 @@ function runConfiguredSkillCommand(request, options = {}) {
 }
 
 function buildRunnerPayload(request) {
-  const skillInstructions = fs.existsSync(SKILL_PATH) ? fs.readFileSync(SKILL_PATH, "utf8") : "";
+  const skillPath = getSkillPath();
+  const skillInstructions = fs.existsSync(skillPath) ? fs.readFileSync(skillPath, "utf8") : "";
   return {
     instruction: "Use legal-work-orchestrator first and route to legal-contract-orchestrator where available. If the current provider is Kimi, Moonshot, or another OpenAI-compatible model without local Codex skills, complete the same lawyer-style contract review directly. First perform the full legal review internally, then normalize the completed work into the structured JSON expected by the workbench. Return clauseSegmentation based on legal meaning rather than regex-only parsing. If request.clauses is empty, treat it as an automatic segmentation task and prioritize clauseSegmentation with empty risk arrays. If a chapter title duplicates its only child clause title or first line, keep only one node. For add-clause suggestions, fill targetInsertPosition and linkedClauseIds whenever the suggestion belongs near an existing chapter or clause; reserve pure contractLevelRisks for suggestions with no reasonable card-level location. Do not output the same add-clause suggestion in multiple places.",
     skillInstructions,
@@ -208,7 +221,8 @@ function buildRunnerPayload(request) {
 }
 
 function buildFallbackSkillResult(request) {
-  const skillLoaded = fs.existsSync(SKILL_PATH);
+  const skillPath = getSkillPath();
+  const skillLoaded = fs.existsSync(skillPath);
   const clauses = Array.isArray(request.clauses) && request.clauses.length ? request.clauses : splitClauses(request.contract_text || "");
   const contractType = inferContractType(request.contract_text || "", request.contract_type);
   const purpose = inferPurpose(contractType, request.business_background);
@@ -226,7 +240,7 @@ function buildFallbackSkillResult(request) {
     source: skillLoaded ? "local-bridge-fallback-with-skill-instructions" : "local-bridge-fallback",
     skill: "legal-work-orchestrator",
     downstreamSkill: "legal-contract-orchestrator",
-    skillPath: SKILL_PATH,
+    skillPath,
     request,
     response: {
       contractSummary: {

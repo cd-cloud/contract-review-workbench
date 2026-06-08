@@ -1,14 +1,30 @@
 const { execFile } = require("child_process");
+const fs = require("fs");
 const path = require("path");
 const { parseRunnerJson } = require("./utils");
 
-const RUNNER = process.env.VISUAL_QA_RUNNER_SCRIPT || "scripts/ai-visual-qa-runner.js";
-const ALLOW_FALLBACK = process.env.VISUAL_QA_ALLOW_FALLBACK !== "0";
+function getRunnerConfig() {
+  return {
+    runner: process.env.VISUAL_QA_RUNNER_SCRIPT || "scripts/ai-visual-qa-runner.js",
+    allowFallback: process.env.VISUAL_QA_ALLOW_FALLBACK !== "0",
+  };
+}
+
+function getRunnerStatus() {
+  const runnerConfig = getRunnerConfig();
+  return {
+    configured: Boolean(runnerConfig.runner),
+    runnerScript: runnerConfig.runner,
+    runnerScriptExists: Boolean(runnerConfig.runner && fs.existsSync(path.resolve(process.cwd(), runnerConfig.runner))),
+    allowFallback: runnerConfig.allowFallback,
+  };
+}
 
 function runVisualQa(request) {
-  return runConfiguredVisualQa(request).catch((error) => {
-    if (!ALLOW_FALLBACK) {
-      throw new Error(`Visual QA 执行失败：${error.message || String(error)}`);
+  const runnerConfig = getRunnerConfig();
+  return runConfiguredVisualQa(request, runnerConfig).catch((error) => {
+    if (!runnerConfig.allowFallback) {
+      throw new Error(`Visual QA failed: ${error.message || String(error)}`);
     }
     return {
       ok: true,
@@ -19,9 +35,9 @@ function runVisualQa(request) {
   });
 }
 
-function runConfiguredVisualQa(request) {
+function runConfiguredVisualQa(request, runnerConfig = getRunnerConfig()) {
   return new Promise((resolve, reject) => {
-    const runnerPath = path.resolve(process.cwd(), RUNNER);
+    const runnerPath = path.resolve(process.cwd(), runnerConfig.runner);
     const child = execFile(process.execPath, [runnerPath], { maxBuffer: 20 * 1024 * 1024 }, (error, stdout, stderr) => {
       if (error) {
         reject(new Error(`${error.message}\n${stderr || ""}`.trim()));
@@ -30,7 +46,7 @@ function runConfiguredVisualQa(request) {
       try {
         resolve({
           ok: true,
-          source: path.basename(RUNNER),
+          source: path.basename(runnerConfig.runner),
           ...parseRunnerJson(stdout),
         });
       } catch (parseError) {
@@ -51,8 +67,8 @@ function buildFallbackVisualQa(request = {}) {
     visualQa: {
       status,
       summary: high.length || medium.length
-        ? `本地兜底检查发现 ${high.length} 个高风险、${medium.length} 个中风险展示/交付问题。Agent B 暂未接通。`
-        : "Agent B 暂未接通；本地兜底检查未发现明显展示、编号或导出阻断问题。",
+        ? `Local fallback found ${high.length} high-risk and ${medium.length} medium-risk presentation or delivery issues. Agent B model check is unavailable.`
+        : "Agent B model check is unavailable; local fallback found no obvious blocking presentation or numbering issues.",
       displayIssues: [],
       structureIssues: localChecks.filter((item) => ["numbering", "subclause-numbering"].includes(item.type)).map(toIssue),
       suggestionPlacementIssues: [],
@@ -69,10 +85,10 @@ function toIssue(item = {}) {
     severity: ["high", "medium", "low"].includes(item.severity) ? item.severity : "low",
     type: item.type || "local-check",
     targetId: item.clauseId || "",
-    title: item.title || "待复核事项",
+    title: item.title || "Review item",
     detail: item.detail || "",
-    recommendation: item.recommendation || "请在发送前复核。",
+    recommendation: item.recommendation || "Please review before sending.",
   };
 }
 
-module.exports = { runVisualQa, buildFallbackVisualQa, toIssue };
+module.exports = { runVisualQa, getRunnerStatus, buildFallbackVisualQa, toIssue };
