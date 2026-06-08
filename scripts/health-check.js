@@ -1,6 +1,6 @@
 const http = require("http");
 
-function requestText(url, headers = {}) {
+function request(url, headers = {}) {
   return new Promise((resolve, reject) => {
     const req = http.get(url, { headers }, (res) => {
       let body = "";
@@ -11,7 +11,7 @@ function requestText(url, headers = {}) {
           reject(new Error(`${url} returned ${res.statusCode}: ${body}`));
           return;
         }
-        resolve(body);
+        resolve({ body, headers: res.headers });
       });
     });
     req.on("error", reject);
@@ -21,26 +21,37 @@ function requestText(url, headers = {}) {
   });
 }
 
+async function requestText(url, headers = {}) {
+  const response = await request(url, headers);
+  return response.body;
+}
+
 async function requestJson(url, headers = {}) {
   const text = await requestText(url, headers);
   return JSON.parse(text);
 }
 
 function parseRuntimeConfig(source) {
-  const token = source.match(/LEGAL_WORKBENCH_API_TOKEN\s*=\s*"([^"]+)"/)?.[1] ||
-    source.match(/"apiToken"\s*:\s*"([^"]+)"/)?.[1];
   const origin = source.match(/LEGAL_WORKBENCH_BACKEND_ORIGIN\s*=\s*"([^"]+)"/)?.[1] ||
     source.match(/"backendOrigin"\s*:\s*"([^"]+)"/)?.[1];
-  if (!token) throw new Error("Could not read apiToken from /js/runtime-config.js");
-  return { token, origin };
+  return { origin };
+}
+
+function cookieHeaderFromResponse(headers = {}) {
+  const setCookie = headers["set-cookie"];
+  if (!setCookie) return "";
+  const items = Array.isArray(setCookie) ? setCookie : [setCookie];
+  return items.map((entry) => String(entry).split(";")[0]).join("; ");
 }
 
 async function main() {
   const port = process.argv[2] || process.env.LEGAL_WORKBENCH_PORT || "8787";
   const base = `http://127.0.0.1:${port}`;
-  const runtime = parseRuntimeConfig(await requestText(`${base}/js/runtime-config.js`));
+  const runtimeResponse = await request(`${base}/js/runtime-config.js`);
+  const runtime = parseRuntimeConfig(runtimeResponse.body);
   const origin = runtime.origin || base;
-  const headers = { "X-Legal-Workbench-Token": runtime.token };
+  const cookie = cookieHeaderFromResponse(runtimeResponse.headers);
+  const headers = cookie ? { Cookie: cookie } : {};
   const health = await requestJson(`${origin}/api/health`, headers);
   const runner = await requestJson(`${origin}/api/legal-review/runner-status`, headers);
   console.log(JSON.stringify({ ok: true, health, runner }, null, 2));

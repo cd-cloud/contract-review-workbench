@@ -120,6 +120,8 @@ function authedReq(method = "GET") {
     const body = JSON.parse(res.body);
     assert.strictEqual(body.ok, true);
     assert.ok(body.runner);
+    assert.ok(body.runners.visualQa);
+    assert.strictEqual(typeof body.runners.visualQa.lastRunState, "string");
   });
 
   await testAsync("handleApi handles GET /api/db", async () => {

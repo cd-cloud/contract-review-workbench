@@ -36,6 +36,19 @@ function test(name, fn) {
   }
 }
 
+async function testAsync(name, fn) {
+  totalTests++;
+  try {
+    await fn();
+    passedTests++;
+    process.stdout.write(`  鉁?${name}\n`);
+  } catch (error) {
+    failedTests.push({ name, error });
+    process.stdout.write(`  鉁?${name}\n`);
+    process.stdout.write(`    ${error.message}\n`);
+  }
+}
+
 // --- flattenClauseActions ---
 test("flattenClauseActions flattens nested actions", () => {
   const actions = {
@@ -99,7 +112,7 @@ test("replaceDb normalizes snapshot structure", () => {
   const snapshot = {
     contracts: [{ id: "c1", name: "Test" }],
     updates: [{ id: "u1", contractId: "c1" }],
-    clauses: [],
+    clauses: [{ id: "clause-1", contractId: "c1", versionId: "u1", title: "Clause 1", text: "Body" }],
     clauseActions: {
       "c1:u1": { "clause-1": { editedText: "text" } },
     },
@@ -125,13 +138,122 @@ test("replaceDb handles minimal snapshot", () => {
   assert.strictEqual(db.contracts.length, 0);
 });
 
-// Summary
-const failed = totalTests - passedTests;
-process.stdout.write(`\n${passedTests}/${totalTests} passed${failed ? `, ${failed} failed` : ""}\n`);
-if (failed) {
-  process.stdout.write(`\nFailed tests:\n`);
-  failedTests.forEach(({ name, error }) => {
-    process.stdout.write(`  - ${name}: ${error.message}\n`);
+test("readDb preserves auxiliary frontend state while using structured data as source of truth", () => {
+  store.replaceDb({
+    activeContractId: "c-aux",
+    visualQaReports: { "c-aux:u1": { checkedAt: "2026-06-08T00:00:00.000Z", issues: [] } },
+    contracts: [{ id: "c-aux", name: "Authoritative Contract", createdAt: "2026-06-08" }],
+    updates: [{ id: "u1", contractId: "c-aux", createdAt: "2026-06-08" }],
+    clauses: [],
+    findings: [],
+    counterparties: [],
+    negotiations: [],
+    playbooks: [],
+    riskRules: [],
+    auditLogs: [],
+    users: [{ id: "local-admin", name: "Local Admin", role: "admin", permissions: ["contracts:read"] }],
   });
-  process.exit(1);
+
+  const db = store.readDb();
+  assert.strictEqual(db.snapshot.activeContractId, "c-aux");
+  assert.ok(db.snapshot.visualQaReports["c-aux:u1"]);
+  assert.strictEqual(db.snapshot.contracts[0].name, "Authoritative Contract");
+  assert.strictEqual(db.snapshot.storageMeta.persistedVia, "sqlite-structured");
+});
+
+test("saveContractFile avoids overwriting duplicate original names", () => {
+  const seed = store.replaceDb({
+    contracts: [{ id: "c-files", name: "Files Test", counterpartyName: "Acme", createdAt: "2026-06-08" }],
+    updates: [],
+    clauses: [],
+    findings: [],
+    counterparties: [],
+    negotiations: [],
+    playbooks: [],
+    riskRules: [],
+    auditLogs: [],
+    users: [],
+  });
+  assert.ok(seed.contracts.length === 1);
+
+  const first = store.saveContractFile("c-files", null, Buffer.from("first"), "same-name.docx", "application/octet-stream", "attachment");
+  const second = store.saveContractFile("c-files", null, Buffer.from("second"), "same-name.docx", "application/octet-stream", "attachment");
+  assert.notStrictEqual(first.path, second.path);
+  assert.notStrictEqual(first.name, second.name);
+  assert.strictEqual(fs.readFileSync(first.path, "utf8"), "first");
+  assert.strictEqual(fs.readFileSync(second.path, "utf8"), "second");
+
+  store.deleteFile(first.id);
+  store.deleteFile(second.id);
+});
+
+test("replaceDb prunes orphaned archived files when contracts disappear", () => {
+  store.replaceDb({
+    contracts: [{ id: "c-prune", name: "Prune Test", counterpartyName: "Acme", createdAt: "2026-06-08" }],
+    updates: [{ id: "u-prune", contractId: "c-prune", createdAt: "2026-06-08" }],
+    clauses: [],
+    findings: [],
+    counterparties: [],
+    negotiations: [],
+    playbooks: [],
+    riskRules: [],
+    auditLogs: [],
+    users: [],
+  });
+  const saved = store.saveContractFile("c-prune", "u-prune", Buffer.from("prune-me"), "prune.docx", "application/octet-stream", "version");
+  assert.ok(fs.existsSync(saved.path));
+
+  store.replaceDb({
+    contracts: [],
+    updates: [],
+    clauses: [],
+    findings: [],
+    counterparties: [],
+    negotiations: [],
+    playbooks: [],
+    riskRules: [],
+    auditLogs: [],
+    users: [],
+  });
+
+  assert.strictEqual(store.getFileById(saved.id), null);
+  assert.strictEqual(fs.existsSync(saved.path), false);
+});
+
+async function runAsyncTests() {
+  await testAsync("runAutoBackup includes sqlite and archive folders", async () => {
+  store.replaceDb({
+    contracts: [{ id: "c-backup", name: "Backup Test", counterpartyName: "Acme", createdAt: "2026-06-08" }],
+    updates: [],
+    clauses: [],
+    findings: [],
+    counterparties: [],
+    negotiations: [],
+    playbooks: [],
+    riskRules: [],
+    auditLogs: [],
+    users: [],
+  });
+  const uploaded = store.saveContractFile("c-backup", null, Buffer.from("backup-file"), "backup.docx", "application/octet-stream", "attachment");
+  const backupPath = await store.runAutoBackup();
+
+  assert.ok(fs.existsSync(backupPath));
+  assert.ok(fs.existsSync(path.join(backupPath, "workbench.sqlite")));
+  assert.ok(fs.existsSync(path.join(backupPath, "contracts")));
+  assert.ok(fs.existsSync(path.join(backupPath, "manifest.json")));
+
+  store.deleteFile(uploaded.id);
+});
 }
+
+runAsyncTests().then(() => {
+  const failed = totalTests - passedTests;
+  process.stdout.write(`\n${passedTests}/${totalTests} passed${failed ? `, ${failed} failed` : ""}\n`);
+  if (failed) {
+    process.stdout.write(`\nFailed tests:\n`);
+    failedTests.forEach(({ name, error }) => {
+      process.stdout.write(`  - ${name}: ${error.message}\n`);
+    });
+    process.exit(1);
+  }
+});

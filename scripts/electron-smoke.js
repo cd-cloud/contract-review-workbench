@@ -87,13 +87,14 @@ async function main() {
     logStep("checking renderer API");
     const result = await window.evaluate(async () => {
       const backendOrigin = window.LEGAL_WORKBENCH_BACKEND_ORIGIN || "";
-      const token = window.LEGAL_WORKBENCH_API_TOKEN || "";
       const health = await window.legalWorkbenchFetch("/api/health").then((res) => res.json());
+      const runnerStatus = await window.legalWorkbenchFetch("/api/legal-review/runner-status").then((res) => res.json());
       return {
         href: location.href,
         backendOrigin,
-        tokenLength: token.length,
+        tokenExposed: typeof window.LEGAL_WORKBENCH_API_TOKEN !== "undefined",
         health,
+        runnerStatus,
         title: document.title,
         dashboardVisible: Boolean(document.querySelector("#dashboard-view")),
       };
@@ -108,7 +109,10 @@ async function main() {
       throw new Error(`Health port ${result.health.port} did not match runtime origin ${result.backendOrigin}.`);
     }
     if (!result.health.ok) throw new Error("Health API did not return ok=true.");
-    if (result.tokenLength < 16) throw new Error("Runtime API token was not available in renderer.");
+    if (result.tokenExposed) throw new Error("Runtime API token should not be exposed in renderer.");
+    if (!result.runnerStatus?.ok) throw new Error("Runner status API did not return ok=true.");
+    if (!result.runnerStatus?.runner?.launcherProfile) throw new Error("Smoke did not exercise configureRunnerProfile('ai').");
+    if (!result.runnerStatus?.runner?.launcherMode) throw new Error("Smoke runner status did not include a runtime mode.");
 
     console.log(JSON.stringify({
       ok: true,

@@ -5,6 +5,8 @@ const crypto = require("crypto");
 const ROOT_DIR = path.resolve(__dirname, "..");
 const PORT = Number(process.env.LEGAL_WORKBENCH_PORT || 8787);
 const API_TOKEN = process.env.LEGAL_WORKBENCH_TOKEN || crypto.randomBytes(32).toString("hex");
+const SESSION_COOKIE_NAME = "legal_workbench_session";
+const BROWSER_SESSION_ID = crypto.randomBytes(24).toString("hex");
 
 const ALLOWED_ORIGINS = new Set([
   `http://127.0.0.1:${PORT}`,
@@ -30,13 +32,34 @@ function getCorsHeaders(req) {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, X-Legal-Workbench-Token",
+    "Access-Control-Allow-Credentials": "true",
     "Access-Control-Max-Age": "86400",
     "Vary": "Origin",
   };
 }
 
+function parseCookies(cookieHeader = "") {
+  return String(cookieHeader || "")
+    .split(";")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .reduce((acc, pair) => {
+      const index = pair.indexOf("=");
+      if (index < 0) return acc;
+      acc[pair.slice(0, index).trim()] = pair.slice(index + 1).trim();
+      return acc;
+    }, {});
+}
+
+function getSessionCookieHeader() {
+  return `${SESSION_COOKIE_NAME}=${BROWSER_SESSION_ID}; Path=/; HttpOnly; SameSite=Strict`;
+}
+
 function isAuthorizedApiRequest(req) {
-  return req.headers["x-legal-workbench-token"] === API_TOKEN;
+  const headers = req?.headers || {};
+  if (headers["x-legal-workbench-token"] === API_TOKEN) return true;
+  const cookies = parseCookies(headers.cookie || "");
+  return cookies[SESSION_COOKIE_NAME] === BROWSER_SESSION_ID;
 }
 
 function getApiToken() {
@@ -63,7 +86,7 @@ function sendJson(res, status, payload, req = null) {
   res.end(body);
 }
 
-function sendStaticFile(res, filePath) {
+function sendStaticFile(res, filePath, extraHeaders = {}) {
   const resolved = path.resolve(filePath);
   if (!resolved.startsWith(ROOT_DIR)) {
     sendJson(res, 403, { ok: false, error: "Forbidden" });
@@ -77,6 +100,7 @@ function sendStaticFile(res, filePath) {
     res.writeHead(200, {
       "Content-Type": STATIC_TYPES[path.extname(resolved).toLowerCase()] || "application/octet-stream",
       "Cache-Control": "no-store",
+      ...extraHeaders,
     });
     res.end(content);
   });
@@ -111,4 +135,5 @@ module.exports = {
   getCorsHeaders,
   isAuthorizedApiRequest,
   getApiToken,
+  getSessionCookieHeader,
 };

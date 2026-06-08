@@ -9,6 +9,7 @@ const path = require("path");
 const fs = require("fs");
 const os = require("os");
 const net = require("net");
+const crypto = require("crypto");
 const { configureRunnerProfile } = require("../scripts/portable-runtime");
 
 const isDev = !app.isPackaged;
@@ -100,6 +101,51 @@ let backendReady = false;
 let backendRestartCount = 0;
 let isQuitting = false;
 const MAX_BACKEND_RESTARTS = 5;
+const BACKEND_API_TOKEN = process.env.LEGAL_WORKBENCH_TOKEN || crypto.randomBytes(32).toString("hex");
+
+function applySelectedRuntimeProfile(env, backendRuntime, options = {}) {
+  const previousEnv = {
+    LEGAL_AI_PROVIDER: process.env.LEGAL_AI_PROVIDER,
+    LEGAL_SKILL_RUNNER_SCRIPT: process.env.LEGAL_SKILL_RUNNER_SCRIPT,
+    SUGGESTION_ACTION_RUNNER_SCRIPT: process.env.SUGGESTION_ACTION_RUNNER_SCRIPT,
+    CONTRACT_INTAKE_RUNNER_SCRIPT: process.env.CONTRACT_INTAKE_RUNNER_SCRIPT,
+    VISUAL_QA_RUNNER_SCRIPT: process.env.VISUAL_QA_RUNNER_SCRIPT,
+    LEGAL_SKILL_ALLOW_FALLBACK: process.env.LEGAL_SKILL_ALLOW_FALLBACK,
+    SUGGESTION_ACTION_ALLOW_FALLBACK: process.env.SUGGESTION_ACTION_ALLOW_FALLBACK,
+    CONTRACT_INTAKE_ALLOW_FALLBACK: process.env.CONTRACT_INTAKE_ALLOW_FALLBACK,
+    VISUAL_QA_ALLOW_FALLBACK: process.env.VISUAL_QA_ALLOW_FALLBACK,
+    LEGAL_WORKBENCH_RUNTIME_PROFILE: process.env.LEGAL_WORKBENCH_RUNTIME_PROFILE,
+    LEGAL_WORKBENCH_RUNTIME_MODE: process.env.LEGAL_WORKBENCH_RUNTIME_MODE,
+    LEGAL_WORKBENCH_RUNTIME_REASON: process.env.LEGAL_WORKBENCH_RUNTIME_REASON,
+    LEGAL_WORKBENCH_EFFECTIVE_PROVIDER: process.env.LEGAL_WORKBENCH_EFFECTIVE_PROVIDER,
+    CODEX_CLI_COMMAND: process.env.CODEX_CLI_COMMAND,
+  };
+  Object.assign(process.env, env);
+  if (options.deterministicSmoke) {
+    if (!process.env.LEGAL_AI_PROVIDER) process.env.LEGAL_AI_PROVIDER = "codex-cli";
+    if (!process.env.CODEX_CLI_COMMAND) process.env.CODEX_CLI_COMMAND = backendRuntime;
+  }
+  const selectedProfile = configureRunnerProfile("ai");
+  env.LEGAL_AI_PROVIDER = process.env.LEGAL_AI_PROVIDER;
+  env.LEGAL_SKILL_RUNNER_SCRIPT = process.env.LEGAL_SKILL_RUNNER_SCRIPT;
+  env.SUGGESTION_ACTION_RUNNER_SCRIPT = process.env.SUGGESTION_ACTION_RUNNER_SCRIPT;
+  env.CONTRACT_INTAKE_RUNNER_SCRIPT = process.env.CONTRACT_INTAKE_RUNNER_SCRIPT;
+  env.VISUAL_QA_RUNNER_SCRIPT = process.env.VISUAL_QA_RUNNER_SCRIPT;
+  env.LEGAL_SKILL_ALLOW_FALLBACK = process.env.LEGAL_SKILL_ALLOW_FALLBACK;
+  env.SUGGESTION_ACTION_ALLOW_FALLBACK = process.env.SUGGESTION_ACTION_ALLOW_FALLBACK;
+  env.CONTRACT_INTAKE_ALLOW_FALLBACK = process.env.CONTRACT_INTAKE_ALLOW_FALLBACK;
+  env.VISUAL_QA_ALLOW_FALLBACK = process.env.VISUAL_QA_ALLOW_FALLBACK;
+  env.LEGAL_WORKBENCH_RUNTIME_PROFILE = process.env.LEGAL_WORKBENCH_RUNTIME_PROFILE;
+  env.LEGAL_WORKBENCH_RUNTIME_MODE = process.env.LEGAL_WORKBENCH_RUNTIME_MODE;
+  env.LEGAL_WORKBENCH_RUNTIME_REASON = process.env.LEGAL_WORKBENCH_RUNTIME_REASON;
+  env.LEGAL_WORKBENCH_EFFECTIVE_PROVIDER = process.env.LEGAL_WORKBENCH_EFFECTIVE_PROVIDER;
+  env.CODEX_CLI_COMMAND = process.env.CODEX_CLI_COMMAND;
+  Object.entries(previousEnv).forEach(([key, value]) => {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  });
+  return selectedProfile;
+}
 
 /* ─────────────── Backend lifecycle ─────────────── */
 function startBackend() {
@@ -116,51 +162,17 @@ function startBackend() {
     ...process.env,
     LEGAL_WORKBENCH_PORT: String(BACKEND_PORT),
     LEGAL_WORKBENCH_DATA_DIR: WORKBENCH_ROOT,
+    LEGAL_WORKBENCH_TOKEN: BACKEND_API_TOKEN,
     NODE_ENV: isDev ? "development" : "production",
     ELECTRON_RUN_AS_NODE: "1",
   };
 
+  const selectedProfile = applySelectedRuntimeProfile(env, backendRuntime, {
+    deterministicSmoke: process.env.ELECTRON_SMOKE_TEST === "1",
+  });
   if (process.env.ELECTRON_SMOKE_TEST === "1") {
-    if (!env.LEGAL_SKILL_RUNNER_SCRIPT) env.LEGAL_SKILL_RUNNER_SCRIPT = path.join(__dirname, "..", "scripts", "codex-skill-runner.js");
-    if (!env.SUGGESTION_ACTION_RUNNER_SCRIPT) env.SUGGESTION_ACTION_RUNNER_SCRIPT = path.join(__dirname, "..", "scripts", "codex-suggestion-runner.js");
-    if (!env.CONTRACT_INTAKE_RUNNER_SCRIPT) env.CONTRACT_INTAKE_RUNNER_SCRIPT = path.join(__dirname, "..", "scripts", "codex-intake-runner.js");
-    if (!env.VISUAL_QA_RUNNER_SCRIPT) env.VISUAL_QA_RUNNER_SCRIPT = path.join(__dirname, "..", "scripts", "ai-visual-qa-runner.js");
-    console.log("[Electron] Smoke mode: using deterministic local runner mapping.");
+    console.log(`[Electron] Smoke mode runtime profile: ${selectedProfile} | ${env.LEGAL_WORKBENCH_RUNTIME_MODE || "unknown"} | ${env.LEGAL_WORKBENCH_EFFECTIVE_PROVIDER || "unknown"}`);
   } else {
-    const previousEnv = {
-      LEGAL_AI_PROVIDER: process.env.LEGAL_AI_PROVIDER,
-      LEGAL_SKILL_RUNNER_SCRIPT: process.env.LEGAL_SKILL_RUNNER_SCRIPT,
-      SUGGESTION_ACTION_RUNNER_SCRIPT: process.env.SUGGESTION_ACTION_RUNNER_SCRIPT,
-      CONTRACT_INTAKE_RUNNER_SCRIPT: process.env.CONTRACT_INTAKE_RUNNER_SCRIPT,
-      VISUAL_QA_RUNNER_SCRIPT: process.env.VISUAL_QA_RUNNER_SCRIPT,
-      LEGAL_SKILL_ALLOW_FALLBACK: process.env.LEGAL_SKILL_ALLOW_FALLBACK,
-      SUGGESTION_ACTION_ALLOW_FALLBACK: process.env.SUGGESTION_ACTION_ALLOW_FALLBACK,
-      CONTRACT_INTAKE_ALLOW_FALLBACK: process.env.CONTRACT_INTAKE_ALLOW_FALLBACK,
-      VISUAL_QA_ALLOW_FALLBACK: process.env.VISUAL_QA_ALLOW_FALLBACK,
-      LEGAL_WORKBENCH_RUNTIME_PROFILE: process.env.LEGAL_WORKBENCH_RUNTIME_PROFILE,
-      LEGAL_WORKBENCH_RUNTIME_MODE: process.env.LEGAL_WORKBENCH_RUNTIME_MODE,
-      LEGAL_WORKBENCH_RUNTIME_REASON: process.env.LEGAL_WORKBENCH_RUNTIME_REASON,
-      LEGAL_WORKBENCH_EFFECTIVE_PROVIDER: process.env.LEGAL_WORKBENCH_EFFECTIVE_PROVIDER,
-    };
-    Object.assign(process.env, env);
-    const selectedProfile = configureRunnerProfile("ai");
-    env.LEGAL_AI_PROVIDER = process.env.LEGAL_AI_PROVIDER;
-    env.LEGAL_SKILL_RUNNER_SCRIPT = process.env.LEGAL_SKILL_RUNNER_SCRIPT;
-    env.SUGGESTION_ACTION_RUNNER_SCRIPT = process.env.SUGGESTION_ACTION_RUNNER_SCRIPT;
-    env.CONTRACT_INTAKE_RUNNER_SCRIPT = process.env.CONTRACT_INTAKE_RUNNER_SCRIPT;
-    env.VISUAL_QA_RUNNER_SCRIPT = process.env.VISUAL_QA_RUNNER_SCRIPT;
-    env.LEGAL_SKILL_ALLOW_FALLBACK = process.env.LEGAL_SKILL_ALLOW_FALLBACK;
-    env.SUGGESTION_ACTION_ALLOW_FALLBACK = process.env.SUGGESTION_ACTION_ALLOW_FALLBACK;
-    env.CONTRACT_INTAKE_ALLOW_FALLBACK = process.env.CONTRACT_INTAKE_ALLOW_FALLBACK;
-    env.VISUAL_QA_ALLOW_FALLBACK = process.env.VISUAL_QA_ALLOW_FALLBACK;
-    env.LEGAL_WORKBENCH_RUNTIME_PROFILE = process.env.LEGAL_WORKBENCH_RUNTIME_PROFILE;
-    env.LEGAL_WORKBENCH_RUNTIME_MODE = process.env.LEGAL_WORKBENCH_RUNTIME_MODE;
-    env.LEGAL_WORKBENCH_RUNTIME_REASON = process.env.LEGAL_WORKBENCH_RUNTIME_REASON;
-    env.LEGAL_WORKBENCH_EFFECTIVE_PROVIDER = process.env.LEGAL_WORKBENCH_EFFECTIVE_PROVIDER;
-    Object.entries(previousEnv).forEach(([key, value]) => {
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
-    });
     console.log(`[Electron] Selected AI runtime profile: ${selectedProfile} | ${env.LEGAL_WORKBENCH_RUNTIME_MODE || "unknown"} | ${env.LEGAL_WORKBENCH_EFFECTIVE_PROVIDER || "unknown"}`);
   }
 
@@ -408,18 +420,7 @@ function updateTrayMenu() {
 }
 
 async function getApiToken() {
-  try {
-    const res = await fetch(`${BACKEND_URL()}/js/runtime-config.js`);
-    const text = await res.text();
-    const match = text.match(/window\.LEGAL_WORKBENCH_API_TOKEN\s*=\s*(.+?);/);
-    if (match) {
-      const token = JSON.parse(match[1]);
-      return token;
-    }
-  } catch (e) {
-    console.error("[Electron] Failed to get API token:", e);
-  }
-  return "";
+  return BACKEND_API_TOKEN;
 }
 
 /* ─────────────── IPC ─────────────── */

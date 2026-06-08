@@ -1,5 +1,6 @@
 const assert = require("assert");
 const { buildFallbackVisualQa, toIssue, getRunnerStatus } = require("../server/visual-qa-adapter");
+const { buildPrompt } = require("../scripts/ai-visual-qa-runner");
 
 function test(name, fn) {
   try {
@@ -78,6 +79,20 @@ test("runner status exposes timeout strategy", () => {
   const status = getRunnerStatus();
   assert.strictEqual(typeof status.timeoutMs, "number");
   assert.strictEqual(typeof status.preferFastFallback, "boolean");
+  assert.strictEqual(typeof status.lastRunState, "string");
+});
+
+test("visual QA prompt explicitly marks payload as a truncated snapshot", () => {
+  const prompt = buildPrompt({
+    contractText: "A".repeat(100),
+    clauses: [{ id: "c1", text: "hello" }],
+    findings: [],
+    actions: [],
+    insertedClauses: [],
+    localChecks: [],
+  });
+  assert.ok(prompt.includes("truncated Visual QA snapshot"));
+  assert.ok(prompt.includes("may be shortened or omitted for speed"));
 });
 
 console.log("\nAll pure tests completed.");

@@ -27,6 +27,7 @@ async function main() {
     assert.strictEqual(calls[0].input, "http://127.0.0.1:8787/api/db");
     assert.strictEqual(calls[0].init.headers.get("X-Legal-Workbench-Token"), "test-token");
     assert.strictEqual(calls[0].init.headers.get("Content-Type"), "application/json");
+    assert.strictEqual(calls[0].init.credentials, "include");
   }
 
   {
@@ -55,6 +56,7 @@ async function main() {
     await context.legalWorkbenchFetch("http://localhost:8787/api/contracts?x=1");
     assert.strictEqual(calls[0].input, "http://127.0.0.1:8791/api/contracts?x=1");
     assert.strictEqual(calls[0].init.headers.get("X-Legal-Workbench-Token"), "config-token");
+    assert.strictEqual(calls[0].init.credentials, "include");
   }
 
   console.log("3/3 passed");

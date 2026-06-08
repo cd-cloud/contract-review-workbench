@@ -25,10 +25,16 @@ function requestText(url, headers = {}) {
 }
 
 function parseRuntimeConfig(source) {
-  const token = source.match(/LEGAL_WORKBENCH_API_TOKEN\s*=\s*"([^"]+)"/)?.[1] ||
-    source.match(/"apiToken"\s*:\s*"([^"]+)"/)?.[1];
-  if (!token) throw new Error("runtime config did not include an API token");
-  return token;
+  return source.match(/LEGAL_WORKBENCH_BACKEND_ORIGIN\s*=\s*"([^"]+)"/)?.[1] ||
+    source.match(/"backendOrigin"\s*:\s*"([^"]+)"/)?.[1] ||
+    "";
+}
+
+function parseCookie(headers = {}) {
+  const setCookie = headers["set-cookie"];
+  if (!setCookie) return "";
+  const values = Array.isArray(setCookie) ? setCookie : [setCookie];
+  return values.map((entry) => String(entry).split(";")[0]).join("; ");
 }
 
 async function waitForHealth(port) {
@@ -37,11 +43,19 @@ async function waitForHealth(port) {
   let lastError = null;
   while (Date.now() < deadline) {
     try {
-      const config = await requestText(`${base}/js/runtime-config.js`);
-      const token = parseRuntimeConfig(config);
-      const healthText = await requestText(`${base}/api/health`, {
-        "X-Legal-Workbench-Token": token,
+      const runtimeResponse = await new Promise((resolve, reject) => {
+        const req = http.get(`${base}/js/runtime-config.js`, (res) => {
+          let body = "";
+          res.setEncoding("utf8");
+          res.on("data", (chunk) => { body += chunk; });
+          res.on("end", () => resolve({ body, headers: res.headers }));
+        });
+        req.on("error", reject);
+        req.setTimeout(5000, () => req.destroy(new Error(`${base}/js/runtime-config.js timed out`)));
       });
+      const origin = parseRuntimeConfig(runtimeResponse.body) || base;
+      const cookie = parseCookie(runtimeResponse.headers);
+      const healthText = await requestText(`${origin}/api/health`, cookie ? { Cookie: cookie } : {});
       const health = JSON.parse(healthText);
       if (!health.ok) throw new Error(`health check returned ok=false on ${base}`);
       return health;

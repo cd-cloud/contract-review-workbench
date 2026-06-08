@@ -11,6 +11,7 @@ const {
   getCorsHeaders,
   isAuthorizedApiRequest,
   getApiToken,
+  getSessionCookieHeader,
 } = require("../server/http-utils");
 
 let totalTests = 0;
@@ -118,6 +119,14 @@ console.log("\n=== test-http-utils.js ===\n");
 
   test("isAuthorizedApiRequest returns false with missing token", () => {
     assert.strictEqual(isAuthorizedApiRequest({ headers: {} }), false);
+  });
+
+  test("isAuthorizedApiRequest returns true with correct session cookie", () => {
+    assert.strictEqual(isAuthorizedApiRequest({ headers: { cookie: getSessionCookieHeader() } }), true);
+  });
+
+  test("isAuthorizedApiRequest returns false with wrong session cookie", () => {
+    assert.strictEqual(isAuthorizedApiRequest({ headers: { cookie: "legal_workbench_session=wrong" } }), false);
   });
 
   // --- sendJson ---

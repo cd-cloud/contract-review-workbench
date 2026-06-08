@@ -1,30 +1,37 @@
 const path = require("path");
-const { sendStaticFile, getApiToken } = require("../http-utils");
+const { sendStaticFile, getSessionCookieHeader } = require("../http-utils");
 
 const ROOT_DIR = path.resolve(__dirname, "../..");
 
-function sendRuntimeConfig(res) {
+function resolveBackendOrigin(req) {
   const port = Number(process.env.LEGAL_WORKBENCH_PORT || 8787);
+  const host = req?.headers?.host || `127.0.0.1:${port}`;
+  return `http://${host}`;
+}
+
+function sendRuntimeConfig(req, res) {
   const config = {
-    apiToken: getApiToken(),
-    backendOrigin: `http://127.0.0.1:${port}`,
+    backendOrigin: resolveBackendOrigin(req),
+    authMode: "cookie-session",
   };
   const body = [
     `window.LEGAL_WORKBENCH_CONFIG = ${JSON.stringify(config)};`,
-    `window.LEGAL_WORKBENCH_API_TOKEN = ${JSON.stringify(config.apiToken)};`,
     `window.LEGAL_WORKBENCH_BACKEND_ORIGIN = ${JSON.stringify(config.backendOrigin)};`,
     "",
   ].join("\n");
   res.writeHead(200, {
     "Content-Type": "text/javascript; charset=utf-8",
     "Cache-Control": "no-store",
+    "Set-Cookie": getSessionCookieHeader(),
   });
   res.end(body);
 }
 
 function handleStatic(req, res, url) {
   if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html")) {
-    sendStaticFile(res, path.join(ROOT_DIR, "index.html"));
+    sendStaticFile(res, path.join(ROOT_DIR, "index.html"), {
+      "Set-Cookie": getSessionCookieHeader(),
+    });
     return true;
   }
 
@@ -35,7 +42,7 @@ function handleStatic(req, res, url) {
   }
 
   if (req.method === "GET" && url.pathname === "/js/runtime-config.js") {
-    sendRuntimeConfig(res);
+    sendRuntimeConfig(req, res);
     return true;
   }
 

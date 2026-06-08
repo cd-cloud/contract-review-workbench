@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const { getProviderStatus } = require("../scripts/ai-runner-lib");
 const { parseRunnerJson } = require("./utils");
+const { createRunnerHealthTracker } = require("./runner-health");
 
 function getRunnerConfig() {
   const providerStatus = getProviderStatus();
@@ -13,7 +14,7 @@ function getRunnerConfig() {
   };
 }
 
-function getRunnerStatus() {
+function getStaticRunnerStatus() {
   const runnerConfig = getRunnerConfig();
   return {
     configured: Boolean(runnerConfig.runner),
@@ -21,22 +22,56 @@ function getRunnerStatus() {
     runnerScriptExists: Boolean(runnerConfig.runner && fs.existsSync(path.resolve(process.cwd(), runnerConfig.runner))),
     provider: runnerConfig.providerStatus.provider,
     mode: runnerConfig.providerStatus.mode,
+    providerMode: runnerConfig.providerStatus.mode,
+    model: runnerConfig.providerStatus.model || "",
     allowFallback: runnerConfig.allowFallback,
+    apiKeyConfigured: runnerConfig.providerStatus.apiKeyConfigured,
+    baseUrlConfigured: runnerConfig.providerStatus.baseUrlConfigured,
+    codexRunnable: runnerConfig.providerStatus.codexRunnable,
+    codexDetail: runnerConfig.providerStatus.codexDetail || "",
   };
+}
+
+const runnerHealth = createRunnerHealthTracker("Contract intake runner", getStaticRunnerStatus);
+
+function getRunnerStatus() {
+  return runnerHealth.getStatus();
 }
 
 function runContractIntake(request) {
   const runnerConfig = getRunnerConfig();
+  const startedAt = Date.now();
+  runnerHealth.startRun();
   return runConfiguredContractIntake(request, runnerConfig).catch((error) => {
     if (!runnerConfig.allowFallback) {
+      runnerHealth.markFailure({
+        error: error.message || String(error),
+        durationMs: Date.now() - startedAt,
+        source: path.basename(runnerConfig.runner || ""),
+      });
       throw new Error(`AI contract intake failed: ${error.message || String(error)}`);
     }
-    return {
+    const result = {
       ok: true,
       source: "backend-fallback",
       fallbackReason: error.message || String(error),
       intake: buildFallbackContractIntake(request),
     };
+    runnerHealth.markFallback({
+      error: error.message || String(error),
+      fallbackReason: result.fallbackReason,
+      durationMs: Date.now() - startedAt,
+      source: result.source,
+    });
+    return result;
+  }).then((result) => {
+    if (result?.source !== "backend-fallback") {
+      runnerHealth.markSuccess({
+        durationMs: Date.now() - startedAt,
+        source: result?.source || path.basename(runnerConfig.runner || ""),
+      });
+    }
+    return result;
   });
 }
 
@@ -128,4 +163,4 @@ function inferPurpose(contractType, text) {
   return `处理${contractType}相关交易安排`;
 }
 
-module.exports = { runContractIntake, getRunnerStatus, buildFallbackContractIntake };
+module.exports = { runContractIntake, getRunnerStatus, buildFallbackContractIntake, _resetRunnerStatusForTesting: () => runnerHealth.resetForTesting() };

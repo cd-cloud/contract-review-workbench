@@ -87,7 +87,9 @@ function migrate() {
       text TEXT,
       hierarchy_level TEXT,
       chapter_title TEXT,
-      created_at TEXT
+      created_at TEXT,
+      FOREIGN KEY (contract_id) REFERENCES contracts(id) ON DELETE CASCADE,
+      FOREIGN KEY (version_id) REFERENCES contract_versions(id) ON DELETE SET NULL
     );
 
     CREATE TABLE IF NOT EXISTS findings (
@@ -112,7 +114,9 @@ function migrate() {
       linked_clause_ids TEXT,
       quality_score INTEGER,
       status TEXT,
-      created_at TEXT
+      created_at TEXT,
+      FOREIGN KEY (contract_id) REFERENCES contracts(id) ON DELETE CASCADE,
+      FOREIGN KEY (clause_id) REFERENCES clauses(id) ON DELETE SET NULL
     );
 
     CREATE TABLE IF NOT EXISTS clause_actions (
@@ -122,7 +126,8 @@ function migrate() {
       action_type TEXT,
       text TEXT,
       comment TEXT,
-      created_at TEXT
+      created_at TEXT,
+      FOREIGN KEY (clause_id) REFERENCES clauses(id) ON DELETE CASCADE
     );
 
     CREATE TABLE IF NOT EXISTS counterparties (
@@ -154,7 +159,10 @@ function migrate() {
       reason TEXT,
       decision_maker TEXT,
       captured INTEGER,
-      created_at TEXT
+      created_at TEXT,
+      FOREIGN KEY (contract_id) REFERENCES contracts(id) ON DELETE CASCADE,
+      FOREIGN KEY (counterparty_id) REFERENCES counterparties(id) ON DELETE SET NULL,
+      FOREIGN KEY (clause_id) REFERENCES clauses(id) ON DELETE SET NULL
     );
 
     CREATE TABLE IF NOT EXISTS playbooks (
@@ -219,7 +227,9 @@ function migrate() {
       file_path TEXT NOT NULL,
       size INTEGER,
       file_type TEXT,
-      created_at TEXT
+      created_at TEXT,
+      FOREIGN KEY (contract_id) REFERENCES contracts(id) ON DELETE CASCADE,
+      FOREIGN KEY (version_id) REFERENCES contract_versions(id) ON DELETE SET NULL
     );
 
     CREATE INDEX IF NOT EXISTS idx_contract_versions_contract_id ON contract_versions(contract_id);
@@ -252,6 +262,25 @@ function parseJson(text, fallback = null) {
   try { return JSON.parse(text); } catch { return fallback; }
 }
 function nowIso() { return new Date().toISOString(); }
+function deepClone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+const AUTHORITATIVE_STATE_KEYS = new Set([
+  "contracts",
+  "updates",
+  "contractVersions",
+  "clauses",
+  "findings",
+  "reviewRecords",
+  "clauseActions",
+  "counterparties",
+  "negotiations",
+  "playbooks",
+  "riskRules",
+  "auditLogs",
+  "users",
+]);
 
 const emptyDb = {
   snapshot: null,
@@ -280,6 +309,279 @@ function ensureContractFolder(contract) {
   return folderPath;
 }
 
+function extractAuxState(snapshot = {}) {
+  const auxState = {};
+  for (const [key, value] of Object.entries(snapshot || {})) {
+    if (AUTHORITATIVE_STATE_KEYS.has(key)) continue;
+    if (value === undefined) continue;
+    auxState[key] = value;
+  }
+  return auxState;
+}
+
+function writeAuxState(auxState = {}) {
+  db.prepare(`
+    INSERT OR REPLACE INTO app_state (key, value) VALUES ('frontend_state', ?)
+  `).run(safeJson(auxState));
+}
+
+function readAuxState() {
+  const row = db.prepare("SELECT value FROM app_state WHERE key = 'frontend_state'").get();
+  return parseJson(row?.value, {}) || {};
+}
+
+function buildDbResponse(snapshot, savedAt = nowIso()) {
+  const snapshotCopy = deepClone(snapshot);
+  const clonedFields = deepClone({
+    contracts: snapshotCopy.contracts || [],
+    contractVersions: snapshotCopy.updates || snapshotCopy.contractVersions || [],
+    clauses: snapshotCopy.clauses || [],
+    clauseActions: flattenClauseActions(snapshotCopy.clauseActions || {}),
+    counterparties: snapshotCopy.counterparties || [],
+    playbooks: snapshotCopy.playbooks || [],
+    reviewRecords: snapshotCopy.findings || snapshotCopy.reviewRecords || [],
+    auditLogs: snapshotCopy.auditLogs || [],
+    users: snapshotCopy.users || emptyDb.users,
+  });
+  return {
+    snapshot: snapshotCopy,
+    ...clonedFields,
+    savedAt,
+  };
+}
+
+function assembleStructuredSnapshot() {
+  const contracts = db.prepare("SELECT * FROM contracts").all().map(row => ({
+    id: row.id, name: row.name, type: row.type, purpose: row.purpose,
+    businessBackground: row.business_background, status: row.status, ourRole: row.our_role,
+    counterpartyId: row.counterparty_id, counterpartyName: row.counterparty_name,
+    amount: row.amount, term: row.term, payment: row.payment,
+    governingLaw: row.governing_law, dispute: row.dispute,
+    text: row.text, cleanText: row.clean_text, redlineText: row.redline_text,
+    commentsText: row.comments_text, clauseSource: row.clause_source,
+    riskLevel: row.risk_level, aiTags: parseJson(row.ai_tags, []),
+    createdAt: row.created_at, updatedAt: row.updated_at,
+    folderPath: row.folder_path,
+  }));
+
+  const contractVersions = db.prepare("SELECT * FROM contract_versions").all().map(row => ({
+    id: row.id, contractId: row.contract_id, versionNumber: row.version_number,
+    type: row.type, note: row.note, materialKind: row.material_kind,
+    versionText: row.text, cleanText: row.clean_text, redlineText: row.redline_text,
+    commentsText: row.comments_text, acceptedText: row.accepted_text,
+    filePath: row.file_path, createdAt: row.created_at,
+    feedbackDeadline: row.feedback_deadline, status: row.status,
+  }));
+
+  const clauses = db.prepare("SELECT * FROM clauses").all().map(row => ({
+    id: row.id, contractId: row.contract_id, versionId: row.version_id,
+    stableId: row.stable_id, number: row.number, title: row.title,
+    type: row.clause_type, text: row.text,
+    hierarchyLevel: row.hierarchy_level, chapterTitle: row.chapter_title,
+    createdAt: row.created_at,
+  }));
+
+  const findings = db.prepare("SELECT * FROM findings").all().map(row => ({
+    id: row.id, contractId: row.contract_id, clauseId: row.clause_id,
+    severity: row.severity, actionType: row.action_type, title: row.title,
+    issue: row.issue, consequence: row.consequence,
+    proposedRevision: row.proposed_revision, targetText: row.target_text,
+    replacementText: row.replacement_text, commentText: row.comment_text,
+    negotiationPosition: row.negotiation_position, fallbackText: row.fallback_text,
+    businessDecision: row.business_decision, adoptionNote: row.adoption_note,
+    negotiationBottomLine: row.negotiation_bottom_line,
+    acceptableFallback: row.acceptable_fallback,
+    linkedClauseIds: parseJson(row.linked_clause_ids, []),
+    qualityScore: row.quality_score, status: row.status, createdAt: row.created_at,
+  }));
+
+  const clauseActions = db.prepare("SELECT * FROM clause_actions").all().reduce((acc, row) => {
+    acc[row.source_key] = acc[row.source_key] || {};
+    acc[row.source_key][row.clause_id] = {
+      actionType: row.action_type, text: row.text, comment: row.comment, createdAt: row.created_at,
+    };
+    return acc;
+  }, {});
+
+  const counterparties = db.prepare("SELECT * FROM counterparties").all().map(row => ({
+    id: row.id, name: row.name, type: row.type, industry: row.industry,
+    importance: row.importance, riskLevel: row.risk_level, notes: row.notes,
+    contact: row.contact, email: row.email, phone: row.phone,
+    riskProfile: parseJson(row.risk_profile, {}),
+    createdAt: row.created_at, updatedAt: row.updated_at,
+  }));
+
+  const negotiations = db.prepare("SELECT * FROM negotiations").all().map(row => ({
+    id: row.id, contractId: row.contract_id, counterpartyId: row.counterparty_id,
+    clauseId: row.clause_id, round: row.round,
+    counterpartyPosition: row.counterparty_position, ourResponse: row.our_response,
+    finalResult: row.final_result, concession: row.concession,
+    reason: row.reason, decisionMaker: row.decision_maker,
+    captured: Boolean(row.captured), createdAt: row.created_at,
+  }));
+
+  const playbooks = db.prepare("SELECT * FROM playbooks").all().map(row => ({
+    id: row.id, type: row.clause_type,
+    contractTypes: parseJson(row.contract_types, []), ourRole: row.our_role,
+    standard: row.standard, fallback: row.fallback, forbidden: row.forbidden,
+    negotiation: row.negotiation, keywords: parseJson(row.keywords, []),
+    confidenceScore: row.confidence_score,
+    sourceOccurrences: parseJson(row.source_occurrences, []),
+    variants: parseJson(row.variants, []),
+    knowledgeSignals: parseJson(row.knowledge_signals, []),
+    usageCount: row.usage_count,
+    createdAt: row.created_at, updatedAt: row.updated_at,
+  }));
+
+  const riskRules = db.prepare("SELECT * FROM risk_rules").all().map(row => ({
+    id: row.id, type: row.rule_type, title: row.title, severity: row.severity,
+    actionType: row.action_type, pattern: row.pattern, missingPattern: row.missing_pattern,
+    issue: row.issue, suggestion: row.suggestion, status: row.status,
+    source: row.source, createdAt: row.created_at,
+  }));
+
+  const auditLogs = db.prepare("SELECT * FROM audit_logs ORDER BY created_at DESC").all().map(row => ({
+    id: String(row.id), action: row.action, contractId: row.contract_id,
+    contractName: row.contract_name, clauseId: row.clause_id, userId: row.user_id,
+    details: parseJson(row.details, {}), createdAt: row.created_at,
+  }));
+
+  const users = db.prepare("SELECT * FROM users").all().map(row => ({
+    id: row.id, name: row.name, role: row.role,
+    permissions: parseJson(row.permissions, []),
+  }));
+
+  return {
+    contracts,
+    updates: contractVersions,
+    contractVersions,
+    clauses,
+    findings,
+    reviewRecords: findings,
+    clauseActions,
+    counterparties,
+    negotiations,
+    playbooks,
+    riskRules,
+    auditLogs,
+    users,
+  };
+}
+
+function mergeSnapshots(structuredSnapshot, auxState = {}) {
+  const merged = deepClone(auxState || {});
+  merged.contracts = structuredSnapshot.contracts || [];
+  merged.updates = structuredSnapshot.updates || structuredSnapshot.contractVersions || [];
+  merged.contractVersions = structuredSnapshot.updates || structuredSnapshot.contractVersions || [];
+  merged.clauses = structuredSnapshot.clauses || [];
+  merged.findings = structuredSnapshot.findings || structuredSnapshot.reviewRecords || [];
+  merged.reviewRecords = merged.findings;
+  merged.clauseActions = structuredSnapshot.clauseActions || {};
+  merged.counterparties = structuredSnapshot.counterparties || [];
+  merged.negotiations = structuredSnapshot.negotiations || [];
+  merged.playbooks = structuredSnapshot.playbooks || [];
+  merged.riskRules = structuredSnapshot.riskRules || [];
+  merged.auditLogs = structuredSnapshot.auditLogs || [];
+  merged.users = structuredSnapshot.users?.length ? structuredSnapshot.users : emptyDb.users;
+  merged.storageMeta = {
+    ...(auxState.storageMeta || {}),
+    source: "backend-primary",
+    persistedVia: "sqlite-structured",
+  };
+  return merged;
+}
+
+function normalizeSnapshotRelations(snapshot = {}) {
+  const normalized = deepClone(snapshot || {});
+  const contracts = (normalized.contracts || []).filter((contract) => contract?.id);
+  const contractIds = new Set(contracts.map((contract) => contract.id));
+
+  const updates = (normalized.updates || normalized.contractVersions || [])
+    .filter((version) => version?.id && contractIds.has(version.contractId));
+  const versionIds = new Set(updates.map((version) => version.id));
+
+  const counterparties = (normalized.counterparties || []).filter((counterparty) => counterparty?.id);
+  const counterpartyIds = new Set(counterparties.map((counterparty) => counterparty.id));
+
+  const clauses = (normalized.clauses || [])
+    .filter((clause) => clause?.id && contractIds.has(clause.contractId))
+    .map((clause) => ({
+      ...clause,
+      versionId: clause.versionId && versionIds.has(clause.versionId) ? clause.versionId : null,
+    }));
+  const clauseIds = new Set(clauses.map((clause) => clause.id));
+
+  const findings = (normalized.findings || normalized.reviewRecords || [])
+    .filter((finding) => finding?.id && contractIds.has(finding.contractId))
+    .map((finding) => ({
+      ...finding,
+      clauseId: finding.clauseId && clauseIds.has(finding.clauseId) ? finding.clauseId : null,
+      linkedClauseIds: (finding.linkedClauseIds || []).filter((clauseId) => clauseIds.has(clauseId)),
+    }));
+
+  const clauseActions = {};
+  for (const [sourceKey, clauseMap] of Object.entries(normalized.clauseActions || {})) {
+    const nextMap = {};
+    for (const [clauseId, action] of Object.entries(clauseMap || {})) {
+      if (!clauseIds.has(clauseId)) continue;
+      nextMap[clauseId] = action;
+    }
+    if (Object.keys(nextMap).length) clauseActions[sourceKey] = nextMap;
+  }
+
+  const negotiations = (normalized.negotiations || [])
+    .filter((negotiation) => negotiation?.id && contractIds.has(negotiation.contractId))
+    .map((negotiation) => ({
+      ...negotiation,
+      counterpartyId: negotiation.counterpartyId && counterpartyIds.has(negotiation.counterpartyId)
+        ? negotiation.counterpartyId
+        : null,
+      clauseId: negotiation.clauseId && clauseIds.has(negotiation.clauseId)
+        ? negotiation.clauseId
+        : null,
+    }));
+
+  normalized.contracts = contracts;
+  normalized.updates = updates;
+  normalized.contractVersions = updates;
+  normalized.counterparties = counterparties;
+  normalized.clauses = clauses;
+  normalized.findings = findings;
+  normalized.reviewRecords = findings;
+  normalized.clauseActions = clauseActions;
+  normalized.negotiations = negotiations;
+  normalized.users = normalized.users?.length ? normalized.users.filter((user) => user?.id) : emptyDb.users;
+  return normalized;
+}
+
+function pruneOrphanedFiles(validContractIds, validVersionIds) {
+  const rows = db.prepare("SELECT id, contract_id, version_id, file_path FROM files").all();
+  const remove = db.prepare("DELETE FROM files WHERE id = ?");
+  for (const row of rows) {
+    const invalidContract = !row.contract_id || !validContractIds.has(row.contract_id);
+    const invalidVersion = row.version_id && !validVersionIds.has(row.version_id);
+    if (!invalidContract && !invalidVersion) continue;
+    if (row.file_path && fs.existsSync(row.file_path)) {
+      fs.unlinkSync(row.file_path);
+    }
+    remove.run(row.id);
+  }
+}
+
+function removeArchivedFilesForSnapshot(validContractIds, validVersionIds) {
+  const rows = db.prepare("SELECT id, contract_id, version_id, file_path FROM files").all();
+  const remove = db.prepare("DELETE FROM files WHERE id = ?");
+  for (const row of rows) {
+    const invalidContract = !row.contract_id || !validContractIds.has(row.contract_id);
+    const invalidVersion = row.version_id && !validVersionIds.has(row.version_id);
+    if (!invalidContract && !invalidVersion) continue;
+    if (row.file_path && fs.existsSync(row.file_path)) {
+      fs.unlinkSync(row.file_path);
+    }
+    remove.run(row.id);
+  }
+}
+
 function getContractFolder(contractId) {
   const row = db.prepare("SELECT folder_path FROM contracts WHERE id = ?").get(contractId);
   if (row?.folder_path && fs.existsSync(row.folder_path)) return row.folder_path;
@@ -301,19 +603,25 @@ function getContractFolder(contractId) {
 /* ─────────────── replaceDb (full snapshot sync) ─────────────── */
 function replaceDb(snapshot) {
   const savedAt = nowIso();
-  const normalizedSnapshot = {
+  const normalizedSnapshot = normalizeSnapshotRelations({
     ...snapshot,
     storageMeta: {
       ...(snapshot.storageMeta || {}),
       backendSavedAt: savedAt,
       source: "backend-primary",
+      persistedVia: "sqlite-structured",
     },
-  };
+  });
+  const auxState = extractAuxState(normalizedSnapshot);
+  const validContractIds = new Set((normalizedSnapshot.contracts || []).map((contract) => contract.id));
+  const validVersionIds = new Set((normalizedSnapshot.updates || normalizedSnapshot.contractVersions || []).map((version) => version.id));
+
+  removeArchivedFilesForSnapshot(validContractIds, validVersionIds);
 
   const tx = db.transaction(() => {
-    // 1. Save full snapshot blob
-    db.prepare(`INSERT OR REPLACE INTO app_state (key, value) VALUES ('snapshot', ?)`)
-      .run(safeJson(normalizedSnapshot));
+    // 1. Persist non-authoritative frontend state separately from structured data.
+    writeAuxState(auxState);
+    db.prepare("DELETE FROM app_state WHERE key = 'snapshot'").run();
 
     // 2. Clear structured tables
     db.prepare("DELETE FROM contract_versions").run();
@@ -484,180 +792,18 @@ function replaceDb(snapshot) {
   });
 
   tx();
-  rebuildSearchIndex(normalizedSnapshot);
-
-  // Deep clone to avoid circular references when serialized to JSON
-  const returnSnapshot = JSON.parse(JSON.stringify(normalizedSnapshot));
-  // Clone again for top-level fields so they don't share references with snapshot internals
-  const clonedFields = JSON.parse(JSON.stringify({
-    contracts: returnSnapshot.contracts || [],
-    contractVersions: returnSnapshot.updates || returnSnapshot.contractVersions || [],
-    clauses: returnSnapshot.clauses || [],
-    clauseActions: flattenClauseActions(returnSnapshot.clauseActions || {}),
-    counterparties: returnSnapshot.counterparties || [],
-    playbooks: returnSnapshot.playbooks || [],
-    reviewRecords: returnSnapshot.findings || returnSnapshot.reviewRecords || [],
-    auditLogs: returnSnapshot.auditLogs || [],
-    users: returnSnapshot.users || emptyDb.users,
-  }));
-  return {
-    snapshot: returnSnapshot,
-    ...clonedFields,
-    savedAt,
-  };
+  pruneOrphanedFiles(validContractIds, validVersionIds);
+  const structuredSnapshot = assembleStructuredSnapshot();
+  rebuildSearchIndex(structuredSnapshot);
+  return buildDbResponse(mergeSnapshots(structuredSnapshot, auxState), savedAt);
 }
 
 /* ─────────────── readDb (assemble from structured tables) ─────────────── */
 function readDb() {
   const savedAt = nowIso();
-
-  // Try to read full snapshot blob first
-  const snapshotRow = db.prepare("SELECT value FROM app_state WHERE key = 'snapshot'").get();
-  if (snapshotRow?.value) {
-    const snapshot = parseJson(snapshotRow.value, null);
-    if (snapshot) {
-      // Deep clone to avoid circular references in JSON serialization
-      // (snapshot.contracts and top-level contracts point to the same array)
-      const snapshotCopy = JSON.parse(JSON.stringify(snapshot));
-      const clonedFields = JSON.parse(JSON.stringify({
-        contracts: snapshotCopy.contracts || [],
-        contractVersions: snapshotCopy.updates || snapshotCopy.contractVersions || [],
-        clauses: snapshotCopy.clauses || [],
-        clauseActions: flattenClauseActions(snapshotCopy.clauseActions || {}),
-        counterparties: snapshotCopy.counterparties || [],
-        playbooks: snapshotCopy.playbooks || [],
-        reviewRecords: snapshotCopy.findings || snapshotCopy.reviewRecords || [],
-        auditLogs: snapshotCopy.auditLogs || [],
-        users: snapshotCopy.users || emptyDb.users,
-      }));
-      return {
-        snapshot: snapshotCopy,
-        ...clonedFields,
-        savedAt,
-      };
-    }
-  }
-
-  // Fallback: assemble from structured tables
-  const contracts = db.prepare("SELECT * FROM contracts").all().map(row => ({
-    id: row.id, name: row.name, type: row.type, purpose: row.purpose,
-    businessBackground: row.business_background, status: row.status, ourRole: row.our_role,
-    counterpartyId: row.counterparty_id, counterpartyName: row.counterparty_name,
-    amount: row.amount, term: row.term, payment: row.payment,
-    governingLaw: row.governing_law, dispute: row.dispute,
-    text: row.text, cleanText: row.clean_text, redlineText: row.redline_text,
-    commentsText: row.comments_text, clauseSource: row.clause_source,
-    riskLevel: row.risk_level, aiTags: parseJson(row.ai_tags, []),
-    createdAt: row.created_at, updatedAt: row.updated_at,
-    folderPath: row.folder_path,
-  }));
-
-  const contractVersions = db.prepare("SELECT * FROM contract_versions").all().map(row => ({
-    id: row.id, contractId: row.contract_id, versionNumber: row.version_number,
-    type: row.type, note: row.note, materialKind: row.material_kind,
-    versionText: row.text, cleanText: row.clean_text, redlineText: row.redline_text,
-    commentsText: row.comments_text, acceptedText: row.accepted_text,
-    filePath: row.file_path, createdAt: row.created_at,
-    feedbackDeadline: row.feedback_deadline, status: row.status,
-  }));
-
-  const clauses = db.prepare("SELECT * FROM clauses").all().map(row => ({
-    id: row.id, contractId: row.contract_id, versionId: row.version_id,
-    stableId: row.stable_id, number: row.number, title: row.title,
-    type: row.clause_type, text: row.text,
-    hierarchyLevel: row.hierarchy_level, chapterTitle: row.chapter_title,
-    createdAt: row.created_at,
-  }));
-
-  const findings = db.prepare("SELECT * FROM findings").all().map(row => ({
-    id: row.id, contractId: row.contract_id, clauseId: row.clause_id,
-    severity: row.severity, actionType: row.action_type, title: row.title,
-    issue: row.issue, consequence: row.consequence,
-    proposedRevision: row.proposed_revision, targetText: row.target_text,
-    replacementText: row.replacement_text, commentText: row.comment_text,
-    negotiationPosition: row.negotiation_position, fallbackText: row.fallback_text,
-    businessDecision: row.business_decision, adoptionNote: row.adoption_note,
-    negotiationBottomLine: row.negotiation_bottom_line,
-    acceptableFallback: row.acceptable_fallback,
-    linkedClauseIds: parseJson(row.linked_clause_ids, []),
-    qualityScore: row.quality_score, status: row.status, createdAt: row.created_at,
-  }));
-
-  const clauseActions = db.prepare("SELECT * FROM clause_actions").all().reduce((acc, row) => {
-    acc[row.source_key] = acc[row.source_key] || {};
-    acc[row.source_key][row.clause_id] = {
-      actionType: row.action_type, text: row.text, comment: row.comment, createdAt: row.created_at,
-    };
-    return acc;
-  }, {});
-
-  const counterparties = db.prepare("SELECT * FROM counterparties").all().map(row => ({
-    id: row.id, name: row.name, type: row.type, industry: row.industry,
-    importance: row.importance, riskLevel: row.risk_level, notes: row.notes,
-    contact: row.contact, email: row.email, phone: row.phone,
-    riskProfile: parseJson(row.risk_profile, {}),
-    createdAt: row.created_at, updatedAt: row.updated_at,
-  }));
-
-  const negotiations = db.prepare("SELECT * FROM negotiations").all().map(row => ({
-    id: row.id, contractId: row.contract_id, counterpartyId: row.counterparty_id,
-    clauseId: row.clause_id, round: row.round,
-    counterpartyPosition: row.counterparty_position, ourResponse: row.our_response,
-    finalResult: row.final_result, concession: row.concession,
-    reason: row.reason, decisionMaker: row.decision_maker,
-    captured: Boolean(row.captured), createdAt: row.created_at,
-  }));
-
-  const playbooks = db.prepare("SELECT * FROM playbooks").all().map(row => ({
-    id: row.id, type: row.clause_type,
-    contractTypes: parseJson(row.contract_types, []), ourRole: row.our_role,
-    standard: row.standard, fallback: row.fallback, forbidden: row.forbidden,
-    negotiation: row.negotiation, keywords: parseJson(row.keywords, []),
-    confidenceScore: row.confidence_score,
-    sourceOccurrences: parseJson(row.source_occurrences, []),
-    variants: parseJson(row.variants, []),
-    knowledgeSignals: parseJson(row.knowledge_signals, []),
-    usageCount: row.usage_count,
-    createdAt: row.created_at, updatedAt: row.updated_at,
-  }));
-
-  const riskRules = db.prepare("SELECT * FROM risk_rules").all().map(row => ({
-    id: row.id, type: row.rule_type, title: row.title, severity: row.severity,
-    actionType: row.action_type, pattern: row.pattern, missingPattern: row.missing_pattern,
-    issue: row.issue, suggestion: row.suggestion, status: row.status,
-    source: row.source, createdAt: row.created_at,
-  }));
-
-  const auditLogs = db.prepare("SELECT * FROM audit_logs ORDER BY created_at DESC").all().map(row => ({
-    id: String(row.id), action: row.action, contractId: row.contract_id,
-    contractName: row.contract_name, clauseId: row.clause_id, userId: row.user_id,
-    details: parseJson(row.details, {}), createdAt: row.created_at,
-  }));
-
-  const users = db.prepare("SELECT * FROM users").all().map(row => ({
-    id: row.id, name: row.name, role: row.role,
-    permissions: parseJson(row.permissions, []),
-  }));
-
-  const snapshot = {
-    contracts, updates: contractVersions, clauses, findings,
-    clauseActions, counterparties, negotiations, playbooks, riskRules,
-    auditLogs, users,
-  };
-
-  return {
-    snapshot,
-    contracts,
-    contractVersions,
-    clauses,
-    clauseActions: flattenClauseActions(clauseActions),
-    counterparties,
-    playbooks,
-    reviewRecords: findings,
-    auditLogs,
-    users,
-    savedAt,
-  };
+  const structuredSnapshot = assembleStructuredSnapshot();
+  const auxState = readAuxState();
+  return buildDbResponse(mergeSnapshots(structuredSnapshot, auxState), savedAt);
 }
 
 /* ─────────────── writeDb (legacy alias) ─────────────── */
@@ -699,10 +845,13 @@ function saveContractFile(contractId, versionId, buffer, originalName, mimeType,
   const ext = path.extname(originalName) || ".bin";
   const base = path.basename(originalName, ext).replace(/[\\/:*?"<>|]/g, "_").slice(0, 80);
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  const fileName = fileType === "export"
-    ? `${timestamp}-${base}${ext}`
-    : `${base}${ext}`;
-  const filePath = path.join(destDir, fileName);
+  const uniqueSuffix = Math.random().toString(16).slice(2, 8);
+  let fileName = `${timestamp}-${base}-${uniqueSuffix}${ext}`;
+  let filePath = path.join(destDir, fileName);
+  while (fs.existsSync(filePath)) {
+    fileName = `${timestamp}-${base}-${Math.random().toString(16).slice(2, 8)}${ext}`;
+    filePath = path.join(destDir, fileName);
+  }
 
   fs.writeFileSync(filePath, buffer);
 
@@ -754,19 +903,33 @@ function listAllContractsWithPaths() {
 }
 
 /* ─────────────── Auto-backup ─────────────── */
+function copyDirectoryIfExists(sourceDir, targetDir) {
+  if (!fs.existsSync(sourceDir)) return;
+  fs.cpSync(sourceDir, targetDir, { recursive: true });
+}
+
 async function runAutoBackup() {
   try {
     const backupDir = path.join(WORKBENCH_ROOT, "backups");
     fs.mkdirSync(backupDir, { recursive: true });
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-    const backupPath = path.join(backupDir, `auto-${timestamp}.sqlite`);
-    await db.backup(backupPath);
+    const backupPath = path.join(backupDir, `auto-${timestamp}`);
+    const backupDbPath = path.join(backupPath, "workbench.sqlite");
+    fs.mkdirSync(backupPath, { recursive: true });
+    await db.backup(backupDbPath);
+    copyDirectoryIfExists(path.join(WORKBENCH_ROOT, "contracts"), path.join(backupPath, "contracts"));
+    copyDirectoryIfExists(FILE_DIR, path.join(backupPath, "files"));
+    fs.writeFileSync(path.join(backupPath, "manifest.json"), safeJson({
+      createdAt: nowIso(),
+      dbFile: "workbench.sqlite",
+      included: ["contracts", "files"],
+    }));
     // Keep last 20 backups
     const files = fs.readdirSync(backupDir)
-      .filter(f => f.startsWith("auto-") && f.endsWith(".sqlite"))
+      .filter(f => f.startsWith("auto-"))
       .map(f => ({ name: f, time: fs.statSync(path.join(backupDir, f)).mtime.getTime() }))
       .sort((a, b) => b.time - a.time);
-    files.slice(20).forEach(f => fs.unlinkSync(path.join(backupDir, f.name)));
+    files.slice(20).forEach(f => fs.rmSync(path.join(backupDir, f.name), { recursive: true, force: true }));
     return backupPath;
   } catch (err) {
     console.error("[store-sqlite] Backup failed:", err.message);

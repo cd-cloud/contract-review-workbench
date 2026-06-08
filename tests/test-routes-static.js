@@ -4,8 +4,6 @@
 
 const assert = require("assert");
 const { handleStatic } = require("../server/routes/static");
-const { getApiToken } = require("../server/http-utils");
-
 let totalTests = 0;
 let passedTests = 0;
 let failedTests = [];
@@ -78,17 +76,16 @@ function wait(ms) {
     assert.strictEqual(res.status, 204);
   });
 
-  test("handleStatic serves runtime-config.js with dynamic token", () => {
+  test("handleStatic serves runtime-config.js without exposing token", () => {
     const res = mockRes();
-    const handled = handleStatic({ method: "GET" }, res, makeUrl("/js/runtime-config.js"));
+    const handled = handleStatic({ method: "GET", headers: { host: "127.0.0.1:8787" } }, res, makeUrl("/js/runtime-config.js"));
     assert.strictEqual(handled, true);
     assert.strictEqual(res.status, 200);
     assert.ok(res.body.includes("LEGAL_WORKBENCH_CONFIG"));
-    assert.ok(res.body.includes("LEGAL_WORKBENCH_API_TOKEN"));
     assert.ok(res.body.includes("LEGAL_WORKBENCH_BACKEND_ORIGIN"));
     assert.ok(res.body.includes("http://127.0.0.1:8787"));
-    const token = getApiToken();
-    assert.ok(res.body.includes(token), "runtime-config should include the actual API token");
+    assert.ok(!res.body.includes("LEGAL_WORKBENCH_API_TOKEN"));
+    assert.ok(res.headers["Set-Cookie"]);
   });
 
   test("handleStatic serves /app.js", async () => {

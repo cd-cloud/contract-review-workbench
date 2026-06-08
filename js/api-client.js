@@ -26,5 +26,9 @@ function legalWorkbenchFetch(input, init = {}) {
   const headers = new Headers(init.headers || {});
   const token = window.LEGAL_WORKBENCH_API_TOKEN || window.LEGAL_WORKBENCH_CONFIG?.apiToken;
   if (token) headers.set("X-Legal-Workbench-Token", token);
-  return fetch(legalWorkbenchApiUrl(input), { ...init, headers });
+  return fetch(legalWorkbenchApiUrl(input), {
+    ...init,
+    credentials: init.credentials || "include",
+    headers,
+  });
 }

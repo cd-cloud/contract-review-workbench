@@ -835,6 +835,14 @@ function buildVisualQaRequest(contract, material, clauses, reason = "review-stat
     .slice(0, VISUAL_QA_MAX_LOCAL_CHECKS);
   return {
     reason,
+    inputScope: {
+      kind: "truncated-visual-qa-snapshot",
+      contractTextTruncated: String(material.text || "").length > VISUAL_QA_CONTRACT_TEXT_LIMIT,
+      clauseTextLimit: VISUAL_QA_CLAUSE_TEXT_LIMIT,
+      findingTextLimit: VISUAL_QA_FINDING_TEXT_LIMIT,
+      maxClauses: VISUAL_QA_MAX_CLAUSES,
+      maxFindings: VISUAL_QA_MAX_FINDINGS,
+    },
     contract: {
       id: contract.id,
       name: contract.name,

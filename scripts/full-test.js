@@ -9,7 +9,7 @@ const path = require("path");
 
 const PORT = process.env.LEGAL_WORKBENCH_PORT || 8787;
 const BASE = `http://127.0.0.1:${PORT}`;
-let TOKEN = "";
+let AUTH_HEADERS = {};
 
 const tests = [];
 const failures = [];
@@ -25,12 +25,14 @@ async function runTests() {
 
   // Get token first
   try {
-    const config = await fetchText(`${BASE}/js/runtime-config.js`);
-    const match = config.match(/window\.LEGAL_WORKBENCH_API_TOKEN\s*=\s*"([^"]+)"/);
-    TOKEN = match ? match[1] : "";
-    console.log(`🔑 API Token acquired: ${TOKEN.slice(0, 16)}...\n`);
+    const runtime = await fetchResponse(`${BASE}/js/runtime-config.js`);
+    const cookies = runtime.headers["set-cookie"];
+    const items = Array.isArray(cookies) ? cookies : cookies ? [cookies] : [];
+    const sessionCookie = items.map((entry) => String(entry).split(";")[0]).join("; ");
+    AUTH_HEADERS = sessionCookie ? { Cookie: sessionCookie } : {};
+    console.log("🔑 Session cookie acquired.\n");
   } catch (e) {
-    console.error("❌ Failed to get API token:", e.message);
+    console.error("❌ Failed to get session cookie:", e.message);
     process.exit(1);
   }
 
@@ -55,6 +57,19 @@ async function runTests() {
 }
 
 /* ─────────────── HTTP helpers ─────────────── */
+function fetchResponse(url, opts = {}) {
+  return new Promise((resolve, reject) => {
+    const req = http.request(url, { method: opts.method || "GET", headers: { ...(opts.headers || {}) } }, (res) => {
+      let data = "";
+      res.on("data", (c) => (data += c));
+      res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, body: data }));
+    });
+    req.on("error", reject);
+    if (opts.body) req.write(typeof opts.body === "string" ? opts.body : JSON.stringify(opts.body));
+    req.end();
+  });
+}
+
 function fetchJson(url, opts = {}) {
   return new Promise((resolve, reject) => {
     const timeoutMs = opts.timeout || 30000;
@@ -62,7 +77,7 @@ function fetchJson(url, opts = {}) {
       req.destroy();
       reject(new Error("timeout"));
     }, timeoutMs);
-    const req = http.request(url, { method: opts.method || "GET", headers: { "X-Legal-Workbench-Token": TOKEN, "Content-Type": "application/json", ...(opts.headers || {}) } }, (res) => {
+    const req = http.request(url, { method: opts.method || "GET", headers: { ...AUTH_HEADERS, "Content-Type": "application/json", ...(opts.headers || {}) } }, (res) => {
       let data = "";
       res.on("data", (c) => (data += c));
       res.on("end", () => {
@@ -99,7 +114,7 @@ function fetchText(url) {
 
 function fetchBuffer(url, opts = {}) {
   return new Promise((resolve, reject) => {
-    const req = http.request(url, { method: opts.method || "GET", headers: { "X-Legal-Workbench-Token": TOKEN, "Content-Type": "application/json", ...(opts.headers || {}) } }, (res) => {
+    const req = http.request(url, { method: opts.method || "GET", headers: { ...AUTH_HEADERS, "Content-Type": "application/json", ...(opts.headers || {}) } }, (res) => {
       const chunks = [];
       res.on("data", (c) => chunks.push(c));
       res.on("end", () => resolve({ status: res.statusCode, buffer: Buffer.concat(chunks), headers: res.headers }));

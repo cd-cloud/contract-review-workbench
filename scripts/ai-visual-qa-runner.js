@@ -40,6 +40,9 @@ function buildPrompt(payload) {
     "3. autoFixes 只能列可安全自动修复的 UI/结构事项，例如重定位建议、去重、隐藏重复标题、建议展示去编号；不要自动修改法律内容。",
     "",
     "工作台当前状态 JSON：",
+    "Input note: the JSON below is a truncated Visual QA snapshot optimized for fast checking, not the full contract package.",
+    "Some contractText, clause text, findings, actions, and inserted clauses may be shortened or omitted for speed.",
+    "Do not assume a missing detail means the original document lacked it. Judge only issues supported by this snapshot.",
     JSON.stringify(compactRequest, null, 2),
   ].join("\n");
 }
@@ -55,7 +58,11 @@ async function main() {
   printJson(result);
 }
 
-main().catch((error) => {
-  process.stderr.write(error.stack || String(error));
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((error) => {
+    process.stderr.write(error.stack || String(error));
+    process.exit(1);
+  });
+}
+
+module.exports = { buildPrompt };

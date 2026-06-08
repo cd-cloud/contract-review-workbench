@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const { getProviderStatus } = require("../scripts/ai-runner-lib");
 const { parseRunnerJson } = require("./utils");
+const { createRunnerHealthTracker } = require("./runner-health");
 
 function getRunnerConfig() {
   const providerStatus = getProviderStatus();
@@ -16,7 +17,7 @@ function getRunnerConfig() {
   };
 }
 
-function getRunnerStatus() {
+function getStaticRunnerStatus() {
   const runnerConfig = getRunnerConfig();
   return {
     configured: Boolean(runnerConfig.runner),
@@ -25,6 +26,11 @@ function getRunnerStatus() {
     allowFallback: runnerConfig.allowFallback,
     provider: runnerConfig.providerStatus.provider,
     providerMode: runnerConfig.providerStatus.mode || "",
+    model: runnerConfig.providerStatus.model || "",
+    apiKeyConfigured: runnerConfig.providerStatus.apiKeyConfigured,
+    baseUrlConfigured: runnerConfig.providerStatus.baseUrlConfigured,
+    codexRunnable: runnerConfig.providerStatus.codexRunnable,
+    codexDetail: runnerConfig.providerStatus.codexDetail || "",
     codexConfiguredProvider: runnerConfig.providerStatus.codexConfiguredProvider || "",
     codexUsesCustomProvider: Boolean(runnerConfig.providerStatus.codexUsesCustomProvider),
     providerBaseUrl: runnerConfig.providerStatus.codexProviderBaseUrl || "",
@@ -33,18 +39,46 @@ function getRunnerStatus() {
   };
 }
 
+const runnerHealth = createRunnerHealthTracker("Visual QA runner", getStaticRunnerStatus);
+
+function getRunnerStatus() {
+  return runnerHealth.getStatus();
+}
+
 function runVisualQa(request) {
   const runnerConfig = getRunnerConfig();
+  const startedAt = Date.now();
+  runnerHealth.startRun();
   return runConfiguredVisualQa(request, runnerConfig).catch((error) => {
     if (!runnerConfig.allowFallback) {
+      runnerHealth.markFailure({
+        error: error.message || String(error),
+        durationMs: Date.now() - startedAt,
+        source: path.basename(runnerConfig.runner || ""),
+      });
       throw new Error(`Visual QA failed: ${error.message || String(error)}`);
     }
-    return {
+    const result = {
       ok: true,
       source: "visual-qa-fallback",
       fallbackReason: error.message || String(error),
       ...buildFallbackVisualQa(request),
     };
+    runnerHealth.markFallback({
+      error: error.message || String(error),
+      fallbackReason: result.fallbackReason,
+      durationMs: Date.now() - startedAt,
+      source: result.source,
+    });
+    return result;
+  }).then((result) => {
+    if (result?.source !== "visual-qa-fallback") {
+      runnerHealth.markSuccess({
+        durationMs: Date.now() - startedAt,
+        source: result?.source || path.basename(runnerConfig.runner || ""),
+      });
+    }
+    return result;
   });
 }
 
@@ -104,4 +138,4 @@ function toIssue(item = {}) {
   };
 }
 
-module.exports = { runVisualQa, getRunnerStatus, buildFallbackVisualQa, toIssue };
+module.exports = { runVisualQa, getRunnerStatus, buildFallbackVisualQa, toIssue, _resetRunnerStatusForTesting: () => runnerHealth.resetForTesting() };
