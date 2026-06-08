@@ -1,8 +1,8 @@
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { appRoot, buildCodexLaunch } = require("./ai-runner-lib");
-const ROOT = appRoot();
+const { appRoot, buildCodexLaunch, getCodexCommand } = require("./ai-runner-lib");
+const ROOT = appRoot;
 
 function readStdin() {
   return new Promise((resolve, reject) => {
@@ -54,7 +54,7 @@ function runCodexExec(prompt, outputFile) {
     outputFile,
     "-",
   ];
-  const launch = buildCodexLaunch(process.env.CODEX_CLI_COMMAND || "codex", args);
+  const launch = buildCodexLaunch(getCodexCommand(), args);
   return new Promise((resolve, reject) => {
     const child = require("child_process").spawn(launch.command, launch.args, {
       cwd: ROOT,
