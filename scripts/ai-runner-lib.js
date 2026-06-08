@@ -4,6 +4,7 @@ const os = require("os");
 const path = require("path");
 
 const appRoot = path.resolve(__dirname, "..");
+const CODEX_HOME = process.env.CODEX_HOME || path.join(process.env.USERPROFILE || process.env.HOME || "", ".codex");
 
 function readStdinJson() {
   return new Promise((resolve, reject) => {
@@ -45,6 +46,21 @@ function getExecutionContext() {
     internalOriginator,
     sandboxLikely: isCodexShell || sandboxNetworkDisabled,
   };
+}
+
+function readCodexConfig() {
+  try {
+    const configPath = path.join(CODEX_HOME, "config.toml");
+    if (!fs.existsSync(configPath)) return { configPath, provider: "", baseUrl: "", wireApi: "" };
+    const source = fs.readFileSync(configPath, "utf8");
+    const provider = source.match(/^\s*model_provider\s*=\s*"([^"]+)"/m)?.[1] || "";
+    const providerSection = provider ? source.match(new RegExp(`\\[model_providers\\.${provider.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&")}\\]([\\s\\S]*?)(?:\\n\\[|$)`))?.[1] || "" : "";
+    const baseUrl = providerSection.match(/^\s*base_url\s*=\s*"([^"]+)"/m)?.[1] || "";
+    const wireApi = providerSection.match(/^\s*wire_api\s*=\s*"([^"]+)"/m)?.[1] || "";
+    return { configPath, provider, baseUrl, wireApi };
+  } catch (error) {
+    return { configPath: path.join(CODEX_HOME, "config.toml"), provider: "", baseUrl: "", wireApi: "", error: error.message || String(error) };
+  }
 }
 
 function getPreferredCodexCommand() {
@@ -222,6 +238,9 @@ function getProviderStatus() {
   const provider = getProvider();
   const apiKey = getApiKey();
   const codex = resolveCodexCommandStatus();
+  const codexConfig = readCodexConfig();
+  const codexConfiguredProvider = String(process.env.CODEX_CONFIG_MODEL_PROVIDER || process.env.CODEX_MODEL_PROVIDER || "").trim();
+  const effectiveCodexProvider = codexConfiguredProvider || codexConfig.provider || "";
   let baseUrl = "";
   try {
     baseUrl = provider === "codex" || provider === "codex-cli" ? "" : resolveChatCompletionsUrl();
@@ -240,6 +259,11 @@ function getProviderStatus() {
     codexDetail: codex.detail || "",
     codexDiagnosis: codex.diagnosis || "",
     codexConfidence: codex.confidence || "high",
+    codexConfiguredProvider: effectiveCodexProvider,
+    codexUsesCustomProvider: /^custom$/i.test(effectiveCodexProvider),
+    codexProviderBaseUrl: codexConfig.baseUrl || "",
+    codexProviderWireApi: codexConfig.wireApi || "",
+    codexConfigPath: codexConfig.configPath || "",
     executionContext: getExecutionContext(),
   };
 }

@@ -728,10 +728,111 @@ function getStoredSkillResult(contractId) {
   return state.legalSkillResults?.[contractId]?.response || null;
 }
 
+const VISUAL_QA_CONTRACT_TEXT_LIMIT = 12000;
+const VISUAL_QA_CLAUSE_TEXT_LIMIT = 320;
+const VISUAL_QA_FINDING_TEXT_LIMIT = 220;
+const VISUAL_QA_MAX_CLAUSES = 120;
+const VISUAL_QA_MAX_FINDINGS = 80;
+const VISUAL_QA_MAX_ACTIONS = 80;
+const VISUAL_QA_MAX_INSERTED_CLAUSES = 40;
+const VISUAL_QA_MAX_LOCAL_CHECKS = 40;
+
+function compactVisualQaText(text, maxLength = VISUAL_QA_CLAUSE_TEXT_LIMIT) {
+  const value = String(text || "").trim();
+  if (!value) return "";
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, maxLength)}...`;
+}
+
+function visualQaSeverityRank(severity) {
+  return severity === "high" ? 3 : severity === "medium" ? 2 : 1;
+}
+
+function summarizeVisualQaPayload(clauses, findings, actions, insertedClauses, localChecks, materialText) {
+  return {
+    contractTextLength: String(materialText || "").length,
+    clauses: clauses.length,
+    findings: findings.length,
+    highFindings: findings.filter((item) => item.severity === "high").length,
+    changedClauses: actions.filter((item) => item.edited || item.deleted || item.commented).length,
+    insertedClauses: insertedClauses.length,
+    localChecks: localChecks.length,
+    highLocalChecks: localChecks.filter((item) => item.severity === "high").length,
+  };
+}
+
 function buildVisualQaRequest(contract, material, clauses, reason = "review-state") {
   const actions = getClauseActions(material.sourceKey);
   const findings = getAnalysisFindings(contract, clauses);
   const localChecks = buildAutomaticReviewChecks(contract, material, clauses);
+  const trimmedClauses = clauses
+    .map((clause) => ({
+      id: clause.id,
+      stableId: clause.stableId,
+      number: clause.number,
+      originalNumber: clause.originalNumber,
+      title: clause.title,
+      text: compactVisualQaText(clause.text, VISUAL_QA_CLAUSE_TEXT_LIMIT),
+      type: clause.type,
+      chapterTitle: clause.chapterTitle || "",
+      hierarchyLevel: clause.hierarchyLevel || "article",
+      inserted: Boolean(clause.inserted),
+      unnumbered: Boolean(clause.unnumbered),
+      textTruncated: String(clause.text || "").length > VISUAL_QA_CLAUSE_TEXT_LIMIT,
+    }))
+    .slice(0, VISUAL_QA_MAX_CLAUSES);
+  const prioritizedFindings = findings
+    .map((finding) => ({
+      id: finding.id,
+      clauseId: finding.clauseId || "",
+      title: compactVisualQaText(finding.title, 120),
+      severity: finding.severity,
+      actionType: finding.actionType || finding.action || "",
+      issue: compactVisualQaText(finding.issue || "", VISUAL_QA_FINDING_TEXT_LIMIT),
+      fix: compactVisualQaText(finding.fix || finding.proposedClauseText || "", VISUAL_QA_FINDING_TEXT_LIMIT),
+      linkedClauseIds: (finding.linkedClauseIds || []).slice(0, 8),
+      targetInsertPosition: compactVisualQaText(finding.targetInsertPosition || "", 120),
+      originalClauseId: finding.originalClauseId || "",
+      placementMethod: finding.placementMethod || "",
+      placementConfidence: finding.placementConfidence ?? null,
+      placementWarning: compactVisualQaText(finding.placementWarning || "", 140),
+      routedFromContractRisk: Boolean(finding.routedFromContractRisk),
+      needsAttentionScore:
+        visualQaSeverityRank(finding.severity) * 100 +
+        (finding.placementWarning ? 40 : 0) +
+        (finding.actionType === "add_clause" ? 20 : 0) +
+        Math.round((Number(finding.placementConfidence) || 0) * -10),
+    }))
+    .sort((a, b) => b.needsAttentionScore - a.needsAttentionScore)
+    .slice(0, VISUAL_QA_MAX_FINDINGS)
+    .map(({ needsAttentionScore, ...finding }) => finding);
+  const relevantActions = Object.entries(actions)
+    .map(([clauseId, action]) => ({
+      clauseId,
+      edited: Boolean(action.editedText),
+      deleted: Boolean(action.deleted),
+      commented: Boolean(action.comment),
+      riskDecision: action.riskDecision || "",
+      hasAnalysisRequest: Boolean(action.analysisRequest),
+    }))
+    .filter((item) => item.edited || item.deleted || item.commented || item.riskDecision || item.hasAnalysisRequest)
+    .slice(0, VISUAL_QA_MAX_ACTIONS);
+  const insertedClauses = getInsertedClauses(material.sourceKey)
+    .map((item) => ({
+      id: item.id,
+      targetClauseId: item.targetClauseId || "",
+      targetStableId: item.targetStableId || "",
+      position: item.position || "",
+      title: compactVisualQaText(item.title || "", 120),
+      type: item.type || "",
+      text: compactVisualQaText(item.text || "", VISUAL_QA_CLAUSE_TEXT_LIMIT),
+      textTruncated: String(item.text || "").length > VISUAL_QA_CLAUSE_TEXT_LIMIT,
+    }))
+    .slice(0, VISUAL_QA_MAX_INSERTED_CLAUSES);
+  const prioritizedLocalChecks = localChecks
+    .slice()
+    .sort((a, b) => visualQaSeverityRank(b.severity) - visualQaSeverityRank(a.severity))
+    .slice(0, VISUAL_QA_MAX_LOCAL_CHECKS);
   return {
     reason,
     contract: {
@@ -748,53 +849,14 @@ function buildVisualQaRequest(contract, material, clauses, reason = "review-stat
       title: material.title,
       mode: material.mode,
     },
-    contractText: material.text,
-    clauses: clauses.map((clause) => ({
-      id: clause.id,
-      stableId: clause.stableId,
-      number: clause.number,
-      originalNumber: clause.originalNumber,
-      title: clause.title,
-      text: clause.text,
-      type: clause.type,
-      chapterTitle: clause.chapterTitle || "",
-      hierarchyLevel: clause.hierarchyLevel || "article",
-      inserted: Boolean(clause.inserted),
-      unnumbered: Boolean(clause.unnumbered),
-    })),
-    findings: findings.map((finding) => ({
-      id: finding.id,
-      clauseId: finding.clauseId || "",
-      title: finding.title,
-      severity: finding.severity,
-      actionType: finding.actionType || finding.action || "",
-      issue: finding.issue || "",
-      fix: finding.fix || finding.proposedClauseText || "",
-      linkedClauseIds: finding.linkedClauseIds || [],
-      targetInsertPosition: finding.targetInsertPosition || "",
-      originalClauseId: finding.originalClauseId || "",
-      placementMethod: finding.placementMethod || "",
-      placementConfidence: finding.placementConfidence ?? null,
-      placementWarning: finding.placementWarning || "",
-      routedFromContractRisk: Boolean(finding.routedFromContractRisk),
-    })),
-    actions: Object.entries(actions).map(([clauseId, action]) => ({
-      clauseId,
-      edited: Boolean(action.editedText),
-      deleted: Boolean(action.deleted),
-      commented: Boolean(action.comment),
-      riskDecision: action.riskDecision || "",
-    })),
-    insertedClauses: getInsertedClauses(material.sourceKey).map((item) => ({
-      id: item.id,
-      targetClauseId: item.targetClauseId || "",
-      targetStableId: item.targetStableId || "",
-      position: item.position || "",
-      title: item.title || "",
-      type: item.type || "",
-      text: item.text || "",
-    })),
-    localChecks,
+    contractText: compactVisualQaText(material.text, VISUAL_QA_CONTRACT_TEXT_LIMIT),
+    contractTextTruncated: String(material.text || "").length > VISUAL_QA_CONTRACT_TEXT_LIMIT,
+    clauses: trimmedClauses,
+    findings: prioritizedFindings,
+    actions: relevantActions,
+    insertedClauses,
+    localChecks: prioritizedLocalChecks,
+    summary: summarizeVisualQaPayload(clauses, findings, relevantActions, insertedClauses, localChecks, material.text),
   };
 }
 

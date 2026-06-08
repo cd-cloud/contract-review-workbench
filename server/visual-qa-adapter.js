@@ -1,12 +1,18 @@
 const { execFile } = require("child_process");
 const fs = require("fs");
 const path = require("path");
+const { getProviderStatus } = require("../scripts/ai-runner-lib");
 const { parseRunnerJson } = require("./utils");
 
 function getRunnerConfig() {
+  const providerStatus = getProviderStatus();
+  const isCodexCustom = providerStatus.mode === "codex-cli" && providerStatus.codexUsesCustomProvider;
   return {
+    providerStatus,
     runner: process.env.VISUAL_QA_RUNNER_SCRIPT || "scripts/ai-visual-qa-runner.js",
     allowFallback: process.env.VISUAL_QA_ALLOW_FALLBACK !== "0",
+    timeoutMs: isCodexCustom ? 45 * 1000 : 120 * 1000,
+    preferFastFallback: isCodexCustom,
   };
 }
 
@@ -17,6 +23,13 @@ function getRunnerStatus() {
     runnerScript: runnerConfig.runner,
     runnerScriptExists: Boolean(runnerConfig.runner && fs.existsSync(path.resolve(process.cwd(), runnerConfig.runner))),
     allowFallback: runnerConfig.allowFallback,
+    provider: runnerConfig.providerStatus.provider,
+    providerMode: runnerConfig.providerStatus.mode || "",
+    codexConfiguredProvider: runnerConfig.providerStatus.codexConfiguredProvider || "",
+    codexUsesCustomProvider: Boolean(runnerConfig.providerStatus.codexUsesCustomProvider),
+    providerBaseUrl: runnerConfig.providerStatus.codexProviderBaseUrl || "",
+    timeoutMs: runnerConfig.timeoutMs,
+    preferFastFallback: runnerConfig.preferFastFallback,
   };
 }
 
@@ -38,7 +51,7 @@ function runVisualQa(request) {
 function runConfiguredVisualQa(request, runnerConfig = getRunnerConfig()) {
   return new Promise((resolve, reject) => {
     const runnerPath = path.resolve(process.cwd(), runnerConfig.runner);
-    const child = execFile(process.execPath, [runnerPath], { maxBuffer: 20 * 1024 * 1024 }, (error, stdout, stderr) => {
+    const child = execFile(process.execPath, [runnerPath], { maxBuffer: 20 * 1024 * 1024, timeout: runnerConfig.timeoutMs }, (error, stdout, stderr) => {
       if (error) {
         reject(new Error(`${error.message}\n${stderr || ""}`.trim()));
         return;

@@ -1,5 +1,5 @@
 const assert = require("assert");
-const { buildFallbackVisualQa, toIssue } = require("../server/visual-qa-adapter");
+const { buildFallbackVisualQa, toIssue, getRunnerStatus } = require("../server/visual-qa-adapter");
 
 function test(name, fn) {
   try {
@@ -70,6 +70,14 @@ test("preserves message and location", () => {
   assert.strictEqual(issue.title, "Ref missing");
   assert.strictEqual(issue.detail, "Detail text");
   assert.strictEqual(issue.recommendation, "Rec text");
+});
+
+console.log("runner status");
+
+test("runner status exposes timeout strategy", () => {
+  const status = getRunnerStatus();
+  assert.strictEqual(typeof status.timeoutMs, "number");
+  assert.strictEqual(typeof status.preferFastFallback, "boolean");
 });
 
 console.log("\nAll pure tests completed.");

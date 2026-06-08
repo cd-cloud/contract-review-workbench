@@ -282,6 +282,19 @@ function createWindow() {
     loadWorkbench();
   }
 
+  if (isTest) {
+    mainWindow.webContents.on("dom-ready", () => smokeLog("renderer dom-ready"));
+    mainWindow.webContents.on("did-finish-load", () => smokeLog("renderer did-finish-load"));
+    mainWindow.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+      smokeLog(`renderer did-fail-load code=${errorCode} main=${isMainFrame} url=${validatedURL} error=${errorDescription}`);
+    });
+    mainWindow.webContents.on("render-process-gone", (_event, details) => {
+      smokeLog(`renderer render-process-gone reason=${details?.reason || "unknown"} exitCode=${details?.exitCode ?? "n/a"}`);
+    });
+    mainWindow.webContents.on("unresponsive", () => smokeLog("renderer unresponsive"));
+    mainWindow.webContents.on("responsive", () => smokeLog("renderer responsive"));
+  }
+
   mainWindow.once("ready-to-show", () => {
     smokeLog("window ready-to-show");
     mainWindow.show();

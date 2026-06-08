@@ -5,10 +5,12 @@ function buildPrompt(payload) {
   const provider = getProviderStatus();
   const compactRequest = {
     ...request,
-    contractText: compact(request.contractText || "", 60000),
-    clauses: Array.isArray(request.clauses) ? request.clauses.slice(0, 260) : [],
-    findings: Array.isArray(request.findings) ? request.findings.slice(0, 260) : [],
-    actions: Array.isArray(request.actions) ? request.actions.slice(0, 260) : [],
+    contractText: compact(request.contractText || "", 16000),
+    clauses: Array.isArray(request.clauses) ? request.clauses.slice(0, 140) : [],
+    findings: Array.isArray(request.findings) ? request.findings.slice(0, 100) : [],
+    actions: Array.isArray(request.actions) ? request.actions.slice(0, 100) : [],
+    insertedClauses: Array.isArray(request.insertedClauses) ? request.insertedClauses.slice(0, 60) : [],
+    localChecks: Array.isArray(request.localChecks) ? request.localChecks.slice(0, 60) : [],
   };
   return [
     "你是合同审阅工作台的 Agent B：Visual QA 与交付一致性代理。",
