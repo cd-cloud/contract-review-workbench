@@ -31,7 +31,7 @@ function getProvider() {
   return "codex-cli";
 }
 
-function getCodexCommand() {
+function getPreferredCodexCommand() {
   const configured = process.env.CODEX_CLI_COMMAND || process.env.CODEX_COMMAND;
   if (configured) return configured;
   const localAppData = process.env.LOCALAPPDATA || "";
@@ -40,17 +40,60 @@ function getCodexCommand() {
   return "codex";
 }
 
-function resolveCodexCommandStatus() {
-  const command = getCodexCommand();
-  if (!command) return { command: "codex", exists: false };
-  if (path.isAbsolute(command)) return { command, exists: fs.existsSync(command) };
+function lookupCodexCandidates() {
   const lookupCommand = process.platform === "win32" ? "where" : "which";
-  const result = spawnSync(lookupCommand, [command], { encoding: "utf8" });
-  if (result.status === 0) {
-    const resolved = String(result.stdout || "").split(/\r?\n/).filter(Boolean)[0] || command;
-    return { command: resolved, exists: true };
+  const args = process.platform === "win32" ? ["codex"] : ["-a", "codex"];
+  const result = spawnSync(lookupCommand, args, { encoding: "utf8", windowsHide: true });
+  if (result.status !== 0) return [];
+  return String(result.stdout || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function inspectCodexCommand(command) {
+  if (!command) return { command: "codex", exists: false, runnable: false, detail: "Codex CLI not configured." };
+  if (path.isAbsolute(command) && !fs.existsSync(command)) {
+    return { command, exists: false, runnable: false, detail: "Configured Codex CLI path does not exist." };
   }
-  return { command, exists: false };
+  const result = spawnSync(command, ["--version"], { encoding: "utf8", timeout: 8000, windowsHide: true });
+  if (result.error) {
+    const code = String(result.error.code || "");
+    return {
+      command,
+      exists: code !== "ENOENT",
+      runnable: false,
+      detail: result.error.message || String(result.error),
+    };
+  }
+  if (result.status === 0) {
+    const detail = String(result.stdout || result.stderr || "")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find(Boolean) || "codex --version succeeded";
+    return { command, exists: true, runnable: true, detail };
+  }
+  const detail = String(result.stderr || result.stdout || "").trim() || `codex --version exited with code ${result.status}`;
+  return { command, exists: true, runnable: false, detail };
+}
+
+function resolveCodexCommandStatus() {
+  const preferred = getPreferredCodexCommand();
+  const localAppData = process.env.LOCALAPPDATA || "";
+  const desktopCodex = localAppData ? path.join(localAppData, "OpenAI", "Codex", "bin", "codex.exe") : "";
+  const candidates = [...new Set([preferred, desktopCodex, ...lookupCodexCandidates()].filter(Boolean))];
+  const fallbackCommand = preferred || desktopCodex || "codex";
+  let firstExisting = null;
+  for (const candidate of candidates.length ? candidates : [fallbackCommand]) {
+    const status = inspectCodexCommand(candidate);
+    if (status.runnable) return status;
+    if (!firstExisting && status.exists) firstExisting = status;
+  }
+  return firstExisting || { command: fallbackCommand, exists: false, runnable: false, detail: "Codex CLI not found in PATH or configured location." };
+}
+
+function getCodexCommand() {
+  return resolveCodexCommandStatus().command;
 }
 
 function resolveChatCompletionsUrl() {
@@ -94,6 +137,8 @@ function getProviderStatus() {
     apiKeyConfigured: Boolean(apiKey),
     codexCommand: codex.command,
     codexExists: codex.exists,
+    codexRunnable: Boolean(codex.runnable),
+    codexDetail: codex.detail || "",
   };
 }
 
@@ -264,6 +309,7 @@ module.exports = {
   getProvider,
   getCodexCommand,
   getProviderStatus,
+  resolveCodexCommandStatus,
   readStdinJson,
   runJsonTask,
   printJson,

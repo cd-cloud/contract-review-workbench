@@ -70,6 +70,7 @@ global.isCoreClauseType = () => false;
 global.findByDataAttribute = () => null;
 global.getVisualQaState = () => ({});
 global.ensureCodexSegmentation = () => {};
+global.reconcileCodexSegmentationJob = () => {};
 global.resetClauseRiskFindingCache = () => {};
 global.renderContractBrief = () => "";
 global.setupReviewAdviceScrollSync = () => {};
@@ -206,9 +207,23 @@ test("buildCodexWorkflowSteps: analysis running sets steps 1, 3, 4 to running", 
   assert.strictEqual(steps[0].text, "进行中");
 });
 
-test("buildCodexWorkflowSteps: legalResult present sets steps 1, 3, 4 to done", () => {
+test("buildCodexWorkflowSteps: segmentation-only result only marks reading and segmentation done", () => {
   const steps = buildCodexWorkflowSteps({ legalResult: { response: { clauseSegmentation: [1] } } });
   assert.strictEqual(steps[0].status, "done");
+  assert.strictEqual(steps[1].status, "done");
+  assert.strictEqual(steps[2].status, "pending");
+  assert.strictEqual(steps[3].status, "pending");
+});
+
+test("buildCodexWorkflowSteps: findings result marks risk matching and suggestions done", () => {
+  const steps = buildCodexWorkflowSteps({
+    legalResult: {
+      response: {
+        clauseSegmentation: [1],
+        clauseAnalyses: [{ clauseId: "c1" }],
+      },
+    },
+  });
   assert.strictEqual(steps[2].status, "done");
   assert.strictEqual(steps[3].status, "done");
 });

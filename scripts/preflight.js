@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");
+const { getProviderStatus } = require("./ai-runner-lib");
 const {
   DEFAULT_PORT,
   appRoot,
@@ -98,31 +99,25 @@ async function checkPort() {
   }
 }
 
-function findCodexCommand() {
-  const configured = process.env.CODEX_CLI_COMMAND || process.env.CODEX_COMMAND;
-  if (configured) return { command: configured, exists: configured === "codex" || fs.existsSync(configured) };
-  const localAppData = process.env.LOCALAPPDATA || "";
-  const desktopCodex = localAppData ? path.join(localAppData, "OpenAI", "Codex", "bin", "codex.exe") : "";
-  if (desktopCodex && fs.existsSync(desktopCodex)) return { command: desktopCodex, exists: true };
-  const lookup = spawnSync(process.platform === "win32" ? "where" : "which", ["codex"], { encoding: "utf8" });
-  if (lookup.status === 0) return { command: lookup.stdout.split(/\r?\n/).filter(Boolean)[0], exists: true };
-  return { command: "codex", exists: false };
-}
-
 function checkCodexSkill() {
-  const provider = (process.env.LEGAL_AI_PROVIDER || process.env.AI_PROVIDER || "codex-cli").toLowerCase();
+  const providerStatus = getProviderStatus();
+  const provider = providerStatus.provider;
   if (provider !== "codex-cli" && provider !== "codex") {
     return { label: "Codex CLI and legal skill", ok: true, detail: `skipped for provider ${provider}` };
   }
-  const codex = findCodexCommand();
   const skillPath =
     process.env.LEGAL_WORK_ORCHESTRATOR_SKILL ||
     path.join(process.env.USERPROFILE || process.env.HOME || "", ".codex", "skills", "legal-work-orchestrator", "SKILL.md");
   const skillExists = fs.existsSync(skillPath);
+  const codexState = providerStatus.codexRunnable
+    ? "runnable"
+    : providerStatus.codexExists
+      ? "blocked"
+      : "missing";
   return {
     label: "Codex CLI and legal skill",
-    ok: codex.exists && skillExists,
-    detail: `codex=${codex.command} (${codex.exists ? "found" : "missing"}), skill=${skillPath} (${skillExists ? "found" : "missing"})`,
+    ok: providerStatus.codexRunnable && skillExists,
+    detail: `codex=${providerStatus.codexCommand} (${codexState}${providerStatus.codexDetail ? `; ${providerStatus.codexDetail}` : ""}), skill=${skillPath} (${skillExists ? "found" : "missing"})`,
     fix: "Install Codex CLI and the legal-work-orchestrator skill, or configure an OpenAI-compatible provider.",
   };
 }

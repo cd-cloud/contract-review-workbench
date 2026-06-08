@@ -46,6 +46,8 @@ test("getRunnerStatus returns object with all expected keys", () => {
   assert("summary" in s);
   assert("codexCommand" in s);
   assert("codexExists" in s);
+  assert("codexRunnable" in s);
+  assert("codexDetail" in s);
   assert("runnerScript" in s);
   assert("runnerScriptExists" in s);
 });

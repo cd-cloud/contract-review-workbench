@@ -215,10 +215,21 @@ function renderReviewNextActions(contract, clauses) {
   const material = getWorkbenchMaterial(contract);
   const pendingEdits = Object.values(getClauseActions(material.sourceKey)).filter((action) => action.deleted || action.editedText || action.comment).length;
   const codexStatus = getCodexRunStatus(contract, material);
+  const legalSummary = codexStatus.legalSummary || summarizeLegalSkillResult(codexStatus.legalResult);
   const analysisRunning = codexStatus.running && !codexStatus.stale;
   const deadline = getLatestFeedbackDeadline(contract.id);
   const deadlineText = deadline ? "反馈期限：" + deadline : "尚未设置反馈期限";
-  const title = codexStatus.stale ? "AI 状态可能已中断" : analysisRunning ? "AI 正在审阅合同" : pendingEdits ? "复核并生成拟发送版本" : highCount ? "先处理高风险条款" : "运行 AI 或继续审阅";
+  const title = codexStatus.stale
+    ? "AI 状态可能已中断"
+    : analysisRunning
+      ? "AI 正在审阅合同"
+      : legalSummary.hasSegmentation && !legalSummary.hasFindings
+        ? "AI 已完成切分，需补跑审阅建议"
+        : pendingEdits
+          ? "复核并生成拟发送版本"
+          : highCount
+            ? "先处理高风险条款"
+            : "运行 AI 或继续审阅";
   const actionDisabled = analysisRunning ? "disabled" : "";
   return `
     <div class="next-action-card">
@@ -236,6 +247,7 @@ function renderReviewNextActions(contract, clauses) {
 }
 
 function getCodexRunStatus(contract, material) {
+  if (typeof reconcileCodexSegmentationJob === "function") reconcileCodexSegmentationJob(contract, material);
   const sourceKey = material.sourceKey;
   const analysis = state.analysisJobs?.[contract.id] || null;
   const auto = state.autoReviewJobs?.[sourceKey] || null;
@@ -243,6 +255,7 @@ function getCodexRunStatus(contract, material) {
   const visual = state.visualQaJobs?.[sourceKey] || null;
   const runner = state.runnerStatus || {};
   const legalResult = state.legalSkillResults?.[contract.id] || null;
+  const legalSummary = summarizeLegalSkillResult(legalResult);
   const running = [analysis?.status, auto?.status, segmentation?.status].some((status) => ["queued", "running"].includes(status));
   const updatedAt = latestTimestamp([analysis?.updatedAt, analysis?.startedAt, auto?.updatedAt, auto?.startedAt, auto?.queuedAt, segmentation?.startedAt, segmentation?.completedAt]);
   const stale = Boolean(running && updatedAt && Date.now() - updatedAt > STALE_JOB_TIMEOUT_MS);
@@ -256,9 +269,23 @@ function getCodexRunStatus(contract, material) {
     segmentation,
     visual,
     legalResult,
+    legalSummary,
     running,
     stale,
     updatedAt,
+  };
+}
+
+function summarizeLegalSkillResult(result) {
+  const response = result?.response || {};
+  const segmentationCount = response.clauseSegmentation?.length || 0;
+  const findingCount = (response.clauseAnalyses?.length || 0) + (response.contractLevelRisks?.length || 0);
+  return {
+    hasResult: Boolean(result),
+    hasSegmentation: segmentationCount > 0,
+    hasFindings: findingCount > 0,
+    segmentationCount,
+    findingCount,
   };
 }
 
@@ -272,9 +299,10 @@ function latestTimestamp(values) {
 
 function renderCodexStatusPanel(status) {
   const workflowSteps = buildCodexWorkflowSteps(status);
-  const autoJob = status.legalResult && status.auto?.status === "failed" ? null : status.auto;
-  const analysisJob = status.legalResult && status.analysis?.status === "failed" ? null : status.analysis;
-  const hasAiSegmentation = Boolean(status.legalResult?.response?.clauseSegmentation?.length);
+  const legalSummary = status.legalSummary || summarizeLegalSkillResult(status.legalResult);
+  const autoJob = legalSummary.hasResult && status.auto?.status === "failed" ? null : status.auto;
+  const analysisJob = legalSummary.hasFindings && status.analysis?.status === "failed" ? null : status.analysis;
+  const hasAiSegmentation = legalSummary.hasSegmentation;
   const segmentationJob = hasAiSegmentation && status.segmentation?.status === "failed" ? null : status.segmentation;
   const rows = [
     {
@@ -289,8 +317,12 @@ function renderCodexStatusPanel(status) {
     },
     {
       label: "Legal Skill",
-      value: formatReviewJobSummary(analysisJob, "analysis", status.legalResult ? "审阅结果已写入" : "等待运行"),
-      tone: status.stale ? "medium" : jobTone(analysisJob),
+      value: legalSummary.hasFindings
+        ? formatReviewJobSummary(analysisJob, "analysis", "审阅建议已写入")
+        : legalSummary.hasSegmentation
+          ? "已写入 AI 切分，未返回审阅建议"
+          : formatReviewJobSummary(analysisJob, "analysis", "等待运行"),
+      tone: legalSummary.hasFindings ? "low" : legalSummary.hasSegmentation ? "medium" : status.stale ? "medium" : jobTone(analysisJob),
     },
     {
       label: "语义切分",
@@ -355,7 +387,8 @@ function formatReviewJobSummary(job, kind = "job", fallback = "等待处理") {
 }
 
 function buildCodexWorkflowSteps(status) {
-  const hasLegalResult = Boolean(status.legalResult);
+  const legalSummary = status.legalSummary || summarizeLegalSkillResult(status.legalResult);
+  const hasLegalResult = legalSummary.hasResult;
   const segmentationRunning = ["queued", "running"].includes(status.segmentation?.status);
   const analysisRunning = ["queued", "running"].includes(status.analysis?.status) || ["queued", "running"].includes(status.auto?.status);
   const visualRunning = ["queued", "running"].includes(status.visual?.status);
@@ -367,18 +400,18 @@ function buildCodexWorkflowSteps(status) {
     },
     {
       label: "切分条款",
-      text: segmentationRunning ? "进行中" : status.legalResult?.response?.clauseSegmentation?.length ? "AI 已切分" : "待切分",
-      status: segmentationRunning ? "running" : status.legalResult?.response?.clauseSegmentation?.length ? "done" : "pending",
+      text: segmentationRunning ? "进行中" : legalSummary.hasSegmentation ? "AI 已切分" : "待切分",
+      status: segmentationRunning ? "running" : legalSummary.hasSegmentation ? "done" : "pending",
     },
     {
       label: "匹配风险",
-      text: analysisRunning ? "生成中" : hasLegalResult ? "已落位" : "等待分析",
-      status: analysisRunning ? "running" : hasLegalResult ? "done" : "pending",
+      text: analysisRunning ? "生成中" : legalSummary.hasFindings ? "已落位" : hasLegalResult ? "未返回风险" : "等待分析",
+      status: analysisRunning ? "running" : legalSummary.hasFindings ? "done" : "pending",
     },
     {
       label: "生成建议",
-      text: analysisRunning ? "生成中" : hasLegalResult ? "已写入卡片" : "等待分析",
-      status: analysisRunning ? "running" : hasLegalResult ? "done" : "pending",
+      text: analysisRunning ? "生成中" : legalSummary.hasFindings ? "已写入卡片" : legalSummary.hasSegmentation ? "未返回建议" : "等待分析",
+      status: analysisRunning ? "running" : legalSummary.hasFindings ? "done" : "pending",
     },
     {
       label: "界面校验",
@@ -494,6 +527,7 @@ function renderMaterialReader(contract) {
 
 function scheduleCodexSegmentation(contract, material) {
   if (typeof ensureCodexSegmentation !== "function") return;
+  if (typeof reconcileCodexSegmentationJob === "function") reconcileCodexSegmentationJob(contract, material);
   const jobKey = material.sourceKey || contract.id;
   if (state.viewBootstrappingSegmentation?.[jobKey] || ["queued", "running"].includes(state.autoReviewJobs?.[jobKey]?.status)) return;
   const status = getClauseSegmentationStatus(material.text, material.sourceKey);

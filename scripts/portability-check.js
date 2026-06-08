@@ -1,21 +1,9 @@
 const fs = require("fs");
 const path = require("path");
-const { spawnSync } = require("child_process");
+const { getProviderStatus } = require("./ai-runner-lib");
 
 function exists(filePath) {
   return Boolean(filePath && fs.existsSync(filePath));
-}
-
-function findCodexCommand() {
-  const configured = process.env.CODEX_CLI_COMMAND || process.env.CODEX_COMMAND;
-  if (configured) return { command: configured, exists: exists(configured) || configured === "codex" };
-  const localAppData = process.env.LOCALAPPDATA || "";
-  const desktopCodex = localAppData ? path.join(localAppData, "OpenAI", "Codex", "bin", "codex.exe") : "";
-  if (exists(desktopCodex)) return { command: desktopCodex, exists: true };
-  const lookupCommand = process.platform === "win32" ? "where" : "which";
-  const result = spawnSync(lookupCommand, ["codex"], { encoding: "utf8" });
-  if (result.status === 0) return { command: result.stdout.split(/\r?\n/).filter(Boolean)[0], exists: true };
-  return { command: "codex", exists: false };
 }
 
 function checkFile(label, filePath) {
@@ -24,7 +12,13 @@ function checkFile(label, filePath) {
 
 function main() {
   const provider = (process.env.LEGAL_AI_PROVIDER || process.env.AI_PROVIDER || (process.env.KIMI_API_KEY || process.env.MOONSHOT_API_KEY ? "kimi" : "codex-cli")).toLowerCase();
-  const codex = findCodexCommand();
+  const providerStatus = getProviderStatus();
+  const codex = {
+    command: providerStatus.codexCommand,
+    exists: Boolean(providerStatus.codexExists),
+    runnable: Boolean(providerStatus.codexRunnable),
+    detail: providerStatus.codexDetail || "",
+  };
   const skillPath =
     process.env.LEGAL_WORK_ORCHESTRATOR_SKILL ||
     path.join(process.env.USERPROFILE || process.env.HOME || "", ".codex", "skills", "legal-work-orchestrator", "SKILL.md");
@@ -51,7 +45,7 @@ function main() {
   const result = {
     ok:
       checks.every((item) => item.ok) &&
-      (provider === "codex-cli" || provider === "codex" ? codex.exists : openAiCompatibleReady || kimiImplicitReady),
+      (provider === "codex-cli" || provider === "codex" ? codex.runnable : openAiCompatibleReady || kimiImplicitReady),
     provider,
     codex,
     openAiCompatible: {

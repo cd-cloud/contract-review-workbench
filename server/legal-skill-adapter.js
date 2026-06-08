@@ -54,7 +54,7 @@ function getRunnerStatus() {
   const ready = Boolean(
     RUNNER_COMMAND &&
     (!RUNNER_SCRIPT || runnerScriptExists) &&
-    (!usesCodexCli || PROVIDER_STATUS.codexExists) &&
+    (!usesCodexCli || PROVIDER_STATUS.codexRunnable) &&
     (!usesCodexCli || skillExists)
   );
   const summary = ready
@@ -76,6 +76,8 @@ function getRunnerStatus() {
     model: PROVIDER_STATUS.model,
     codexCommand: PROVIDER_STATUS.codexCommand || null,
     codexExists: Boolean(PROVIDER_STATUS.codexExists),
+    codexRunnable: Boolean(PROVIDER_STATUS.codexRunnable),
+    codexDetail: PROVIDER_STATUS.codexDetail || "",
     baseUrlConfigured: PROVIDER_STATUS.baseUrlConfigured,
     apiKeyConfigured: PROVIDER_STATUS.apiKeyConfigured,
     mode: RUNNER_COMMAND ? (usesCodexCli ? "codex-cli-local-skill" : `configured-runner:${PROVIDER_STATUS.provider}`) : "fallback",

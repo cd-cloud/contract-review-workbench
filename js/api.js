@@ -256,6 +256,7 @@ function markLegalSkillRunCompleted(contract, material) {
       ...(state.segmentationJobs[jobKey] || {}),
       status: "completed",
       message: "AI 语义切分已完成。",
+      updatedAt: new Date().toISOString(),
       completedAt: new Date().toISOString(),
     };
   }
@@ -265,8 +266,73 @@ function hasUsableCodexSegmentation(contract, material) {
   return getClauseSegmentationStatus(material.text, material.sourceKey).source === "ai";
 }
 
+function getSegmentationJobTimestamp(job) {
+  return [job?.updatedAt, job?.startedAt, job?.completedAt, job?.failedAt]
+    .filter(Boolean)
+    .map((value) => new Date(value).getTime())
+    .filter((value) => Number.isFinite(value))
+    .sort((a, b) => b - a)[0] || 0;
+}
+
+function isStaleSegmentationJob(job) {
+  const timestamp = getSegmentationJobTimestamp(job);
+  const timeoutMs = typeof STALE_JOB_TIMEOUT_MS === "number" ? STALE_JOB_TIMEOUT_MS : 3 * 60 * 1000;
+  return Boolean(job?.status === "running" && timestamp && Date.now() - timestamp > timeoutMs);
+}
+
+function reconcileCodexSegmentationJob(contract, material) {
+  if (!contract || !material) return null;
+  const jobKey = material.sourceKey || contract.id;
+  const job = state.segmentationJobs?.[jobKey];
+  if (!job) return null;
+  const now = new Date().toISOString();
+  if (job.status === "running" && hasUsableCodexSegmentation(contract, material)) {
+    state.segmentationJobs[jobKey] = {
+      ...job,
+      status: "completed",
+      message: "AI 璇箟鍒囧垎宸插畬鎴愩€?,
+      completedAt: job.completedAt || now,
+      updatedAt: now,
+    };
+    saveState();
+    return state.segmentationJobs[jobKey];
+  }
+  if (isStaleSegmentationJob(job)) {
+    state.segmentationJobs[jobKey] = {
+      ...job,
+      status: "failed",
+      message: "璇箟鍒囧垎浠诲姟宸蹭腑鏂紝璇锋墜鍔ㄩ噸璇曘€?,
+      failedAt: job.failedAt || now,
+      updatedAt: now,
+    };
+    saveState();
+    return state.segmentationJobs[jobKey];
+  }
+  return job;
+}
+
+function inferFindingSourceKey(clauses = [], contractId = "") {
+  const clauseId = clauses.find((clause) => typeof clause?.id === "string" && clause.id.includes(":seg-"))?.id || "";
+  const match = clauseId.match(/^(.*):seg-\d+(?:::sub-\d+)?$/);
+  return match?.[1] || contractId;
+}
+
 function isCodexSegmentationRunning(sourceKey) {
-  return state.segmentationJobs?.[sourceKey]?.status === "running";
+  const job = state.segmentationJobs?.[sourceKey];
+  if (!job) return false;
+  if (isStaleSegmentationJob(job)) {
+    const now = new Date().toISOString();
+    state.segmentationJobs[sourceKey] = {
+      ...job,
+      status: "failed",
+      message: "璇箟鍒囧垎浠诲姟宸蹭腑鏂紝璇锋墜鍔ㄩ噸璇曘€?,
+      failedAt: job.failedAt || now,
+      updatedAt: now,
+    };
+    saveState();
+    return false;
+  }
+  return job.status === "running";
 }
 
 async function ensureCodexSegmentation(contract, material) {
@@ -278,6 +344,7 @@ async function ensureCodexSegmentation(contract, material) {
     status: "running",
     message: "AI 正在阅读合同并进行章节/条款语义切分。",
     startedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   renderReview();
@@ -288,6 +355,7 @@ async function ensureCodexSegmentation(contract, material) {
     state.segmentationJobs[jobKey] = {
       status: "completed",
       message: "AI 条款切分已完成。",
+      updatedAt: new Date().toISOString(),
       completedAt: new Date().toISOString(),
     };
     saveState();
@@ -297,6 +365,7 @@ async function ensureCodexSegmentation(contract, material) {
     state.segmentationJobs[jobKey] = {
       status: "failed",
       message: error.message || String(error),
+      updatedAt: new Date().toISOString(),
       failedAt: new Date().toISOString(),
     };
     saveState();
@@ -1132,6 +1201,7 @@ function extractExplicitArticleRefs(text) {
 function getStoredSkillFindings(contract, clauses = []) {
   const result = getStoredSkillResult(contract.id);
   if (!result?.clauseAnalyses?.length && !result?.contractLevelRisks?.length) return [];
+  const sourceKey = inferFindingSourceKey(clauses, contract.id);
   const byId = new Map(clauses.map((clause) => [clause.id, clause]));
   clauses.forEach((clause) => {
     if (clause.stableId) byId.set(clause.stableId, clause);
@@ -1145,6 +1215,7 @@ function getStoredSkillFindings(contract, clauses = []) {
     return {
       id: buildSkillFindingStableId(contract.id, item, "clause"),
       contractId: contract.id,
+      sourceKey,
       clauseId: clause?.id || item.clauseId || null,
       originalClauseId: item.clauseId || item.targetClauseId || "",
       placementMethod: placement.method,
@@ -1177,6 +1248,7 @@ function getStoredSkillFindings(contract, clauses = []) {
     return {
       id: buildSkillFindingStableId(contract.id, item, isTargetedAddClause ? "contract-routed" : "contract"),
       contractId: contract.id,
+      sourceKey,
       clauseId: targetClause?.id || null,
       originalClauseId: (item.linkedClauseIds || [])[0] || item.targetClauseId || "",
       placementMethod: placement.method,
@@ -1553,7 +1625,10 @@ function jaccard(a, b) {
 
 function getAnalysisFindings(contract, clauses = []) {
   const stored = getStoredSkillFindings(contract, clauses);
-  return stored;
+  if (stored.length) return stored;
+  const sourceKey = inferFindingSourceKey(clauses, contract.id);
+  const persisted = (state.findings || []).filter((finding) => finding.contractId === contract.id && (!sourceKey || !finding.sourceKey || finding.sourceKey === sourceKey));
+  return persisted.length ? dedupeSkillFindings(persisted) : [];
 }
 
 function applyLegalSkillResult(contract, result, clauses = []) {
