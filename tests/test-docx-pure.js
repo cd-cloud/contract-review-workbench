@@ -8,6 +8,7 @@ const { loadScript, test, testAsync, summary, assert } = require("./test-helper"
 
 loadScript("js/utils.js");
 loadScript("js/review-redline.js");
+global.getAnalysisFindings = () => [];
 loadScript("js/word-docx.js");
 
 console.log("\n=== test-docx-pure.js ===\n");

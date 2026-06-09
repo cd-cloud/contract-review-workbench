@@ -1,4 +1,5 @@
 const path = require("path");
+const fs = require("fs");
 const { sendJson, readJson, isAuthorizedApiRequest, serverErrorPayload } = require("../http-utils");
 const { readDb, replaceDb, upsertContract, upsertContractVersion, replaceClauseActions, appendInsertedClause, patchAuxState, appendAuditLog, deleteContractCascade, deleteContractVersionCascade, saveFile, DB_PATH, FILE_DIR, WORKBENCH_ROOT, saveContractFile, getContractFiles, getFileById, deleteFile, getContractFolder, listAllContractsWithPaths, runAutoBackup, search, searchContracts, searchClauses, searchGlobal } = require("../store");
 const { analyzeLegalReview, getRunnerStatus } = require("../legal-skill-adapter");
@@ -217,14 +218,14 @@ async function handleApi(req, res, url) {
         sendJson(res, 404, { ok: false, error: "File missing on disk" }, req);
         return true;
       }
-      const content = require("fs").readFileSync(file.path);
+      const stat = fs.statSync(file.path);
       res.writeHead(200, {
         "Content-Type": file.mimeType || "application/octet-stream",
         "Content-Disposition": `attachment; filename="${encodeURIComponent(file.name)}"`,
-        "Content-Length": content.length,
+        "Content-Length": stat.size,
         ...require("../http-utils").getCorsHeaders(req),
       });
-      res.end(content);
+      fs.createReadStream(file.path).pipe(res);
     } catch (error) {
       sendJson(res, error.statusCode || 500, serverErrorPayload(error, "Failed to download archived file"), req);
     }

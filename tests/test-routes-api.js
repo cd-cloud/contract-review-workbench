@@ -4,6 +4,7 @@
 
 const assert = require("assert");
 const path = require("path");
+const { Writable } = require("stream");
 process.env.LEGAL_WORKBENCH_DATA_DIR = path.join(__dirname, ".tmp-test-routes-api");
 const { handleApi } = require("../server/routes/api");
 const { getApiToken } = require("../server/http-utils");
@@ -54,14 +55,25 @@ console.log("\n=== test-routes-api.js ===\n");
 const API_TOKEN = getApiToken();
 
 function mockRes() {
-  return {
-    status: null,
-    headers: null,
-    body: null,
-    ended: false,
-    writeHead(s, h) { this.status = s; this.headers = h; },
-    end(b) { this.body = b; this.ended = true; },
+  const res = new Writable({
+    write(chunk, _encoding, callback) {
+      res.chunks.push(Buffer.from(chunk));
+      callback();
+    },
+  });
+  res.status = null;
+  res.headers = null;
+  res.body = null;
+  res.ended = false;
+  res.chunks = [];
+  res.writeHead = function writeHead(s, h) { this.status = s; this.headers = h; };
+  res.end = function end(b) {
+    if (b) this.chunks.push(Buffer.from(b));
+    this.body = this.chunks.length ? Buffer.concat(this.chunks).toString("utf8") : b;
+    this.ended = true;
+    Writable.prototype.end.call(this);
   };
+  return res;
 }
 
 function makeUrl(pathname) {
@@ -232,6 +244,40 @@ function authedReq(method = "GET") {
     const body = JSON.parse(res.body);
     assert.strictEqual(body.ok, true);
     assert.ok(body.file);
+  });
+
+  await testAsync("handleApi streams GET /api/files/:id/download", async () => {
+    const contractRes = mockRes();
+    const contractReq = mockReqWithBody({
+      contract: {
+        id: "contract-stream-1",
+        name: "流式下载合同",
+        type: "测试合同",
+        counterpartyName: "Acme",
+        createdAt: "2026-06-09",
+        updatedAt: "2026-06-09",
+      },
+    });
+    await handleApi(contractReq, contractRes, makeUrl("/api/contracts"));
+
+    const createRes = mockRes();
+    const createReq = mockReqWithBody({
+      contentBase64: Buffer.from("hello stream").toString("base64"),
+      originalName: "stream-test.txt",
+      mimeType: "text/plain",
+      fileType: "attachment",
+    });
+    const createHandled = await handleApi(createReq, createRes, makeUrl("/api/contracts/contract-stream-1/files"));
+    assert.strictEqual(createHandled, true);
+    const created = JSON.parse(createRes.body);
+
+    const downloadRes = mockRes();
+    const handled = await handleApi(authedReq("GET"), downloadRes, makeUrl(`/api/files/${encodeURIComponent(created.file.id)}/download`));
+    await new Promise((resolve) => downloadRes.on("finish", resolve));
+    assert.strictEqual(handled, true);
+    assert.strictEqual(downloadRes.status, 200);
+    assert.strictEqual(downloadRes.body, "hello stream");
+    assert.strictEqual(downloadRes.headers["Content-Length"] > 0, true);
   });
 
   await testAsync("handleApi rejects disallowed upload extension", async () => {

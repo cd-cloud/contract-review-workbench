@@ -47,6 +47,11 @@ function scheduleAutomaticCodexReview(contractId, reason = "auto") {
     message: "AI 自动审阅已排队",
     queuedAt: new Date().toISOString(),
   };
+  if (typeof persistBackendAuxState === "function") {
+    persistBackendAuxState({
+      autoReviewJobs: state.autoReviewJobs,
+    }).catch(() => {});
+  }
   saveState();
   setTimeout(() => runAutomaticCodexReview(contractId, jobKey, reason), 0);
 }
@@ -75,6 +80,11 @@ async function runAutomaticCodexReview(contractId, expectedSourceKey, reason = "
     startedAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
+  if (typeof persistBackendAuxState === "function") {
+    persistBackendAuxState({
+      autoReviewJobs: state.autoReviewJobs,
+    }).catch(() => {});
+  }
   setAnalysisStatus(contract.id, "queued", "AI 已自动开始合同审阅分析，并会同时返回条款切分...");
   saveState();
   renderReview();
@@ -88,6 +98,11 @@ async function runAutomaticCodexReview(contractId, expectedSourceKey, reason = "
         message: "\u5f53\u524d\u7248\u672c\u5df2\u5207\u6362\uff0c\u672c\u6b21\u81ea\u52a8\u5ba1\u9605\u7ed3\u679c\u672a\u5199\u5165",
         completedAt: new Date().toISOString(),
       };
+      if (typeof persistBackendAuxState === "function") {
+        persistBackendAuxState({
+          autoReviewJobs: state.autoReviewJobs,
+        }).catch(() => {});
+      }
       saveState();
       return;
     }
@@ -102,6 +117,12 @@ async function runAutomaticCodexReview(contractId, expectedSourceKey, reason = "
       message: "AI 自动审阅分析已完成",
       completedAt: new Date().toISOString(),
     };
+    if (typeof persistBackendAuxState === "function") {
+      persistBackendAuxState({
+        autoReviewJobs: state.autoReviewJobs,
+        findings: state.findings,
+      }).catch(() => {});
+    }
     recordAudit("自动运行 AI Legal Skill 分析", { contractName: contract.name, note: reason });
     saveState();
     renderReview();
@@ -113,6 +134,11 @@ async function runAutomaticCodexReview(contractId, expectedSourceKey, reason = "
       message: error.message || String(error),
       failedAt: new Date().toISOString(),
     };
+    if (typeof persistBackendAuxState === "function") {
+      persistBackendAuxState({
+        autoReviewJobs: state.autoReviewJobs,
+      }).catch(() => {});
+    }
     setAnalysisStatus(contract.id, "failed", error.message || String(error));
     saveState();
     renderReview();
