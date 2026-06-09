@@ -1,26 +1,24 @@
-# 运行说明
+# RUNNING
 
-## 前置条件
+## 本地启动
 
-- Node.js 18+
-- Codex CLI 模式：需要已安装并登录 Codex，且本机有 `legal-work-orchestrator` skill。
-- Kimi / Moonshot / OpenAI-compatible 模式：需要 API key；Kimi 默认使用 `https://api.moonshot.cn/v1`，可按需覆盖 base url 和 model。
-
-## 推荐启动
-
-默认使用统一 AI runner。未配置 API key 时走 Codex CLI；配置 Kimi/Moonshot API key 后会自动切到 OpenAI-compatible runner。
+安装依赖：
 
 ```powershell
 npm install
-npm run portability:check
+```
+
+自动选择本机可用 AI provider：
+
+```powershell
 npm run server:ai
 ```
 
-然后打开 `http://127.0.0.1:8787/`。
+常见显式模式：
 
-## 接入 Kimi
-
-最少配置：
+```powershell
+npm run server:codex
+```
 
 ```powershell
 $env:LEGAL_AI_PROVIDER="kimi"
@@ -28,104 +26,110 @@ $env:KIMI_API_KEY="<api-key>"
 npm run server:kimi
 ```
 
-可选配置：
+启动器会打印：
 
-```powershell
-$env:LEGAL_AI_BASE_URL="https://api.moonshot.cn/v1"
-$env:LEGAL_AI_MODEL="moonshot-v1-32k"
+- `profile`
+- `runtime_mode`
+- `provider`
+- `reason`
+- `url`
+
+使用打印出来的 URL 打开工作台，例如：
+
+```text
+http://127.0.0.1:8787/
+http://127.0.0.1:8788/
 ```
 
-如果后端不支持 `response_format`：
+## 运行时鉴权
+
+- 浏览器和 Electron renderer 使用 cookie-session 访问本地 API
+- `runtime-config.js` 只暴露 `backendOrigin` 和 `authMode`
+- 不再从 `runtime-config.js` 提取 API token
+
+## 运行状态检查
+
+检查 provider 和运行时状态：
 
 ```powershell
-$env:LEGAL_AI_RESPONSE_FORMAT="none"
+npm run health
 ```
 
-## 其他脚本
+手动查看：
+
+```text
+http://127.0.0.1:8787/api/legal-review/runner-status
+```
+
+重点字段：
+
+- `runner.ready`
+- `runner.launcherProfile`
+- `runner.launcherMode`
+- `runners.intake.lastRunState`
+- `runners.suggestion.lastRunState`
+- `runners.visualQa.lastRunState`
+
+## 便携启动与预检
+
+依赖预检：
 
 ```powershell
-npm run server:codex
+npm run portability:check
 ```
 
-使用旧 Codex 专用 runner，仅适合已经确认 Codex CLI 环境可用的机器。
+便携 smoke：
 
 ```powershell
-npm run server:skill
+npm run portable:smoke
 ```
-
-使用本项目自带规则型 runner，适合调试接口形状，不代表真实 AI 审阅质量。
-
-```powershell
-npm run check
-```
-
-执行语法检查和回归 smoke。
 
 ## 常见问题
 
-如果 Web UI 显示后端不可用：
+### 1. PowerShell 提示脚本执行受限
 
-1. 确认后端命令正在运行。
-2. 打开 `http://127.0.0.1:8787/api/health`。
-3. 打开 `http://127.0.0.1:8787/api/legal-review/runner-status`，确认 provider、model 和 runner 已配置。
-4. 运行 `npm run portability:check`，查看缺少 Codex、skill、schema 还是 API 配置。
-
-如果 AI 审阅失败：
-
-1. Codex 模式下确认 Codex CLI 已登录。
-2. Kimi/OpenAI-compatible 模式下确认 base url、api key、model 正确。
-3. 长合同可能需要数分钟，先等待任务完成。
-4. 如仍失败，运行 `npm run check` 排除本地代码问题。
-## Portable start on a new machine
-
-Recommended Windows commands:
+优先使用：
 
 ```powershell
-npm.cmd install
-npm.cmd run preflight
 npm.cmd run server:ai
 ```
 
-The portable launcher writes runtime data to `.local-workbench/` by default and chooses a free port starting from `8787`. Use the URL printed by the server, for example `http://127.0.0.1:8787/` or `http://127.0.0.1:8788/`.
+### 2. 启动后是 fallback 模式
 
-`server:ai` no longer assumes one fixed backend. It automatically probes the machine and chooses:
+说明当前没有检测到健康的 AI provider。此时：
 
-1. Local `Codex CLI` when runnable
-2. Kimi / OpenAI-compatible API when configured and healthier
-3. Fallback mode when neither side is healthy
+- 工作台仍可打开
+- 本地 fallback 仍可工作
+- AI 审阅质量应视为降级
 
-Watch the launcher lines in the terminal:
+需要检查：
 
-```text
-[portable] profile=...
-[portable] runtime_mode=...
-[portable] provider=...
-[portable] reason=...
-```
+- Codex CLI 是否可运行
+- `legal-work-orchestrator` skill 是否存在
+- Kimi / OpenAI-compatible 的 API key、base URL、model 是否完整
 
-Those four lines tell you which path the server actually chose.
+### 3. Agent A / Agent B 看起来“已配置”但调用失败
 
-Windows users can also double-click `start-portable.bat`.
+查看：
 
-To check a running backend without being confused by API token `401` responses:
+- `/api/legal-review/runner-status`
+- `lastRunState`
+- `lastFallbackReason`
+- `lastError`
 
-```powershell
-npm.cmd run health
-```
+当前状态接口不只反映静态配置，也会反映最近一次真实调用结果。
 
-## New-machine troubleshooting
+### 4. 长合同分析时间较长
 
-If `Codex CLI` works on one Windows machine but not another, that is usually an environment difference, not a contract-review logic bug. Common causes include:
+- Agent A 可能需要数分钟
+- 条款切分和 Visual QA 可能是独立阶段
+- 超长合同可能触发裁剪，UI 应提示“非全文分析”
 
-- PowerShell execution policy choosing `codex.ps1`
-- Windows command wrappers such as `codex.cmd`
-- local process-execution policy or endpoint protection blocking subprocesses
-- missing login/auth state for Codex
+### 5. 备份后如何理解结果
 
-Use this order:
+`/api/backup` 返回的是一个备份目录，而不是单一 sqlite 文件。目录中通常包含：
 
-1. `npm.cmd run portability:check`
-2. `npm.cmd run preflight`
-3. `npm.cmd run server:ai`
-
-If the launcher selects `openai-compatible`, that is expected and supported. If it selects `fallback`, the app can still open, but AI-backed review should be treated as degraded until either local Codex or API provider setup is fixed.
+- `workbench.sqlite`
+- `contracts/`
+- `files/`
+- `manifest.json`

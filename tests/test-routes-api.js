@@ -3,6 +3,8 @@
  */
 
 const assert = require("assert");
+const path = require("path");
+process.env.LEGAL_WORKBENCH_DATA_DIR = path.join(__dirname, ".tmp-test-routes-api");
 const { handleApi } = require("../server/routes/api");
 const { getApiToken } = require("../server/http-utils");
 
@@ -150,6 +152,37 @@ function authedReq(method = "GET") {
     const body = JSON.parse(res.body);
     assert.strictEqual(body.ok, true);
     assert.ok(body.file);
+  });
+
+  await testAsync("handleApi rejects disallowed upload extension", async () => {
+    const res = mockRes();
+    const req = mockReqWithBody({
+      contentBase64: Buffer.from("hello").toString("base64"),
+      originalName: "bad.exe",
+      mimeType: "application/octet-stream",
+      fileType: "attachment",
+    });
+    const handled = await handleApi(req, res, makeUrl("/api/contracts/contract-1/files"));
+    assert.strictEqual(handled, true);
+    assert.strictEqual(res.status, 400);
+    const body = JSON.parse(res.body);
+    assert.strictEqual(body.ok, false);
+  });
+
+  await testAsync("handleApi rejects oversized upload payload", async () => {
+    const res = mockRes();
+    const huge = Buffer.alloc(51 * 1024 * 1024, "a").toString("base64");
+    const req = mockReqWithBody({
+      contentBase64: huge,
+      originalName: "huge.docx",
+      mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      fileType: "attachment",
+    });
+    const handled = await handleApi(req, res, makeUrl("/api/contracts/contract-1/files"));
+    assert.strictEqual(handled, true);
+    assert.strictEqual(res.status, 413);
+    const body = JSON.parse(res.body);
+    assert.strictEqual(body.ok, false);
   });
 
   await testAsync("handleApi handles POST /api/docx/parse with invalid base64", async () => {

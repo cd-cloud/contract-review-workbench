@@ -1,4 +1,5 @@
 const { compact, getProviderStatus, printJson, readStdinJson, runJsonTask } = require("./ai-runner-lib");
+const PROMPT_VERSION = "visual-qa-v1";
 
 function buildPrompt(payload) {
   const request = payload.request || payload;
@@ -55,6 +56,9 @@ async function main() {
     outputPrefix: "legal-visual-qa",
     systemPrompt: "You are Agent B, the Visual QA backend for a contract review workbench. Return valid JSON only. All user-facing text should be in Chinese.",
   });
+  result.promptVersion = PROMPT_VERSION;
+  result.skillPath = "legal-work-orchestrator";
+  result.downstreamSkill = "legal-contract-orchestrator";
   printJson(result);
 }
 

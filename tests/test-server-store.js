@@ -8,8 +8,9 @@ const path = require("path");
 const assert = require("assert");
 
 // Use a temp directory for tests
-const TEST_DATA_DIR = path.join(__dirname, "test-data-store");
-process.env.DATA_DIR = TEST_DATA_DIR;
+const TEST_DATA_DIR = path.join(__dirname, ".tmp-test-store");
+fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true });
+process.env.LEGAL_WORKBENCH_DATA_DIR = TEST_DATA_DIR;
 
 // We need to clear require cache to re-require with new DATA_DIR
 // Actually store.js uses __dirname, so we'll need to patch it
@@ -41,10 +42,10 @@ async function testAsync(name, fn) {
   try {
     await fn();
     passedTests++;
-    process.stdout.write(`  鉁?${name}\n`);
+    process.stdout.write(`  ✓ ${name}\n`);
   } catch (error) {
     failedTests.push({ name, error });
-    process.stdout.write(`  鉁?${name}\n`);
+    process.stdout.write(`  ✗ ${name}\n`);
     process.stdout.write(`    ${error.message}\n`);
   }
 }
@@ -221,6 +222,65 @@ test("replaceDb prunes orphaned archived files when contracts disappear", () => 
 });
 
 async function runAsyncTests() {
+  await testAsync("backup sqlite can be reopened independently for restore inspection", async () => {
+    store.replaceDb({
+      contracts: [{ id: "c-restore", name: "Restore Test", counterpartyName: "Acme", createdAt: "2026-06-08" }],
+      updates: [{ id: "u-restore", contractId: "c-restore", createdAt: "2026-06-08", text: "restore body" }],
+      clauses: [],
+      findings: [],
+      counterparties: [],
+      negotiations: [],
+      playbooks: [],
+      riskRules: [],
+      auditLogs: [],
+      users: [],
+    });
+    const uploaded = store.saveContractFile("c-restore", "u-restore", Buffer.from("restore-me"), "restore.docx", "application/octet-stream", "version");
+    const backupPath = await store.runAutoBackup();
+    const backupDb = require("better-sqlite3")(path.join(backupPath, "workbench.sqlite"), { readonly: true });
+    const contractRow = backupDb.prepare("SELECT id, name FROM contracts WHERE id = ?").get("c-restore");
+    const fileRows = backupDb.prepare("SELECT contract_id, version_id, original_name FROM files WHERE contract_id = ?").all("c-restore");
+    backupDb.close();
+
+    assert.ok(contractRow);
+    assert.strictEqual(contractRow.name, "Restore Test");
+    assert.ok(fileRows.some((row) => row.version_id === "u-restore" && row.original_name === "restore.docx"));
+
+    store.deleteFile(uploaded.id);
+  });
+
+  await testAsync("restoreBackupToDirectory recreates sqlite and archive content in a new root", async () => {
+    store.replaceDb({
+      contracts: [{ id: "c-restore-copy", name: "Restore Copy Test", counterpartyName: "Acme", createdAt: "2026-06-08" }],
+      updates: [{ id: "u-restore-copy", contractId: "c-restore-copy", createdAt: "2026-06-08", text: "restore body" }],
+      clauses: [],
+      findings: [],
+      counterparties: [],
+      negotiations: [],
+      playbooks: [],
+      riskRules: [],
+      auditLogs: [],
+      users: [],
+    });
+    const uploaded = store.saveContractFile("c-restore-copy", "u-restore-copy", Buffer.from("restore-copy"), "restore-copy.docx", "application/octet-stream", "version");
+    const backupPath = await store.runAutoBackup();
+    const restoreRoot = path.join(__dirname, ".tmp-restore-target");
+    const restored = store.restoreBackupToDirectory(backupPath, restoreRoot);
+    const restoredDb = require("better-sqlite3")(restored.database, { readonly: true });
+    const contractRow = restoredDb.prepare("SELECT id, name FROM contracts WHERE id = ?").get("c-restore-copy");
+    const fileRow = restoredDb.prepare("SELECT original_name FROM files WHERE contract_id = ?").get("c-restore-copy");
+    restoredDb.close();
+
+    assert.ok(contractRow);
+    assert.strictEqual(contractRow.name, "Restore Copy Test");
+    assert.ok(fileRow);
+    assert.strictEqual(fileRow.original_name, "restore-copy.docx");
+    const restoredDocxFiles = fs.readdirSync(restored.contractsDir, { recursive: true }).filter((entry) => String(entry).endsWith(".docx"));
+    assert.ok(restoredDocxFiles.length >= 1);
+
+    store.deleteFile(uploaded.id);
+  });
+
   await testAsync("runAutoBackup includes sqlite and archive folders", async () => {
   store.replaceDb({
     contracts: [{ id: "c-backup", name: "Backup Test", counterpartyName: "Acme", createdAt: "2026-06-08" }],
@@ -241,6 +301,13 @@ async function runAsyncTests() {
   assert.ok(fs.existsSync(path.join(backupPath, "workbench.sqlite")));
   assert.ok(fs.existsSync(path.join(backupPath, "contracts")));
   assert.ok(fs.existsSync(path.join(backupPath, "manifest.json")));
+  const backupSqlite = require("better-sqlite3")(path.join(backupPath, "workbench.sqlite"));
+  const backupContractCount = backupSqlite.prepare("SELECT COUNT(*) as c FROM contracts").get().c;
+  backupSqlite.close();
+  assert.ok(backupContractCount >= 1);
+  const backedUpAttachmentDir = path.join(backupPath, "contracts");
+  const backedUpFiles = fs.readdirSync(backedUpAttachmentDir, { recursive: true }).filter((entry) => String(entry).endsWith(".docx"));
+  assert.ok(backedUpFiles.length >= 1);
 
   store.deleteFile(uploaded.id);
 });

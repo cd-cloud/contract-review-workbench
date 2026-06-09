@@ -53,21 +53,24 @@ function renderReviewTopTools(contract, material, clauses) {
   const structureClauses = structureMaterial.text === material.text
     ? clauses
     : splitVersionClauses(structureMaterial.text, structureMaterial.sourceKey);
+  const codexStatus = getCodexRunStatus(contract, material);
   return `
     <section class="panel review-top-tools">
+      ${renderReviewNoticeBanner(contract, material, clauses, codexStatus)}
       <div class="review-contract-identity">
         <p class="eyebrow">Contract</p>
         <h3 class="section-title">${escapeHtml(contract.name)}</h3>
         <div class="chips">
           <span class="tag contract-type-chip" title="${escapeHtml(contract.type)}">${escapeHtml(contract.type)}</span>
           <span class="risk ${escapeHtml(contract.riskLevel)}">风险${riskLabel(contract.riskLevel)}</span>
+          ${contract.jurisdiction ? `<span class="status-pill">法域：${escapeHtml(contract.jurisdiction)}</span>` : ""}
           ${contract.counterpartyName ? `<span class="status-pill">相对方：${escapeHtml(contract.counterpartyName)}</span>` : ""}
         </div>
         <p class="muted contract-purpose-line" title="${escapeHtml(contract.purpose)}">目的：${escapeHtml(contract.purpose || "未填写")}</p>
         ${contract.businessBackground ? `<p class="muted contract-purpose-line" title="${escapeHtml(contract.businessBackground)}">背景：${escapeHtml(contract.businessBackground)}</p>` : ""}
       </div>
       <div class="review-top-tool-grid">
-        ${renderReviewNextActions(contract, clauses)}
+        ${renderReviewNextActions(contract, clauses, codexStatus)}
         ${renderVisualQaPanel(material.sourceKey, contract, material, clauses)}
         ${renderContractStructureOverview(contract, structureMaterial, structureClauses)}
         <section class="review-utility-panel">
@@ -78,6 +81,38 @@ function renderReviewTopTools(contract, material, clauses) {
         </section>
       </div>
     </section>
+  `;
+}
+
+function renderReviewNoticeBanner(contract, material, clauses, codexStatus) {
+  const notices = [];
+  const legalSource = codexStatus?.legalResult?.source || "";
+  const isFallback = /fallback/i.test(legalSource);
+  if (isFallback) {
+    notices.push({
+      tone: "high",
+      title: "当前结果为本地兜底模式",
+      detail: "本次审阅结果未经过完整模型审阅，仅供参考。正式对外发送前，请由人工复核。",
+    });
+  }
+  const clauseCount = Array.isArray(clauses) ? clauses.length : 0;
+  if (String(material?.text || "").length > 90000 || clauseCount > 220) {
+    notices.push({
+      tone: "medium",
+      title: "本次可能不是全文分析",
+      detail: `当前材料长度为 ${String(material?.text || "").length} 字符、条款 ${clauseCount} 条。模型请求会对超长文本或过多条款做裁剪，请重点人工复核后半部分及复杂附件。`,
+    });
+  }
+  if (!notices.length) return "";
+  return `
+    <div class="review-top-notices">
+      ${notices.map((notice) => `
+        <div class="panel review-notice notice-${escapeHtml(notice.tone)}">
+          <strong>${escapeHtml(notice.title)}</strong>
+          <p>${escapeHtml(notice.detail)}</p>
+        </div>
+      `).join("")}
+    </div>
   `;
 }
 
@@ -209,12 +244,12 @@ function referenceItem(item) {
   `;
 }
 
-function renderReviewNextActions(contract, clauses) {
+function renderReviewNextActions(contract, clauses, codexStatus = null) {
   const findings = getAnalysisFindings(contract, clauses);
   const highCount = findings.filter((finding) => finding.severity === "high").length;
   const material = getWorkbenchMaterial(contract);
   const pendingEdits = Object.values(getClauseActions(material.sourceKey)).filter((action) => action.deleted || action.editedText || action.comment).length;
-  const codexStatus = getCodexRunStatus(contract, material);
+  codexStatus = codexStatus || getCodexRunStatus(contract, material);
   const legalSummary = codexStatus.legalSummary || summarizeLegalSkillResult(codexStatus.legalResult);
   const analysisRunning = codexStatus.running && !codexStatus.stale;
   const deadline = getLatestFeedbackDeadline(contract.id);
@@ -288,6 +323,9 @@ function summarizeLegalSkillResult(result) {
     hasFindings: findingCount > 0,
     segmentationCount,
     findingCount,
+    source: result?.source || "",
+    promptVersion: result?.promptVersion || "",
+    isFallback: Boolean(result?.isFallback) || /fallback/i.test(result?.source || ""),
   };
 }
 
@@ -325,6 +363,13 @@ function renderCodexStatusPanel(status) {
           ? "已写入 AI 切分，未返回审阅建议"
           : formatReviewJobSummary(analysisJob, "analysis", "等待运行"),
       tone: legalSummary.hasFindings ? "low" : legalSummary.hasSegmentation ? "medium" : status.stale ? "medium" : jobTone(analysisJob),
+    },
+    {
+      label: "结果来源",
+      value: legalSummary.hasResult
+        ? `${legalSummary.source || "unknown"}${legalSummary.promptVersion ? ` | ${legalSummary.promptVersion}` : ""}${legalSummary.isFallback ? " | fallback" : ""}`
+        : "等待结果",
+      tone: legalSummary.isFallback ? "medium" : "low",
     },
     {
       label: "语义切分",

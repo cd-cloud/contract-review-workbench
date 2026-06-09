@@ -238,6 +238,8 @@ function buildFallbackSkillResult(request) {
   return {
     ok: true,
     source: skillLoaded ? "local-bridge-fallback-with-skill-instructions" : "local-bridge-fallback",
+    isFallback: true,
+    fallbackReason: "AI runner unavailable; using local fallback review.",
     skill: "legal-work-orchestrator",
     downstreamSkill: "legal-contract-orchestrator",
     skillPath,

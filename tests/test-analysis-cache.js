@@ -166,4 +166,25 @@ test("same contract options produce same cache key", () => {
   assert.ok(hit);
 });
 
+test("different jurisdiction produces different cache keys", () => {
+  const cache = new AnalysisCache();
+  cache.set({ contract_text: "same", contract_type: "A", jurisdiction: "中国大陆" }, { data: "cn" });
+  const miss = cache.get({ contract_text: "same", contract_type: "A", jurisdiction: "香港" });
+  assert.strictEqual(miss, null);
+});
+
+test("different extra requirements produce different cache keys", () => {
+  const cache = new AnalysisCache();
+  cache.set({ contract_text: "same", drafting_requirements: "更保护甲方" }, { data: "a" });
+  const miss = cache.get({ contract_text: "same", drafting_requirements: "更平衡" });
+  assert.strictEqual(miss, null);
+});
+
+test("different prompt version produces different cache keys", () => {
+  const cache = new AnalysisCache();
+  cache.set({ contract_text: "same", prompt_version: "v1" }, { data: "v1" });
+  const miss = cache.get({ contract_text: "same", prompt_version: "v2" });
+  assert.strictEqual(miss, null);
+});
+
 summary();

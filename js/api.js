@@ -4,6 +4,18 @@ const VISUAL_QA_DELAY_MS = 30 * 1000;
 const VISUAL_QA_COOLDOWN_MS = 10 * 60 * 1000;
 const BACKEND_SYNC_DELAY_MS = 700;
 
+async function readBackendError(response, fallbackMessage = "请求失败") {
+  let message = fallbackMessage;
+  try {
+    const data = await response.json();
+    if (data?.error) message = data.error;
+    if (data?.detail && data.detail !== data.error) message = `${message}：${data.detail}`;
+  } catch (error) {}
+  if (response.status === 401) return "AI 服务认证失败，请检查本地运行配置。";
+  if (response.status === 429) return "AI 服务请求过于频繁，请稍后再试。";
+  return `${message}（HTTP ${response.status}）`;
+}
+
 function buildLegalSkillRequest(contract, materialText, extraRequirements = "", options = {}) {
   const text = materialText || contract.text || "";
   const sourceKey = `${contract.id}:${state.activeUpdateId || "current"}`;
@@ -64,8 +76,10 @@ function buildLegalSkillRequest(contract, materialText, extraRequirements = "", 
     workflow: "legal-contract-review",
     skill: "legal-work-orchestrator",
     downstream_skill: "legal-contract-orchestrator",
-    jurisdiction: "中国大陆",
+    prompt_version: "agent-a-review-v1",
+    jurisdiction: contract.jurisdiction || contract.governingLaw || "待确认",
     contract_type: contract.type || "待识别",
+    contract_type_category: contract.type || "待识别",
     business_background: businessBackground,
     commercial_context: contract.businessBackground || "",
     detected_contract_purpose: contract.purpose || "",
@@ -81,6 +95,8 @@ function buildLegalSkillRequest(contract, materialText, extraRequirements = "", 
     counterparty_version: contract.redlineText || "",
     attachments_or_exhibits: contract.commentsText || "",
     drafting_requirements: extraRequirements,
+    provider: state.runnerStatus?.provider || "",
+    model: state.runnerStatus?.model || "",
     risk_preference: "平衡",
     language: "中文",
     output_format: "structured_json",
@@ -131,7 +147,7 @@ async function runLegalSkillAnalysis(contract, materialText, extraRequirements =
       return await pollLegalSkillJob(data.job.id, contract.id, options);
     }
     if (response.ok) return normalizeLegalSkillResult(await response.json());
-    throw new Error(`本地 Legal Skill 服务返回错误：${response.status}`);
+    throw new Error(await readBackendError(response, "本地 Legal Skill 服务返回错误"));
   } catch (error) {
     if (!isLikelyServerUnavailableError(error)) throw error;
     if (!options.allowBrowserFallback) throw new Error("AI 后端不可用，无法执行 Legal Skill。请确认本地服务和 AI Runner 已启动。");
@@ -144,6 +160,8 @@ async function runLegalSkillAnalysis(contract, materialText, extraRequirements =
   return normalizeLegalSkillResult({
     ok: true,
     source: "browser-fallback",
+    isFallback: true,
+    fallbackReason: "Local backend unavailable; using browser fallback review.",
     request,
     response: {
       contractSummary: {
@@ -191,7 +209,7 @@ async function pollLegalSkillJob(jobId, contractId, options = {}) {
       if (controller.signal.aborted) throw new Error("AI 分析已取消。");
       await delay(POLL_INTERVAL_MS);
       const response = await legalWorkbenchFetch(`/api/legal-review/jobs/${encodeURIComponent(jobId)}`, { signal: controller.signal });
-      if (!response.ok) throw new Error("AI 分析任务状态读取失败");
+      if (!response.ok) throw new Error(await readBackendError(response, "AI 分析任务状态读取失败"));
       const data = await response.json();
       const job = data.job;
       if (!options.silentStatus) setAnalysisStatus(contractId, job.status, `${job.phase || "分析中"}｜已等待 ${Math.round((Date.now() - startedAt) / 1000)} 秒`);
@@ -290,7 +308,7 @@ function reconcileCodexSegmentationJob(contract, material) {
     state.segmentationJobs[jobKey] = {
       ...job,
       status: "completed",
-      message: "AI 璇箟鍒囧垎宸插畬鎴愩€?,
+      message: "AI 语义切分已完成。",
       completedAt: job.completedAt || now,
       updatedAt: now,
     };
@@ -301,7 +319,7 @@ function reconcileCodexSegmentationJob(contract, material) {
     state.segmentationJobs[jobKey] = {
       ...job,
       status: "failed",
-      message: "璇箟鍒囧垎浠诲姟宸蹭腑鏂紝璇锋墜鍔ㄩ噸璇曘€?,
+      message: "AI 语义切分任务已超时，请稍后重试。",
       failedAt: job.failedAt || now,
       updatedAt: now,
     };
@@ -325,7 +343,7 @@ function isCodexSegmentationRunning(sourceKey) {
     state.segmentationJobs[sourceKey] = {
       ...job,
       status: "failed",
-      message: "璇箟鍒囧垎浠诲姟宸蹭腑鏂紝璇锋墜鍔ㄩ噸璇曘€?,
+      message: "AI 语义切分任务已超时，请稍后重试。",
       failedAt: job.failedAt || now,
       updatedAt: now,
     };
@@ -374,206 +392,6 @@ async function ensureCodexSegmentation(contract, material) {
   }
 }
 
-function buildSegmentationOnlyRequirements() {
-  return [
-    "请先只完成合同章节和条款结构切分，重点输出 response.clauseSegmentation。",
-    "切分必须基于合同语义和版式层级，不要机械依赖正则；当父章节与唯一子条款标题/正文重复时，只保留一个条款节点，不要制造父子重复卡片。",
-    "章节/部分标题应优先作为 chapterTitle 元数据，不要单独输出只有标题、没有实质正文的 segment；如果下一条实质条款已经使用同一标题或首行，就只输出下一条。",
-    "不要让同一个标题同时出现在父条款卡片和子条款卡片中；title 只放标题，text 放完整原文条款正文，避免 title-only 卡片。",
-    "clauseSegmentation.text 必须来自合同原文，不要改写；title 仅在原文有明确标题时填写，否则留空。",
-    "本次自动切分阶段不需要输出实质审阅建议；contractLevelRisks 和 clauseAnalyses 可为空数组。",
-  ].join("\n");
-}
-
-function mergeSegmentationOnlyResult(contract, result) {
-  result = normalizeLegalSkillResult(result);
-  state.legalSkillResults = state.legalSkillResults || {};
-  const previous = state.legalSkillResults[contract.id] || { response: {} };
-  state.legalSkillResults[contract.id] = {
-    ...previous,
-    response: {
-      contractSummary: {
-        ...(previous.response?.contractSummary || {}),
-        ...(result.response?.contractSummary || {}),
-      },
-      clauseSegmentation: result.response?.clauseSegmentation || previous.response?.clauseSegmentation || [],
-      contractLevelRisks: previous.response?.contractLevelRisks || [],
-      clauseAnalyses: previous.response?.clauseAnalyses || [],
-      missingFacts: previous.response?.missingFacts || [],
-      businessSummary: previous.response?.businessSummary || "",
-    },
-    segmentationAppliedAt: new Date().toISOString(),
-  };
-}
-
-function normalizeLegalSkillResult(result) {
-  const normalized = {
-    ...(result || {}),
-    response: {
-      contractSummary: result?.response?.contractSummary || {},
-      clauseSegmentation: normalizeSkillClauseSegmentation(result?.response?.clauseSegmentation),
-      contractLevelRisks: [],
-      clauseAnalyses: [],
-      missingFacts: result?.response?.missingFacts || [],
-      businessSummary: result?.response?.businessSummary || "",
-    },
-  };
-  const seenContractRisks = new Set();
-  (result?.response?.contractLevelRisks || []).forEach((item) => {
-    const risk = normalizeSkillContractRisk(item);
-    if (!risk || isGenericSkillAdvice(risk)) return;
-    const key = normalizeText([risk.actionType, risk.title, risk.issue, risk.suggestion, risk.proposedClauseText].filter(Boolean).join("|")).slice(0, 220);
-    if (seenContractRisks.has(key)) return;
-    seenContractRisks.add(key);
-    normalized.response.contractLevelRisks.push(risk);
-  });
-  const seenClauseRisks = new Set();
-  (result?.response?.clauseAnalyses || []).forEach((item) => {
-    const risk = normalizeSkillClauseRisk(item);
-    if (!risk || isGenericSkillAdvice(risk)) return;
-    const key = normalizeText([risk.clauseId, risk.actionType, risk.issue, risk.proposedRevision, risk.replacementText, risk.commentText].filter(Boolean).join("|")).slice(0, 240);
-    if (seenClauseRisks.has(key)) return;
-    seenClauseRisks.add(key);
-    normalized.response.clauseAnalyses.push(risk);
-  });
-  return normalized;
-}
-
-function normalizeSkillClauseSegmentation(items = []) {
-  if (!Array.isArray(items)) return [];
-  const normalized = items
-    .map((item, index) => {
-      const text = String(item?.text || "").trim();
-      if (!text || text.length < 8) return null;
-      return {
-        stableId: String(item.stableId || `ai-${index + 1}`),
-        order: Number.isFinite(Number(item.order)) ? Number(item.order) : index + 1,
-        title: String(item.title || "").trim(),
-        text,
-        type: normalizeClauseTypeLabel(item.type || classifyClause(text, item.title || "") || "其他"),
-        chapterTitle: String(item.chapterTitle || ""),
-        hierarchyLevel: String(item.hierarchyLevel || "article"),
-        sourceKind: "ai-segmented",
-      };
-    })
-    .filter(Boolean)
-    .sort((a, b) => a.order - b.order);
-  return collapseDuplicateSegmentationHeadings(normalized);
-}
-
-function collapseDuplicateSegmentationHeadings(segments) {
-  const result = [];
-  segments.forEach((segment) => {
-    const currentTitle = normalizeSegmentationTitle(segment.title || firstMeaningfulLine(segment.text));
-    const previous = result.at(-1);
-    const normalizedSegment = {
-      ...segment,
-      chapterTitle: normalizeSegmentationTitle(segment.chapterTitle) === currentTitle ? "" : segment.chapterTitle,
-    };
-    if (previous && isDuplicateSegmentationPair(previous, normalizedSegment)) {
-      if (isHeadingOnlySegment(previous) && !isHeadingOnlySegment(normalizedSegment)) {
-        result[result.length - 1] = normalizedSegment;
-      }
-      return;
-    }
-    result.push(normalizedSegment);
-  });
-  return result.map((segment, index) => ({ ...segment, order: index + 1 }));
-}
-
-function isDuplicateSegmentationPair(a, b) {
-  const aTitle = normalizeSegmentationTitle(a.title || firstMeaningfulLine(a.text));
-  const bTitle = normalizeSegmentationTitle(b.title || firstMeaningfulLine(b.text));
-  const aFirstLine = normalizeSegmentationTitle(firstMeaningfulLine(a.text));
-  const bFirstLine = normalizeSegmentationTitle(firstMeaningfulLine(b.text));
-  const sameHeading = aTitle && (aTitle === bTitle || aTitle === bFirstLine || bTitle === aFirstLine);
-  const sameText = normalizeSegmentationTitle(a.text) === normalizeSegmentationTitle(b.text);
-  return Boolean(sameHeading && (sameText || isHeadingOnlySegment(a) || isHeadingOnlySegment(b)));
-}
-
-function isHeadingOnlySegment(segment) {
-  const title = normalizeSegmentationTitle(segment.title || segment.chapterTitle);
-  const text = normalizeSegmentationTitle(segment.text);
-  const firstLine = normalizeSegmentationTitle(firstMeaningfulLine(segment.text));
-  return Boolean(title && (text === title || (firstLine === title && String(segment.text || "").trim().length <= 80)));
-}
-
-function firstMeaningfulLine(text) {
-  return String(text || "").split(/\n/).map((line) => line.trim()).find(Boolean) || "";
-}
-
-function normalizeSegmentationTitle(text) {
-  return String(text || "")
-    .replace(new RegExp("^\\u7b2c[\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341\u767e\u96f6\u3007\u4e240-9]+[\\u7ae0\\u8282\\u6761\\u6b3e\\u90e8\\u5206]\\s*"), "")
-    .replace(new RegExp("^[\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341\u767e\u96f6\u3007\u4e240-9]+[\\u3001.\\uff0e]\\s*"), "")
-    .replace(/[\uFF1A:\u3002\uFF1B;\uFF0C,\s]/g, "")
-    .trim();
-}
-
-function normalizeSkillContractRisk(item = {}) {
-  const suggestion = item.suggestion || item.recommendation || item.fix || item.proposedRevision || "";
-  const proposedClauseText = item.proposedClauseText || item.proposed_clause_text || item.replacementText || "";
-  const actionType = item.actionType === "comment_only" ? "comment_only" : "add_clause";
-  if (actionType === "add_clause" && !String(suggestion || proposedClauseText).trim()) return null;
-  return {
-    severity: normalizeSeverity(item.severity),
-    actionType,
-    title: item.title || item.issue || "合同级风险",
-    issue: item.issue || item.summary || item.title || "",
-    consequence: item.consequence || "",
-    suggestion,
-    proposedClauseText,
-    targetInsertPosition: item.targetInsertPosition || item.insertAfter || "",
-    businessRationale: item.businessRationale || "",
-    adoptionNote: item.adoptionNote || "",
-    negotiationBottomLine: item.negotiationBottomLine || item.bottomLine || "",
-    acceptableFallback: item.acceptableFallback || item.concessionText || item.fallbackText || "",
-    linkedClauseIds: Array.isArray(item.linkedClauseIds) ? item.linkedClauseIds : [],
-    qualityScore: normalizeQualityScore(item.qualityScore),
-  };
-}
-
-function normalizeSkillClauseRisk(item = {}) {
-  const proposedRevision = item.proposedRevision || item.recommendation || item.fix || item.suggestion || item.replacementText || "";
-  const actionType = normalizeClauseActionType(item.actionType, { ...item, proposedRevision });
-  if (actionType !== "comment_only" && !String(proposedRevision).trim()) return null;
-  if (actionType === "comment_only" && !String(item.commentText || item.issue || proposedRevision).trim()) return null;
-  return {
-    clauseId: item.clauseId || item.targetClauseId || "",
-    title: item.title || item.clauseTitle || item.issue || "条款风险",
-    clauseType: item.clauseType || item.type || "",
-    severity: normalizeSeverity(item.severity),
-    actionType,
-    issue: item.issue || item.summary || "",
-    consequence: item.consequence || "",
-    proposedRevision,
-    targetText: item.targetText || "",
-    replacementText: item.replacementText || "",
-    commentText: item.commentText || "",
-    negotiationPosition: item.negotiationPosition || item.negotiation || "",
-    fallbackText: item.fallbackText || "",
-    businessDecision: item.businessDecision || "",
-    adoptionNote: item.adoptionNote || "",
-    negotiationBottomLine: item.negotiationBottomLine || item.bottomLine || "",
-    acceptableFallback: item.acceptableFallback || item.concessionText || item.fallbackText || "",
-    linkedClauseIds: Array.isArray(item.linkedClauseIds) ? item.linkedClauseIds : [],
-    qualityScore: normalizeQualityScore(item.qualityScore),
-  };
-}
-
-function normalizeQualityScore(value) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return null;
-  return Math.max(0, Math.min(100, Math.round(number)));
-}
-
-function isGenericSkillAdvice(item = {}) {
-  const source = [item.title, item.issue, item.suggestion, item.proposedRevision, item.commentText].filter(Boolean).join("\n");
-  if (!source.trim()) return true;
-  if (/未识别到显著风险|建议结合.*背景.*复核|进一步确认|继续关注|酌情完善|保持现状/.test(source) && !/(修改为|替换为|删除|新增|补充以下|建议条款|proposed|replace|delete|add)/i.test(source)) return true;
-  return false;
-}
-
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -584,7 +402,7 @@ async function syncBackendSnapshot() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(state),
   });
-  if (!response.ok) throw new Error("本地后端同步失败");
+  if (!response.ok) throw new Error(await readBackendError(response, "本地后端同步失败"));
   return await response.json();
 }
 
@@ -594,7 +412,7 @@ async function runBackendSuggestionAction(payload) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  if (!response.ok) throw new Error(`后端AI建议动作失败：${response.status}`);
+  if (!response.ok) throw new Error(await readBackendError(response, "后端 AI 建议动作失败"));
   return await response.json();
 }
 
@@ -604,7 +422,7 @@ async function runContractIntake(contractText) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ contractText }),
   });
-  if (!response.ok) throw new Error(`AI 信息填充失败：${response.status}`);
+  if (!response.ok) throw new Error(await readBackendError(response, "AI 信息填充失败"));
   return await response.json();
 }
 
@@ -676,10 +494,12 @@ async function refreshRunnerStatus() {
     if (!response.ok) throw new Error("runner status unavailable");
     const data = await response.json();
     state.runnerStatus = data.runner;
+    state.runnerStatuses = data.runners || {};
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     return data.runner;
   } catch (error) {
     state.runnerStatus = { configured: false, mode: "browser-fallback", error: error.message || String(error) };
+    state.runnerStatuses = {};
     return state.runnerStatus;
   }
 }
@@ -874,7 +694,7 @@ async function runVisualQa(contract, material, clauses, reason = "review-state")
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(buildVisualQaRequest(contract, material, clauses, reason)),
   });
-  if (!response.ok) throw new Error(`Visual QA 返回错误：${response.status}`);
+  if (!response.ok) throw new Error(await readBackendError(response, "Visual QA 返回错误"));
   return normalizeVisualQaResult(await response.json());
 }
 

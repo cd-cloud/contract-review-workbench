@@ -3,6 +3,7 @@ const os = require("os");
 const path = require("path");
 const { appRoot, buildCodexLaunch, getCodexCommand } = require("./ai-runner-lib");
 const ROOT = appRoot;
+const PROMPT_VERSION = "contract-intake-v1";
 
 function readStdin() {
   return new Promise((resolve, reject) => {
@@ -101,7 +102,11 @@ async function main() {
   const outputFile = path.join(os.tmpdir(), `codex-contract-intake-${Date.now()}-${Math.random().toString(16).slice(2)}.json`);
   await runCodexExec(buildPrompt(payload), outputFile);
   const finalText = fs.existsSync(outputFile) ? fs.readFileSync(outputFile, "utf8") : "";
-  process.stdout.write(JSON.stringify(parseJsonOutput(finalText), null, 2));
+  const parsed = parseJsonOutput(finalText);
+  parsed.promptVersion = PROMPT_VERSION;
+  parsed.skillPath = "legal-work-orchestrator";
+  parsed.downstreamSkill = "legal-contract-orchestrator";
+  process.stdout.write(JSON.stringify(parsed, null, 2));
 }
 
 main().catch((error) => {

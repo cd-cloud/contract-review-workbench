@@ -142,6 +142,12 @@ function mockEvent(selectorMap) {
   };
 }
 
+loadScript("js/events-nav.js");
+loadScript("js/events-modal.js");
+loadScript("js/events-draft.js");
+loadScript("js/events-review.js");
+loadScript("js/events-document.js");
+loadScript("js/store.js");
 loadScript("js/app-events.js");
 
 console.log("\n=== test-app-events.js ===\n");

@@ -1,35 +1,48 @@
 # AI 合同审阅工作台 MVP
 
-这是一个面向 AI 创业公司法务的本地合同审阅 WebUI。当前定位不是“本地规则审阅器”，而是 AI 法律审阅 agent/skill 的可视化工作台：WebUI 负责上传、结构展示、条款定位、建议采纳、红线批注和导出；Agent A 负责实质审阅、条款切分和修改建议；Agent B 负责界面一致性、建议归属、编号和交付前校验。
+本项目是一个面向法务/合同场景的本地优先合同审阅工作台：
 
-后端支持两类 provider：
+- Agent A：负责合同理解、条款切分、风险识别与修改建议生成
+- Agent B：负责审阅台结构、编号、建议归属与导出一致性检查
+- 前端：负责上传、展示、采纳/调整/拒绝建议、导出与归档
+- 后端：负责本地存储、任务调度、文件归档、AI runner 桥接
 
-- Codex CLI：可使用本机 `legal-work-orchestrator` skill。
-- Kimi / Moonshot / OpenAI-compatible：通过 `/v1/chat/completions` 完成同等结构化任务。
+当前支持两类 AI provider：
+
+- Codex CLI，本地 skill 入口为 `legal-work-orchestrator`
+- OpenAI-compatible API，例如 Kimi / Moonshot
 
 ## 核心流程
 
-1. 新建审阅：上传 `.docx` 或粘贴合同文本。
-2. 信息填充：可选择本地快速填充，或使用 AI 一键信息填充。
-3. 自动审阅：创建审阅或上传新版本后，自动调用 Agent A，返回条款切分和审阅建议。
-4. 审阅台处理：在最相关的条款卡片和右侧建议栏中查看、采纳、调整、批注、业务确认或拒绝 AI 建议。
-5. 生成拟发送版本：基于已采纳的新增、删除、修改和批注生成版本，并由 AI 做发送前复核。
-6. 导出 Word 红线/批注稿：形成可发送给相对方或内部复核的交付件。
+1. 新建审阅：上传 `.docx` 或粘贴合同文本
+2. 信息填充：本地快速填充或 AI 一键信息填充
+3. 确认合同类型与法域
+4. 运行 Agent A 审阅
+5. 在审阅台采纳、调整、拒绝或批注建议
+6. 运行 Agent B 复核结构与导出一致性
+7. 导出 Word 红线/批注稿或拟发送版本
 
 ## 启动方式
 
+安装依赖：
+
 ```powershell
 npm install
+```
+
+自动选择运行配置：
+
+```powershell
 npm run server:ai
 ```
 
-打开：
+显式使用 Codex：
 
-```text
-http://127.0.0.1:8787/
+```powershell
+npm run server:codex
 ```
 
-Kimi 模式：
+显式使用 Kimi：
 
 ```powershell
 $env:LEGAL_AI_PROVIDER="kimi"
@@ -37,61 +50,82 @@ $env:KIMI_API_KEY="<api-key>"
 npm run server:kimi
 ```
 
-### npm install 常见问题
+启动后打开：
 
-首次安装依赖时可能遇到以下问题，请按对应方式处理：
-
-| 问题 | 原因 | 解决方式 |
-|------|------|---------|
-| `better-sqlite3` 安装失败 / node-gyp 报错 | 该包包含 C++ 原生扩展，需要 Python 和 Visual Studio Build Tools 编译 | Windows 下先执行 `npm install --global windows-build-tools`（管理员 PowerShell），或安装 [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/?q=build+tools) 并勾选"使用 C++ 的桌面开发" |
-| Electron 下载极慢或超时 | Electron 预编译二进制文件托管在 GitHub，国内访问受限 | 设置镜像源：`npm config set electron_mirror https://npmmirror.com/mirrors/electron/` 后重新 `npm install` |
-| 整体安装速度慢 | npm 默认 registry 在国外 | 使用国内镜像：`npm config set registry https://registry.npmmirror.com` |
-| 安装后 `better-sqlite3` 运行时报错 `The specified module could not be found` | Node 版本与预编译二进制不匹配，或缺少 VC++ 运行时 | 确保 Node.js 版本为 **v20.x** 或 **v22.x**；如仍报错，删除 `node_modules/better-sqlite3` 后执行 `npm rebuild better-sqlite3` |
-| Playwright 浏览器下载失败 | Playwright 需要下载 Chromium 浏览器，网络问题导致 | 设置环境变量后安装：`set PLAYWRIGHT_DOWNLOAD_HOST=https://npmmirror.com/mirrors/playwright`（CMD）或 `$env:PLAYWRIGHT_DOWNLOAD_HOST="https://npmmirror.com/mirrors/playwright"`（PowerShell），然后 `npx playwright install chromium` |
-
-> **推荐安装顺序**（若整体 `npm install` 失败）：
-> ```powershell
-> npm config set registry https://registry.npmmirror.com
-> npm config set electron_mirror https://npmmirror.com/mirrors/electron/
-> npm install better-sqlite3
-> npm install
-> npx playwright install chromium
-> ```
-
-### Node.js version
-
-The current Windows desktop workflow is tested with Node.js 22.20.0 and supports Node.js 20 through 22. After changing Node.js versions, run:
-
-```powershell
-npm install
-npm run electron:smoke
+```text
+http://127.0.0.1:8787/
 ```
 
-`electron:smoke` rebuilds `better-sqlite3` for the active Node runtime and verifies the desktop/backend startup path.
+如果 `8787` 被占用，启动器会自动选择新的本地端口，并在控制台打印实际地址。
 
-更多迁移和配置见 [RUNNING.md](./RUNNING.md) 与 [PORTABILITY.md](./PORTABILITY.md)。
+## 运行与鉴权说明
+
+- 本地服务默认只监听 `127.0.0.1`
+- 浏览器 / Electron renderer 通过本地 cookie-session 访问 API
+- Electron 主进程与后端之间仍会使用私有 token 通信
+- `runtime-config.js` 不再暴露管理 token
+
+## 主要脚本
+
+- `npm run server:ai`：自动选择可用 AI provider
+- `npm run server:codex`：显式走 Codex CLI
+- `npm run server:kimi`：显式走 Kimi / OpenAI-compatible
+- `npm run portability:check`：检查本机依赖和 provider 配置
+- `npm run health`：读取运行时配置并检查后端健康状态
+- `npm run check`：静态检查 + 轻量回归检查
+- `npm test`：项目测试集
+- `npm run electron:smoke`：桌面启动链路 smoke
 
 ## 后端接口
 
-- `POST /api/contract-intake`：AI 读取合同并返回新建审阅表单字段。
-- `POST /api/legal-review/jobs`：创建 Agent A 审阅任务。
-- `GET /api/legal-review/jobs/:id`：查询审阅任务状态和结果。
-- `POST /api/ai-suggestion/action`：让 AI 将“采纳/调整/拒绝”等用户动作转成可执行条款修改。
-- `POST /api/visual-qa`：调用 Agent B 做 UI、结构、编号、建议归属和导出一致性校验。
-- `POST /api/docx/parse`：解析 `.docx` 正文、修订和批注。
+- `POST /api/contract-intake`：AI 读取合同并返回新建审阅字段
+- `POST /api/legal-review/jobs`：创建 Agent A 审阅任务
+- `GET /api/legal-review/jobs/:id`：查询审阅任务状态和结果
+- `POST /api/ai-suggestion/action`：把用户动作转成结构化修改动作
+- `POST /api/visual-qa`：运行 Agent B 复核
+- `POST /api/docx/parse`：解析 `.docx` 正文、修订和批注
+- `POST /api/contracts/:id/files`：归档上传文件
+- `POST /api/contracts/:id/exports`：归档导出文件
+- `POST /api/backup`：执行本地备份
 
-## 主要代码
+## 存储位置
 
-- `scripts/ai-runner-lib.js`：统一 provider 选择，支持 Codex CLI 与 OpenAI-compatible API。
-- `scripts/ai-skill-runner.js`：Agent A 通用 runner。
-- `scripts/ai-visual-qa-runner.js`：Agent B 通用 runner。
-- `server/*-adapter.js`：后端 adapter，按 provider 选择 runner。
-- `js/api.js`：请求构造、结果归一化、条款匹配和状态同步。
-- `js/render-review.js`：审阅台、条款卡片、结构概览和主流程卡片。
-- `js/review-actions.js`：建议采纳、调整、拒绝和后端动作支持。
+默认数据目录：
+
+```text
+%USERPROFILE%\\LegalWorkbench
+```
+
+主要内容：
+
+- `data/workbench.sqlite`：SQLite 主数据库
+- `contracts/`：合同归档、版本、导出、附件
+- `backups/`：备份目录
+
+也可以通过环境变量 `LEGAL_WORKBENCH_DATA_DIR` 指定自定义数据目录。
+
+## 注意事项
+
+- 未接入可用 AI provider 时，系统会退回本地 fallback；UI 应将其视为“仅供参考”
+- 长合同或条款过多时，模型请求可能发生裁剪；UI 会提示“非全文分析”
+- 正式对外发送前，应由人工复核 AI 结果
+
+## 常见安装问题
+
+| 问题 | 原因 | 解决方式 |
+|---|---|---|
+| `better-sqlite3` 安装失败 | 缺少原生编译环境 | 安装 Python 和 Visual Studio Build Tools，或按项目现有 Windows 指南执行 |
+| Electron 下载慢 | 网络或镜像问题 | 配置 `electron_mirror` 镜像后重新安装 |
+| Playwright 浏览器下载失败 | 网络问题 | 配置 `PLAYWRIGHT_DOWNLOAD_HOST` 后重新安装 |
 
 ## 验证
 
 ```powershell
 npm run check
+```
+
+必要时补充：
+
+```powershell
+npm test
 ```

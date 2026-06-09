@@ -25,6 +25,10 @@ const STATIC_TYPES = {
   ".ico": "image/x-icon",
 };
 
+function isDevelopment() {
+  return process.env.NODE_ENV === "development";
+}
+
 function getCorsHeaders(req) {
   const origin = req?.headers?.origin || "";
   if (!origin || !ALLOWED_ORIGINS.has(origin)) return {};
@@ -106,13 +110,22 @@ function sendStaticFile(res, filePath, extraHeaders = {}) {
   });
 }
 
+function serverErrorPayload(error, fallbackMessage = "Server error") {
+  const detail = error?.message || String(error || "");
+  return isDevelopment()
+    ? { ok: false, error: fallbackMessage, detail }
+    : { ok: false, error: fallbackMessage };
+}
+
 function readJson(req) {
   return new Promise((resolve, reject) => {
     let body = "";
     req.on("data", (chunk) => {
       body += chunk;
       if (Buffer.byteLength(body, "utf8") > 20 * 1024 * 1024) {
-        reject(new Error("Request body too large"));
+        const error = new Error("Request body too large");
+        error.statusCode = 413;
+        reject(error);
         req.destroy();
       }
     });
@@ -136,4 +149,5 @@ module.exports = {
   isAuthorizedApiRequest,
   getApiToken,
   getSessionCookieHeader,
+  serverErrorPayload,
 };

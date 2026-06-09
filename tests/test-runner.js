@@ -3,7 +3,7 @@
  * Usage: node tests/test-runner.js
  */
 
-const { execSync } = require("child_process");
+const { spawnSync } = require("child_process");
 const path = require("path");
 
 const testFiles = [
@@ -26,6 +26,8 @@ const testFiles = [
   // Layer 7: Server
   "tests/test-server-store.js",
   "tests/test-api-contracts.js",
+  "tests/e2e-smoke.js",
+  "tests/test-export-smoke.js",
   "tests/test-state-migration.js",
   "tests/test-app-router.js",
   "tests/test-app-contract-actions.js",
@@ -65,6 +67,7 @@ const root = path.resolve(__dirname, "..");
 let totalPassed = 0;
 let totalFailed = 0;
 let failedFiles = [];
+let sandboxBlocked = false;
 
 console.log("╔════════════════════════════════════════════════════════════╗");
 console.log("║     Legal Contract Workbench - Comprehensive Test Suite    ║");
@@ -74,30 +77,38 @@ for (const file of testFiles) {
   const fullPath = path.join(root, file);
   const relPath = path.relative(root, fullPath);
   console.log(`\n▶ ${relPath}`);
-  try {
-    const output = execSync(`node "${fullPath}"`, {
-      cwd: root,
-      encoding: "utf8",
-      stdio: "pipe",
-      timeout: 60000,
-    });
-    process.stdout.write(output);
+  const result = spawnSync(process.execPath, [fullPath], {
+    cwd: root,
+    encoding: "utf8",
+    timeout: 60000,
+  });
+  if (result.error?.code === "EPERM") {
+    sandboxBlocked = true;
+    console.error("Nested Node child processes are blocked in the current sandbox. Run individual test files directly instead of tests/test-runner.js.");
+    break;
+  }
+  const output = result.stdout || "";
+  if (output) process.stdout.write(output);
+  if (result.status === 0) {
     // Parse "X/Y passed" from output
     const match = output.match(/(\d+)\/(\d+) passed/);
     if (match) {
       totalPassed += Number(match[1]);
       totalFailed += Number(match[2]) - Number(match[1]);
     }
-  } catch (error) {
-    process.stdout.write(error.stdout || "");
-    process.stderr.write(error.stderr || error.message);
+  } else {
+    process.stderr.write(result.stderr || result.error?.message || "");
     totalFailed += 1;
     failedFiles.push(file);
   }
 }
 
 console.log("\n" + "=".repeat(60));
-console.log(`Total: ${totalPassed} passed, ${totalFailed} failed`);
+if (sandboxBlocked) {
+  console.log("Test runner stopped early because the sandbox blocked child process creation.");
+} else {
+  console.log(`Total: ${totalPassed} passed, ${totalFailed} failed`);
+}
 
 if (failedFiles.length) {
   console.log(`\nFailed test files:`);
@@ -106,4 +117,4 @@ if (failedFiles.length) {
 
 console.log("=".repeat(60));
 
-process.exit(totalFailed > 0 ? 1 : 0);
+process.exit(totalFailed > 0 || sandboxBlocked ? 1 : 0);

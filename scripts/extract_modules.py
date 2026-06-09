@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+"""
+Legacy helper script kept for historical refactoring experiments only.
+Do not treat its output or assumptions as the current frontend module layout.
+"""
+
 import re
 
 def main():

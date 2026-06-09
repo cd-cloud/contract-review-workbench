@@ -8,6 +8,19 @@ const Store = {
     return state;
   },
 
+  mutate(action, updater, options = {}) {
+    if (typeof updater === "function") updater(state);
+    if (options.audit) {
+      const details = typeof options.auditDetails === "function"
+        ? options.auditDetails(state)
+        : (options.auditDetails || {});
+      Store.recordAudit(action || "state-update", details);
+    }
+    if (options.save !== false) saveState();
+    if (typeof options.after === "function") options.after(state);
+    return state;
+  },
+
   getContract(id) {
     return state.contracts.find((c) => c.id === id);
   },
@@ -61,6 +74,7 @@ const Store = {
   },
 
   recordAudit(action, details = {}) {
+    const maxAuditLogs = typeof MAX_AUDIT_LOGS === "number" ? MAX_AUDIT_LOGS : 500;
     state.auditLogs = state.auditLogs || [];
     state.auditLogs.unshift({
       id: uid("audit"),
@@ -69,6 +83,9 @@ const Store = {
       userId: "local-admin",
       createdAt: new Date().toISOString(),
     });
-    state.auditLogs = state.auditLogs.slice(0, MAX_AUDIT_LOGS);
+    state.auditLogs = state.auditLogs.slice(0, maxAuditLogs);
   },
 };
+
+if (typeof window !== "undefined") window.Store = Store;
+if (typeof globalThis !== "undefined") globalThis.Store = Store;

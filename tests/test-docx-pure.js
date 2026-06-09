@@ -4,13 +4,14 @@
  *   detectMaterialKind, buildVersionPayload, materialKindLabel, escapeXml
  */
 
-const { loadScript, test, summary, assert } = require("./test-helper");
+const { loadScript, test, testAsync, summary, assert } = require("./test-helper");
 
 loadScript("js/utils.js");
 loadScript("js/review-redline.js");
 loadScript("js/word-docx.js");
 
 console.log("\n=== test-docx-pure.js ===\n");
+const asyncTests = [];
 
 // --- detectMaterialKind ---
 test("detectMaterialKind detects version text", () => {
@@ -87,6 +88,52 @@ test("buildVersionPayload uses uploadResult when provided", () => {
   assert.strictEqual(payload.fileName, "email.txt");
 });
 
+asyncTests.push(testAsync("parseDocxOnBackend returns parsed backend result when API succeeds", async () => {
+  const originalFetch = global.legalWorkbenchFetch;
+  global.legalWorkbenchFetch = async () => ({
+    ok: true,
+    json: async () => ({
+      ok: true,
+      text: "后端正文",
+      acceptedText: "后端正文",
+      rejectedText: "",
+      revisionText: "后端正文",
+      commentsText: "",
+      paragraphs: ["后端正文"],
+      hasRevisions: false,
+    }),
+  });
+  const result = await parseDocxOnBackend("test.docx", new Uint8Array([1, 2, 3]).buffer);
+  assert.ok(result);
+  assert.strictEqual(result.acceptedText, "后端正文");
+  global.legalWorkbenchFetch = originalFetch;
+}));
+
+asyncTests.push(testAsync("readUploadedFile falls back to browser parser when backend parser is unavailable", async () => {
+  const originalBackendParser = parseDocxOnBackend;
+  const originalBrowserParser = parseDocxBuffer;
+  parseDocxOnBackend = async () => null;
+  parseDocxBuffer = async () => ({
+    plainText: "浏览器正文",
+    acceptedText: "浏览器正文",
+    rejectedText: "",
+    revisionText: "浏览器正文",
+    commentsText: "",
+    paragraphs: ["浏览器正文"],
+    hasRevisions: false,
+  });
+  const file = {
+    name: "test.docx",
+    type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
+  };
+  const result = await readUploadedFile(file);
+  assert.strictEqual(result.sourceType, "docx");
+  assert.strictEqual(result.acceptedText, "浏览器正文");
+  parseDocxOnBackend = originalBackendParser;
+  parseDocxBuffer = originalBrowserParser;
+}));
+
 // --- escapeXml ---
 test("escapeXml escapes XML entities", () => {
   assert.strictEqual(escapeXml("<tag>"), "&lt;tag&gt;");
@@ -110,4 +157,4 @@ test("escapeXml handles null/undefined", () => {
   assert.strictEqual(escapeXml(undefined), "");
 });
 
-summary();
+Promise.all(asyncTests).then(() => summary());

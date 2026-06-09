@@ -194,6 +194,11 @@ module.exports = { handleStatic };
 
     # Write server/routes/api.js
     api_routes = '''const { sendJson, readJson } = require("../http-utils");
+/*
+ * Legacy diagnostic split of server routes kept only for historical reference.
+ * Do not treat this file as the active backend entrypoint or current API contract.
+ */
+
 const { readDb, replaceDb, saveFile, DB_PATH, FILE_DIR } = require("../store");
 const { analyzeLegalReview, getRunnerStatus } = require("../legal-skill-adapter");
 const { runSuggestionAction } = require("../suggestion-action-adapter");

@@ -1,4 +1,5 @@
-const { sendJson, readJson, isAuthorizedApiRequest } = require("../http-utils");
+const path = require("path");
+const { sendJson, readJson, isAuthorizedApiRequest, serverErrorPayload } = require("../http-utils");
 const { readDb, replaceDb, saveFile, DB_PATH, FILE_DIR, WORKBENCH_ROOT, saveContractFile, getContractFiles, getFileById, deleteFile, getContractFolder, listAllContractsWithPaths, runAutoBackup, search, searchContracts, searchClauses, searchGlobal } = require("../store");
 const { analyzeLegalReview, getRunnerStatus } = require("../legal-skill-adapter");
 const { runSuggestionAction, getRunnerStatus: getSuggestionRunnerStatus } = require("../suggestion-action-adapter");
@@ -6,6 +7,51 @@ const { runContractIntake, getRunnerStatus: getIntakeRunnerStatus } = require(".
 const { runVisualQa, getRunnerStatus: getVisualQaRunnerStatus } = require("../visual-qa-adapter");
 const { extractDocxPackage } = require("../../scripts/docx-extract");
 const { createAnalysisJob, cancelJob, summarizeJob, getJob } = require("../jobs");
+
+const MAX_ARCHIVE_FILE_BYTES = Number(process.env.LEGAL_WORKBENCH_MAX_FILE_BYTES || 50 * 1024 * 1024);
+const ALLOWED_UPLOAD_MIME_TYPES = new Set([
+  "text/plain",
+  "text/markdown",
+  "message/rfc822",
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/octet-stream",
+]);
+const ALLOWED_UPLOAD_EXTENSIONS = new Set([".txt", ".md", ".text", ".eml", ".pdf", ".docx"]);
+
+function validateUploadedPayload(payload = {}, allowedFileTypes = ["attachment"]) {
+  const fileType = payload.fileType || "attachment";
+  if (!allowedFileTypes.includes(fileType)) {
+    const error = new Error(`Unsupported file type: ${fileType}`);
+    error.statusCode = 400;
+    throw error;
+  }
+  const originalName = String(payload.originalName || payload.name || "unnamed");
+  const extension = path.extname(originalName).toLowerCase();
+  if (!ALLOWED_UPLOAD_EXTENSIONS.has(extension)) {
+    const error = new Error(`Unsupported file extension: ${extension || "(none)"}`);
+    error.statusCode = 400;
+    throw error;
+  }
+  const mimeType = String(payload.mimeType || "application/octet-stream").toLowerCase();
+  if (!ALLOWED_UPLOAD_MIME_TYPES.has(mimeType)) {
+    const error = new Error(`Unsupported mime type: ${mimeType}`);
+    error.statusCode = 400;
+    throw error;
+  }
+  const buffer = Buffer.from(payload.contentBase64 || "", "base64");
+  if (!buffer.length) {
+    const error = new Error("Uploaded file was empty");
+    error.statusCode = 400;
+    throw error;
+  }
+  if (buffer.length > MAX_ARCHIVE_FILE_BYTES) {
+    const error = new Error(`Uploaded file exceeds ${MAX_ARCHIVE_FILE_BYTES} bytes`);
+    error.statusCode = 413;
+    throw error;
+  }
+  return { buffer, mimeType, originalName, fileType };
+}
 
 async function handleApi(req, res, url) {
   if (req.method === "OPTIONS") {
@@ -42,7 +88,7 @@ async function handleApi(req, res, url) {
       const fileType = url.searchParams.get("type") || null;
       sendJson(res, 200, { ok: true, files: getContractFiles(contractId, fileType) }, req);
     } catch (error) {
-      sendJson(res, 500, { ok: false, error: error.message || String(error) }, req);
+      sendJson(res, error.statusCode || 500, serverErrorPayload(error, "Failed to list archived files"), req);
     }
     return true;
   }
@@ -52,18 +98,18 @@ async function handleApi(req, res, url) {
       const parts = url.pathname.split("/");
       const contractId = decodeURIComponent(parts[3]);
       const payload = await readJson(req);
-      const buffer = Buffer.from(payload.contentBase64 || "", "base64");
+      const validated = validateUploadedPayload(payload, ["attachment", "version"]);
       const result = saveContractFile(
         contractId,
         payload.versionId || null,
-        buffer,
-        payload.originalName || payload.name || "unnamed",
-        payload.mimeType || "application/octet-stream",
-        payload.fileType || "attachment"
+        validated.buffer,
+        validated.originalName,
+        validated.mimeType,
+        validated.fileType
       );
       sendJson(res, 200, { ok: true, file: result }, req);
     } catch (error) {
-      sendJson(res, 500, { ok: false, error: error.message || String(error) }, req);
+      sendJson(res, error.statusCode || 500, serverErrorPayload(error, "Failed to archive uploaded file"), req);
     }
     return true;
   }
@@ -73,18 +119,18 @@ async function handleApi(req, res, url) {
       const parts = url.pathname.split("/");
       const contractId = decodeURIComponent(parts[3]);
       const payload = await readJson(req);
-      const buffer = Buffer.from(payload.contentBase64 || "", "base64");
+      const validated = validateUploadedPayload({ ...payload, fileType: "export" }, ["export"]);
       const result = saveContractFile(
         contractId,
         payload.versionId || null,
-        buffer,
-        payload.originalName || payload.name || "export.docx",
-        payload.mimeType || "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        validated.buffer,
+        validated.originalName || "export.docx",
+        validated.mimeType || "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "export"
       );
       sendJson(res, 200, { ok: true, file: result }, req);
     } catch (error) {
-      sendJson(res, 500, { ok: false, error: error.message || String(error) }, req);
+      sendJson(res, error.statusCode || 500, serverErrorPayload(error, "Failed to archive export file"), req);
     }
     return true;
   }
@@ -111,7 +157,7 @@ async function handleApi(req, res, url) {
       });
       res.end(content);
     } catch (error) {
-      sendJson(res, 500, { ok: false, error: error.message || String(error) }, req);
+      sendJson(res, error.statusCode || 500, serverErrorPayload(error, "Failed to download archived file"), req);
     }
     return true;
   }
@@ -123,7 +169,7 @@ async function handleApi(req, res, url) {
       const file = deleteFile(fileId);
       sendJson(res, 200, { ok: true, file }, req);
     } catch (error) {
-      sendJson(res, 500, { ok: false, error: error.message || String(error) }, req);
+      sendJson(res, error.statusCode || 500, serverErrorPayload(error, "Failed to delete archived file"), req);
     }
     return true;
   }
@@ -133,7 +179,7 @@ async function handleApi(req, res, url) {
       const backupPath = await runAutoBackup();
       sendJson(res, 200, { ok: true, backupPath }, req);
     } catch (error) {
-      sendJson(res, 500, { ok: false, error: error.message || String(error) }, req);
+      sendJson(res, error.statusCode || 500, serverErrorPayload(error, "Failed to create backup"), req);
     }
     return true;
   }
@@ -167,7 +213,7 @@ async function handleApi(req, res, url) {
       const dbResult = replaceDb(snapshot);
       sendJson(res, 200, { ok: true, db: dbResult }, req);
     } catch (error) {
-      sendJson(res, 500, { ok: false, error: error.message || String(error) }, req);
+      sendJson(res, error.statusCode || 500, serverErrorPayload(error, "Failed to sync workbench state"), req);
     }
     return true;
   }
@@ -177,7 +223,7 @@ async function handleApi(req, res, url) {
       const payload = await readJson(req);
       sendJson(res, 200, { ok: true, file: saveFile(payload.name, payload.content) }, req);
     } catch (error) {
-      sendJson(res, 500, { ok: false, error: error.message || String(error) }, req);
+      sendJson(res, error.statusCode || 500, serverErrorPayload(error, "Failed to save local file"), req);
     }
     return true;
   }
@@ -189,7 +235,7 @@ async function handleApi(req, res, url) {
       const parsed = extractDocxPackage(buffer);
       sendJson(res, 200, { ok: true, fileName: payload.name || "", text: parsed.acceptedText, ...parsed }, req);
     } catch (error) {
-      sendJson(res, 500, { ok: false, error: error.message || String(error) }, req);
+      sendJson(res, error.statusCode || 500, serverErrorPayload(error, "Failed to parse docx"), req);
     }
     return true;
   }
@@ -200,7 +246,7 @@ async function handleApi(req, res, url) {
       const result = await analyzeLegalReview(request);
       sendJson(res, 200, result, req);
     } catch (error) {
-      sendJson(res, 500, { ok: false, error: error.message || String(error) }, req);
+      sendJson(res, error.statusCode || 500, serverErrorPayload(error, "Legal review failed"), req);
     }
     return true;
   }
@@ -221,7 +267,7 @@ async function handleApi(req, res, url) {
       const request = await readJson(req);
       sendJson(res, 200, await runSuggestionAction(request), req);
     } catch (error) {
-      sendJson(res, 500, { ok: false, error: error.message || String(error) }, req);
+      sendJson(res, error.statusCode || 500, serverErrorPayload(error, "Suggestion action failed"), req);
     }
     return true;
   }
@@ -231,7 +277,7 @@ async function handleApi(req, res, url) {
       const request = await readJson(req);
       sendJson(res, 200, await runContractIntake(request), req);
     } catch (error) {
-      sendJson(res, 500, { ok: false, error: error.message || String(error) }, req);
+      sendJson(res, error.statusCode || 500, serverErrorPayload(error, "Contract intake failed"), req);
     }
     return true;
   }
@@ -245,7 +291,7 @@ async function handleApi(req, res, url) {
       const results = search(query, { types, limit, contractId });
       sendJson(res, 200, { ok: true, query, results }, req);
     } catch (error) {
-      sendJson(res, 500, { ok: false, error: error.message || String(error) }, req);
+      sendJson(res, error.statusCode || 500, serverErrorPayload(error, "Search failed"), req);
     }
     return true;
   }
@@ -257,7 +303,7 @@ async function handleApi(req, res, url) {
       const results = searchContracts(query, limit);
       sendJson(res, 200, { ok: true, query, results }, req);
     } catch (error) {
-      sendJson(res, 500, { ok: false, error: error.message || String(error) }, req);
+      sendJson(res, error.statusCode || 500, serverErrorPayload(error, "Contract search failed"), req);
     }
     return true;
   }
@@ -270,7 +316,7 @@ async function handleApi(req, res, url) {
       const results = searchClauses(query, contractId, limit);
       sendJson(res, 200, { ok: true, query, contractId, results }, req);
     } catch (error) {
-      sendJson(res, 500, { ok: false, error: error.message || String(error) }, req);
+      sendJson(res, error.statusCode || 500, serverErrorPayload(error, "Clause search failed"), req);
     }
     return true;
   }
@@ -280,7 +326,7 @@ async function handleApi(req, res, url) {
       const request = await readJson(req);
       sendJson(res, 200, await runVisualQa(request), req);
     } catch (error) {
-      sendJson(res, 500, { ok: false, error: error.message || String(error) }, req);
+      sendJson(res, error.statusCode || 500, serverErrorPayload(error, "Visual QA failed"), req);
     }
     return true;
   }

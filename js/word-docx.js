@@ -13,6 +13,7 @@ async function readUploadedFile(file) {
   const fileBuffer = await file.arrayBuffer();
   const originalBufferBase64 = arrayBufferToBase64(fileBuffer);
   if (/\.docx$/i.test(file.name) || file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+    // Prefer backend parsing for fidelity and consistency; browser parsing is only an offline fallback.
     const buffer = fileBuffer;
     const backendParsed = await parseDocxOnBackend(file.name, buffer);
     if (backendParsed) {

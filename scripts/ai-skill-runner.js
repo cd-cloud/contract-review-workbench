@@ -1,4 +1,5 @@
 const { compact, getProviderStatus, printJson, readStdinJson, runJsonTask } = require("./ai-runner-lib");
+const PROMPT_VERSION = "agent-a-review-v1";
 
 function buildPrompt(payload) {
   const request = payload.request || payload;
@@ -61,6 +62,9 @@ async function main() {
     outputPrefix: "legal-ai-skill",
     systemPrompt: "You are Agent A for a contract review workbench. Return valid JSON only. All user-facing legal content should be in Chinese.",
   });
+  result.promptVersion = PROMPT_VERSION;
+  result.skillPath = "legal-work-orchestrator";
+  result.downstreamSkill = "legal-contract-orchestrator";
   printJson(result);
 }
 

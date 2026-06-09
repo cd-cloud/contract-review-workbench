@@ -908,6 +908,12 @@ function copyDirectoryIfExists(sourceDir, targetDir) {
   fs.cpSync(sourceDir, targetDir, { recursive: true });
 }
 
+function readBackupManifest(backupPath) {
+  const manifestPath = path.join(backupPath, "manifest.json");
+  if (!fs.existsSync(manifestPath)) return null;
+  return parseJson(fs.readFileSync(manifestPath, "utf8"), null);
+}
+
 async function runAutoBackup() {
   try {
     const backupDir = path.join(WORKBENCH_ROOT, "backups");
@@ -935,6 +941,31 @@ async function runAutoBackup() {
     console.error("[store-sqlite] Backup failed:", err.message);
     return null;
   }
+}
+
+function restoreBackupToDirectory(backupPath, targetRoot) {
+  const resolvedBackup = path.resolve(backupPath);
+  const resolvedTarget = path.resolve(targetRoot);
+  const manifest = readBackupManifest(resolvedBackup);
+  const backupDbPath = path.join(resolvedBackup, manifest?.dbFile || "workbench.sqlite");
+  if (!fs.existsSync(backupDbPath)) {
+    throw new Error(`Backup sqlite file not found: ${backupDbPath}`);
+  }
+
+  const targetDataDir = path.join(resolvedTarget, "data");
+  const targetContractsDir = path.join(resolvedTarget, "contracts");
+  const targetFilesDir = path.join(resolvedTarget, "files");
+  fs.mkdirSync(targetDataDir, { recursive: true });
+  fs.copyFileSync(backupDbPath, path.join(targetDataDir, "workbench.sqlite"));
+  copyDirectoryIfExists(path.join(resolvedBackup, "contracts"), targetContractsDir);
+  copyDirectoryIfExists(path.join(resolvedBackup, "files"), targetFilesDir);
+  return {
+    targetRoot: resolvedTarget,
+    database: path.join(targetDataDir, "workbench.sqlite"),
+    contractsDir: targetContractsDir,
+    filesDir: targetFilesDir,
+    manifest,
+  };
 }
 
 /* ─────────────── Full-text search ─────────────── */
@@ -1060,6 +1091,7 @@ module.exports = {
   getContractFolder,
   listAllContractsWithPaths,
   runAutoBackup,
+  restoreBackupToDirectory,
   search,
   searchContracts,
   searchClauses,

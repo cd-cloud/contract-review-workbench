@@ -167,7 +167,6 @@ function buildConcreteContractRiskSuggestion(contract, material, clauses, findin
 function normalizeSuggestedClauseType(type) {
   const source = String(type || "");
   return normalizeClauseTypeLabel(source);
-  return clauseTypes.find((item) => source.includes(item)) || (source.includes("鉴于") || source.includes("背景") ? "鉴于条款" : "其他");
 }
 
 function buildSuggestedContractClauseText(type, contract, material, clauses) {

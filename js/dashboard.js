@@ -55,6 +55,13 @@ function renderDashboard() {
       </div>
     </div>
     <div class="panel" style="margin-top:16px">
+      <div class="section-header-row">
+        <h3 class="section-title">本地运行诊断</h3>
+        <button class="small-button" type="button" data-refresh-runner-status>刷新运行状态</button>
+      </div>
+      ${renderRunnerDiagnostics()}
+    </div>
+    <div class="panel" style="margin-top:16px">
       <h3 class="section-title">全局检索</h3>
       <div class="filters">
         <input id="global-search" placeholder="搜索合同、相对方、版本记录、条款、条款库" />
@@ -79,6 +86,54 @@ function renderDashboard() {
           ? `<div class="contract-list audit-list">${renderAuditRows()}</div>`
           : ""
       }
+    </div>
+  `;
+}
+
+function renderRunnerDiagnostics() {
+  const legal = state.runnerStatus || {};
+  const runners = state.runnerStatuses || {};
+  const items = [
+    { label: "Agent A", status: legal },
+    { label: "Intake", status: runners.intake || null },
+    { label: "Suggestion", status: runners.suggestion || null },
+    { label: "Visual QA", status: runners.visualQa || null },
+  ];
+  return `
+    <div class="contract-list">
+      ${items.map((item) => runnerDiagnosticRow(item.label, item.status)).join("")}
+    </div>
+  `;
+}
+
+function runnerDiagnosticRow(label, status) {
+  if (!status) {
+    return `
+      <div class="contract-row">
+        <div>
+          <strong>${escapeHtml(label)}</strong>
+          <p>暂无状态数据</p>
+        </div>
+        <span class="status-pill">待刷新</span>
+      </div>
+    `;
+  }
+  const stateLabel = status.lastRunState || (status.ready ? "succeeded" : "pending");
+  const tone = stateLabel === "failed" ? "high" : stateLabel === "fallback" || status.ready === false ? "medium" : "low";
+  const summary = status.summary || status.error || "未提供摘要";
+  const meta = [
+    status.provider ? `provider=${status.provider}` : "",
+    status.model ? `model=${status.model}` : "",
+    status.launcherMode ? `mode=${status.launcherMode}` : "",
+  ].filter(Boolean).join(" | ");
+  return `
+    <div class="contract-row">
+      <div>
+        <strong>${escapeHtml(label)}</strong>
+        <p>${escapeHtml(summary)}</p>
+        ${meta ? `<span class="muted">${escapeHtml(meta)}</span>` : ""}
+      </div>
+      <span class="risk ${tone}">${escapeHtml(stateLabel)}</span>
     </div>
   `;
 }

@@ -70,6 +70,7 @@ const seedData = {
       amount: "未识别",
       term: "一年",
       payment: "收到发票后六十日",
+      jurisdiction: "中国大陆",
       governingLaw: "中国大陆",
       dispute: "乙方所在地人民法院管辖",
       text: sampleContract,

@@ -1,45 +1,143 @@
 # TODO
 
-本清单按当前产品定位维护：Web UI 是 Codex Legal Skill / AI Agent 的可视化审阅台，尽量让 Codex 参与合同阅读理解、条款切分、风险提示、修改建议、建议动作和交付产物生成；本地规则只作为快速填充、兜底解析、即时校验和离线辅助。
+本清单按当前项目定位维护：本项目是面向法务/合同场景的本地优先 AI 合同审阅工作台。产品层继续复用 `legal-work-orchestrator -> legal-contract-orchestrator` 的法律工作规则；整改重点放在运行稳定性、输出可信度、安全边界、缓存隔离、状态治理和测试闭环。
 
-## 已完成方向
+说明：
 
-- 新建审阅、上传新进度版本后，自动触发 Codex 条款切分与合同分析。
-- 条款切分默认交给 Codex，正则切分只作为兜底。
-- Legal Skill 运行采用“先完整审阅，再结构化压缩”的方式，让建议更接近 Codex 直接审阅合同的效果。
-- AI 建议按条款编号和语义线索匹配到最相关卡片；新增条款建议优先放到对应章节或条款，无定位时进入合同级风险提示。
-- 同一新增建议去重，避免在多个条款卡片重复出现。
-- 条款卡片展示避免标题和正文重复，父条款与子条款内容一致时不再重复切分展示。
-- 卡片支持双击展开/收起。
-- 新建审阅支持本地快速填充和 Codex 一键信息填充两种入口。
-- 右侧导出区已收敛，运行分析和生成拟交付版本保留在主要流程中。
-- Codex 进度展示不再显示容易混乱的系统时间。
-- 条款卡片支持直接修改、新增、删除、批注，减少从索引栏进入修改界面的点击成本。
+- 本轮暂不处理 macOS 兼容性。
+- Prompt 管理和合同审阅准确性不按“重写全部 prompt”推进，而是优先补产品层约束、版本追踪、用户确认和风险提示。
+- 所有任务默认按本文件的阶段和顺序执行；除非出现阻塞，不跳阶段、不并行大改。
 
-## 审阅台体验优化 Backlog
+## 当前执行顺序
 
-- [完成] AI 建议改为“问题是什么 / 建议怎么改 / 操作动作”三段式展示，避免大段文字堆叠。
-- [完成] 条款卡片内增加“原文 / 修订 / 清洁稿”即时切换，让修改成果在导出前可见。
-- [完成] 增加审阅队列入口：高风险、待处理 AI 建议、已修改、有批注、拟删除等，让用户按 inbox 方式逐条处理。
-- [完成] 卡片右侧动作栏固定化，鼠标进入卡片时保持清晰可见，长条款内也能快速操作。
-- [完成] 原文锚点和建议锚点联动：点击建议高亮对应正文，点击正文只显示相关建议。
-- [完成] AI Agent 状态按工作流展示：阅读合同、切分条款、匹配风险、生成建议、界面一致性检查。
-- [完成] 新增条款建议在采纳前显示为“拟新增条款”，不独立编号；采纳后按正式合同结构自动入编。
-- [完成] Agent B 做轻量实时兜底：本地即时检查重复正文、编号异常、空标题、建议错位；后台检查条款归属、建议重复和导出前格式。
+1. 阶段 1：可信输出优先
+2. 阶段 2：稳定性安全加固
+3. 阶段 3：结构治理
+4. 阶段 4：数据层与闭环测试
 
-## 近期待办
+## 阶段 1：可信输出优先
 
-- 增加端到端冒烟测试：新建审阅、自动分析、展开条款、采纳建议、生成拟发送版本、导出 Word 红线/批注稿。
-- 增加真实合同样本的脱敏回归集，覆盖保密协议、服务合同、采购合同、SaaS/AI 服务协议、数据处理协议等类型。
-- 优化 Codex 用量：按合同文本 hash 缓存切分结果，上传进度版本时优先做版本差异审阅。
-- 建议动作已默认收敛到 Codex 后端；如需本地兜底，必须显式开启并标识“本地兜底生成”。
-- 继续提高建议匹配质量，尤其是 1.3、2.3.2 这类细粒度条款编号的精确落位。
-- 为合同级风险提示增加“需要新增条款但未能定位章节”的独立分组。
-- 完善导出产物的格式一致性，确保红线稿、批注稿、拟发送版本都能直接进入对外谈判流程。
+目标：先修“会误导用户”的问题，不做大重构。
 
-## 稳定性清理
+状态：`进行中`
 
-- 保持 README、RUNNING、ROADMAP 与当前流程同步。
-- 清理旧的乱码文档、旧的导出面板入口和不再使用的展示函数。
-- 对 Codex 后端未连接、运行失败、JSON 解析失败等情况给出清楚、可恢复的错误提示。
-- 对长合同增加分段进度提示，避免用户误以为页面卡死。
+- [~] 1.1 全仓中文编码治理，优先修用户可见文案、seed 文本、提示文案、导出文本。
+  - 涉及：`index.html`、`js/state.js`、`js/api.js`、`js/review-risk.js`、`README.md`、`RUNNING.md`、`PORTABILITY.md`
+  - 进展：首页/新建审阅文案、示例合同、关键运行提示、README/RUNNING/PORTABILITY 已清理；其余遗留乱码继续滚动清理。
+  - 验收：主界面、审阅台、导出相关文案无乱码；关键测试不再依赖 mojibake 文本。
+- [x] 1.2 去掉 `buildLegalSkillRequest()` 中的 `jurisdiction: "中国大陆"` 硬编码，改为从合同字段读取。
+  - 涉及：`js/api.js`、`js/state.js`
+  - 验收：审阅请求中不再写死法域；示例合同显式带法域字段。
+- [x] 1.3 新建审阅流程增加“合同类型 + 法域确认”的最小用户确认步骤。
+  - 涉及：`index.html`、`js/app-events.js`、`js/api.js`、`js/state.js`
+  - 验收：新建审阅后，用户可确认或修改合同类型与法域；确认结果进入 state 和 AI request。
+- [x] 1.4 Fallback 结果强提示，不允许与真实 AI 结果混淆。
+  - 涉及：`js/render-review.js`、`js/api.js`、`server/legal-skill-adapter.js`
+  - 验收：fallback 结果顶部有明确提示；来源字段稳定显示 `fallback`。
+- [x] 1.5 长文本/条款裁剪提示。
+  - 涉及：`js/api.js`、`js/render-review.js`、`scripts/ai-skill-runner.js`
+  - 验收：合同或条款被裁剪时，UI 明确提示“非全文分析/截断分析”。
+- [x] 1.6 清理已确认的低风险代码问题。
+  - 涉及：`js/review-risk.js`
+  - 验收：不可达代码移除；相关纯测试保持通过。
+
+## 阶段 2：稳定性安全加固
+
+目标：让系统“出错也可控”，降低真实事故概率。
+
+状态：`进行中`
+
+- [x] 2.1 后端错误脱敏，生产环境不直接透传原始 `error.message`。
+  - 涉及：`server/routes/api.js`、`server/server.js`
+  - 验收：前端不再直接看到 provider 原始报错、路径或敏感响应体。
+- [x] 2.2 前端错误提示分级。
+  - 涉及：`js/api.js`、`js/render-review.js`
+  - 验收：401/429/500/fallback 场景有不同用户提示。
+- [x] 2.3 `analysis-cache` key 增加上下文维度。
+  - 涉及：`server/analysis-cache.js`
+  - 至少包含：`jurisdiction`、`contractTypeCategory` 或等价字段、`extraRequirements`、`provider/model`、`promptVersion`
+  - 验收：不同法域/不同额外要求/不同版本上下文不会复用同一缓存结果。
+- [x] 2.4 上传接口增加大小、MIME、扩展名校验。
+  - 涉及：`server/routes/api.js`、`server/http-utils.js`、`server/store-sqlite.js`
+  - 验收：超限文件被拒绝；非白名单类型被拒绝；错误提示明确。
+- [x] 2.5 文档同步到当前实现。
+  - 涉及：`README.md`、`RUNNING.md`、`PORTABILITY.md`
+  - 验收：文档不再描述旧 token 提取方式；启动、健康检查、cookie-session 说明准确。
+- [x] 2.6 过时辅助脚本标记或隔离。
+  - 涉及：`scripts/split-server.py`、`scripts/extract_modules.py` 等
+  - 验收：过时脚本有注释/归档说明，不再误导后续维护。
+
+## 阶段 3：结构治理
+
+目标：降低继续开发时的回归率和理解成本。
+
+状态：`进行中`
+
+- [~] 3.1 拆分 `js/app-events.js`
+  - 目标文件：`events-nav.js`、`events-review.js`、`events-export.js`、`events-modal.js`
+  - 进展：已拆出 `events-nav.js`、`events-modal.js`、`events-draft.js`、`events-review.js`、`events-export.js`、`events-backend.js`、`events-document.js`，并移除 `app-events.js` 中对这些 handler 的重复定义；当前 `app-events.js` 仅保留全局 click 分发和拖拽桥接。
+  - 验收：上传/审阅/导出/导航事件分文件；功能不回归。
+- [~] 3.2 建立最小 state 写入规范。
+  - 涉及：`js/state.js`、`js/store.js`、`js/app-events.js`、`js/review-*.js`
+  - 进展：已新增 `Store.mutate()` 并扩展到 `events-nav.js`、`events-draft.js`、`events-modal.js`、`events-review.js`、`events-export.js`、`events-backend.js`、`events-document.js` 等主要链路；后续继续替换剩余旧模块中的散写 `state` 路径。
+  - 验收：核心写路径集中；直接散写 `state.xxx = ...` 明显减少。
+- [~] 3.3 增加 `promptVersion` / `skillVersion` 追踪。
+  - 涉及：`scripts/ai-*.js`、`server/legal-skill-adapter.js`、`server/contract-intake-adapter.js`、`server/visual-qa-adapter.js`
+  - 进展：已为当前主要 runner 输出补上 `promptVersion`、`skillPath`、`downstreamSkill` 元数据；后续仍需统一更多结果链路。
+  - 验收：结果中能看到版本；缓存可感知版本差异。
+- [~] 3.4 统一结果来源元数据。
+  - 涉及：`js/api.js`、`server/*-adapter.js`、`js/render-review.js`
+  - 进展：Legal Skill / intake / suggestion / visual QA 已逐步补齐 `source`、`fallbackReason`、`promptVersion` 等字段；UI 已开始展示关键来源信息。
+  - 验收：UI 能稳定展示 provider、fallback、checkedAt、skill/prompt 版本。
+- [~] 3.5 `runner-status` 页面化/诊断化。
+  - 涉及：`server/routes/api.js`、诊断视图或 `js/render-review.js`
+  - 进展：已在总览页增加“本地运行诊断”面板和手动刷新入口；后续继续完善更细粒度诊断展示。
+  - 验收：用户能看懂“已配置/健康/降级/fallback”状态，而不是原始字段堆砌。
+
+## 阶段 4：数据层与闭环测试
+
+目标：处理深层技术债，但单独控风险。
+
+状态：`进行中`
+
+- [~] 4.1 设计 SQLite 增量持久化方案。
+  - 涉及：`server/store-sqlite.js`、`server/store.js`
+  - 进展：已补设计稿 `docs/sqlite-incremental-persistence-plan.md`，明确当前“整库 replace”现状、目标分层、优先改造接口和分阶段落地顺序；后续进入高频写路径的局部持久化实现。
+  - 验收：先有设计稿，明确哪些实体增量写、哪些仍保留 aux state。
+- [~] 4.2 实现 mock runner 的端到端 smoke。
+  - 涉及：`tests/`，新增 `tests/e2e-smoke.js`
+  - 进展：已新增 mock E2E，覆盖 `intake -> legal-review job -> 结果完成 -> suggestion -> visual QA` 主链路；导出由 `tests/test-export-smoke.js` 单独补足。
+  - 验收：上传 → intake → legal-review job → 采纳 → 导出 可稳定跑通。
+- [~] 4.3 重新梳理 docx 双实现策略。
+  - 涉及：`js/word-docx.js`、`scripts/docx-extract.js`、`server/routes/api.js`
+  - 进展：`js/word-docx.js` 已明确“后端优先、浏览器保底 fallback”的策略注释，`tests/test-docx-pure.js` 已覆盖后端成功与回退到浏览器解析两条路径；后续再继续梳理服务端/脚本职责边界。
+  - 验收：明确“后端优先、前端保底”边界；两边职责不再混乱。
+- [~] 4.4 清理旧数据资产和明显误导性遗留物。
+  - 涉及：`data/workbench-db.json`、过时脚本/旧说明
+  - 进展：`data/workbench-db.json` 已移除，过时辅助脚本已加标记；后续继续清理剩余遗留说明。
+  - 验收：仓库中不再保留误导性旧数据库文件。
+- [x] 4.5 备份/恢复闭环验证。
+  - 涉及：`server/store-sqlite.js`、相关测试
+  - 进展：已把测试从“目录存在”增强到“备份 sqlite 可查询、合同归档文件已写入备份目录、恢复到新目录后可重新打开 sqlite 和归档文件”。
+  - 验收：备份可恢复 SQLite + 合同归档文件，不只是“目录存在”。
+
+## 每阶段都要回归的核心链路
+
+- [ ] 新建审阅
+- [ ] 上传 `.docx`
+- [ ] intake 自动填充
+- [ ] Agent A 审阅
+- [ ] fallback 提示
+- [ ] Agent B 检查
+- [ ] 采纳/拒绝建议
+- [ ] 导出 Word
+- [ ] 备份
+- [ ] 重启后再次打开合同
+
+## 当前下一步
+
+当前默认下一步：
+
+1. 继续清理 `1.1` 剩余用户可见乱码/旧文案。
+2. 继续补 `3.3 -> 3.4` 的版本与来源元数据统一。
+3. 开始 `4.1` SQLite 增量持久化设计稿。

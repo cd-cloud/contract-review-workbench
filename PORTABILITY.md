@@ -1,165 +1,96 @@
-# Portability Guide
+# PORTABILITY
 
-本项目可以用两类 AI 后端运行：
+本项目内置了一套面向 Windows 新机器迁移的便携运行层，核心目标是：
 
-- Codex CLI：适合在安装了 Codex Desktop / Codex CLI 的电脑上直接跑，并可使用本机 skills。
-- Kimi / Moonshot / OpenAI-compatible API：适合接入兼容 `/v1/chat/completions` 的模型服务。
+- 自动选择可用的 AI provider
+- 自动选择可写数据目录
+- 自动选择可用本地端口
+- 在缺少健康 provider 时仍允许 fallback 打开工作台
 
-WebUI 不直接依赖某个模型。后端通过 runner 脚本把合同审阅、建议动作、新建审阅信息填充和 Visual QA 都转成统一 JSON。
+## 关键脚本
 
-## 迁移到另一台 Codex 电脑
+- `scripts/start-ai-server.js`：启动入口
+- `scripts/portable-runtime.js`：运行时 profile 与端口/目录选择
+- `scripts/portability-check.js`：环境检查
+- `scripts/portable-smoke.js`：本地 server 便携 smoke
+- `scripts/health-check.js`：读取 `runtime-config.js`，带 cookie-session 检查 `/api/health` 和 runner 状态
 
-```powershell
-npm install
-npm run portability:check
-npm run server:ai
+## 默认行为
+
+默认数据目录：
+
+```text
+.local-workbench/
 ```
 
-如果 Codex CLI 不在默认位置：
+默认端口：
 
-```powershell
-$env:CODEX_CLI_COMMAND="C:\path\to\codex.exe"
-npm run server:ai
+```text
+8787
 ```
 
-如果 skill 不在默认位置：
+若端口被占用，会自动向上寻找可用端口。
 
-```powershell
-$env:LEGAL_WORK_ORCHESTRATOR_SKILL="C:\path\to\legal-work-orchestrator\SKILL.md"
-npm run server:ai
+## 运行模式
+
+启动器会在控制台打印：
+
+```text
+[portable] profile=...
+[portable] runtime_mode=...
+[portable] provider=...
+[portable] reason=...
+[portable] url=http://127.0.0.1:8787/
 ```
 
-## 接入 Kimi
+常见模式：
 
-最少配置：
+- `codex-cli`
+- `openai-compatible`
+- `fallback`
 
-```powershell
-$env:LEGAL_AI_PROVIDER="kimi"
-$env:KIMI_API_KEY="<api key>"
-npm run server:kimi
-```
+## fallback 模式说明
 
-默认 base url 为 `https://api.moonshot.cn/v1`，默认 model 为 `moonshot-v1-32k`。
+在 fallback 模式下：
 
-自定义配置：
+- 工作台仍然可以启动
+- 本地归档、导出、结构浏览仍可使用
+- AI 审阅应视为降级
 
-```powershell
-$env:LEGAL_AI_BASE_URL="https://api.moonshot.cn/v1"
-$env:LEGAL_AI_API_KEY="<api key>"
-$env:LEGAL_AI_MODEL="<model name>"
-$env:LEGAL_AI_TEMPERATURE="0.2"
-npm run server:kimi
-```
+这时需要补齐 Codex CLI 或 OpenAI-compatible provider 配置。
 
-如果后端不支持 `response_format`：
+## 本地健康检查
 
 ```powershell
-$env:LEGAL_AI_RESPONSE_FORMAT="none"
+npm run health
 ```
 
-## 接入其他 OpenAI-compatible 后端
+它会：
 
-```powershell
-$env:LEGAL_AI_PROVIDER="openai-compatible"
-$env:LEGAL_AI_BASE_URL="<base url 或完整 /v1/chat/completions 地址>"
-$env:LEGAL_AI_API_KEY="<api key>"
-$env:LEGAL_AI_MODEL="<model name>"
-npm run server:ai
-```
+1. 读取 `/js/runtime-config.js`
+2. 获取本地 cookie-session
+3. 调用 `/api/health`
+4. 调用 `/api/legal-review/runner-status`
 
-`LEGAL_AI_BASE_URL` 可以是 `https://.../v1`，runner 会自动拼接 `/chat/completions`；如果传入完整 `/v1/chat/completions` 地址，也会直接使用。
+## 当前迁移注意事项
 
-## Runner 环境变量
+1. 不要再依赖 `runtime-config.js` 中的 token 提取逻辑；当前实现已切换为 cookie-session。
+2. 如果工作台端口自动切换，不要手输 `8787`，要使用启动器打印出来的实际 URL。
+3. 如果 provider 被判定为 `fallback`，先检查：
+   - Codex CLI 是否可运行
+   - `legal-work-orchestrator` skill 是否存在
+   - Kimi / OpenAI-compatible 的 API key、base URL、model 是否完整
 
-通常不需要手动指定。provider 为 Kimi/OpenAI-compatible 时，后端会自动选择：
-
-- `scripts/ai-skill-runner.js`
-- `scripts/ai-suggestion-runner.js`
-- `scripts/ai-intake-runner.js`
-- `scripts/ai-visual-qa-runner.js`
-
-需要覆盖时可设置：
-
-```powershell
-$env:LEGAL_SKILL_RUNNER_SCRIPT="scripts/ai-skill-runner.js"
-$env:SUGGESTION_ACTION_RUNNER_SCRIPT="scripts/ai-suggestion-runner.js"
-$env:CONTRACT_INTAKE_RUNNER_SCRIPT="scripts/ai-intake-runner.js"
-$env:VISUAL_QA_RUNNER_SCRIPT="scripts/ai-visual-qa-runner.js"
-```
-
-## 自检
+## 推荐验证命令
 
 ```powershell
 npm run portability:check
 ```
 
-它会检查 runner、schema、skill、Codex CLI 以及 OpenAI-compatible API 配置是否可用。
-# Portable runtime layer
-
-The repository includes a project-owned portable startup layer for new machines:
-
-- `scripts/start-ai-server.js`: cross-platform server launcher. It sets runner scripts, defaults data to `.local-workbench/`, selects a free port starting from `8787`, auto-selects the healthiest AI provider, then starts the backend.
-- `scripts/preflight.js`: checks Node, npm, required dependencies, writable data directory, available port, Codex CLI, and `legal-work-orchestrator`.
-- `scripts/health-check.js`: reads `/js/runtime-config.js`, extracts the runtime API token, and checks `/api/health` plus runner status.
-- `start-portable.bat`: Windows double-click entry point for portable local testing.
-
-## Automatic provider selection
-
-`npm.cmd run server:ai` is now the recommended migration entry point on Windows.
-
-At startup, the launcher probes the local environment and chooses a runtime mode in this order:
-
-1. A runnable local `Codex CLI`
-2. A configured OpenAI-compatible provider such as Kimi / Moonshot
-3. Controlled fallback mode if neither side is healthy
-
-The launcher prints its decision before the server starts, for example:
-
-```text
-[portable] profile=codex
-[portable] runtime_mode=codex-cli
-[portable] provider=codex-cli
-[portable] reason=Codex CLI is runnable.
+```powershell
+npm run portable:smoke
 ```
-
-or:
-
-```text
-[portable] profile=kimi
-[portable] runtime_mode=openai-compatible
-[portable] provider=kimi
-[portable] reason=Codex CLI is unavailable; falling back to configured API provider.
-```
-
-or:
-
-```text
-[portable] profile=fallback
-[portable] runtime_mode=fallback
-[portable] provider=codex-cli
-[portable] reason=No healthy AI provider detected.
-```
-
-In fallback mode, the app still starts and keeps local fallback behavior available, but model-backed review quality will be reduced until a healthy provider is configured.
-
-Recommended Windows flow:
 
 ```powershell
-npm.cmd install
-npm.cmd run preflight
-npm.cmd run server:ai
+npm run health
 ```
-
-If PowerShell blocks `npm.ps1`, use `npm.cmd`. If the server chooses a fallback port because `8787` is occupied, use the URL printed by the launcher.
-
-## Recommended migration strategy
-
-For a stable daily-use machine, local `Codex CLI` is fine if `preflight` shows it as runnable.
-
-For a newly migrated Windows machine, the safest path is:
-
-1. Run `npm.cmd run portability:check`
-2. If `Codex CLI` is blocked but API credentials are available, use `npm.cmd run server:ai` and let the launcher switch to the API provider automatically
-3. If both local Codex and API provider are unavailable, start the app anyway to inspect local data and UI flow, then finish provider setup afterward
-
-`scripts/portability-check.js` now also reports `automaticSelection`, which shows what the launcher would choose on that machine and why.

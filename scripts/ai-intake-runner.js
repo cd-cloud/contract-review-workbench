@@ -1,4 +1,5 @@
 const { compact, printJson, readStdinJson, runJsonTask } = require("./ai-runner-lib");
+const PROMPT_VERSION = "contract-intake-v1";
 
 function buildPrompt(payload) {
   const contractText = compact(payload.contractText || "", 90000);
@@ -31,6 +32,9 @@ async function main() {
     schemaPath: "schemas/contract-intake-response.schema.json",
     outputPrefix: "legal-ai-intake",
   });
+  result.promptVersion = PROMPT_VERSION;
+  result.skillPath = "legal-work-orchestrator";
+  result.downstreamSkill = "legal-contract-orchestrator";
   printJson(result);
 }
 

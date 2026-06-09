@@ -42,7 +42,7 @@
           </div>
           <div class="topbar-actions">
             <div class="global-search">
-              <input type="text" id="global-search-input" placeholder="🔍 搜索合同、条款、风险规则..." autocomplete="off" />
+              <input type="text" id="global-search-input" placeholder="搜索合同、条款、风险规则..." autocomplete="off" />
               <div class="global-search-dropdown" id="global-search-dropdown"></div>
             </div>
             <button class="ghost-button" id="reset-demo">重置示例</button>
@@ -80,6 +80,22 @@
         <label>
           我方角色
           <input id="party-role-input" placeholder="例如：服务提供方 / 采购方 / 数据接收方 / 甲方 / 乙方" />
+        </label>
+        <label>
+          合同类型
+          <input id="contract-type-input" placeholder="例如：SaaS 服务合同 / 保密协议 / 采购合同" />
+        </label>
+        <label>
+          法域 / 准据法
+          <select id="contract-jurisdiction-input">
+            <option value="中国大陆">中国大陆</option>
+            <option value="香港">香港</option>
+            <option value="新加坡">新加坡</option>
+            <option value="英格兰和威尔士">英格兰和威尔士</option>
+            <option value="美国纽约州">美国纽约州</option>
+            <option value="美国加利福尼亚州">美国加利福尼亚州</option>
+            <option value="待确认">待确认</option>
+          </select>
         </label>
         <label>
           反馈期限
@@ -221,7 +237,7 @@
         </div>
         <pre class="json-preview" id="skill-result-preview"></pre>
         <div class="modal-actions">
-          <button class="primary-button" type="button" data-close-skill-result>确定</button>
+          <button class="primary-button" type="button" data-close-skill-result">确定</button>
         </div>
       </form>
     </dialog>
@@ -258,6 +274,13 @@
     <script src="./js/ui-shell.js?v=20260523-ui-shell"></script>
     <script src="./js/app-router.js?v=20260530"></script>
     <script src="./js/app-contract-actions.js?v=20260530"></script>
+    <script src="./js/events-nav.js?v=20260609-split"></script>
+    <script src="./js/events-modal.js?v=20260609-split"></script>
+    <script src="./js/events-draft.js?v=20260609-split"></script>
+    <script src="./js/events-review.js?v=20260609-split"></script>
+    <script src="./js/events-export.js?v=20260609-split"></script>
+    <script src="./js/events-backend.js?v=20260609-split"></script>
+    <script src="./js/events-document.js?v=20260609-split"></script>
     <script src="./js/app-events.js?v=20260530"></script>
     <script src="./js/search.js?v=20260602-fts5"></script>
     <script src="./js/electron-bridge.js?v=20260602"></script>

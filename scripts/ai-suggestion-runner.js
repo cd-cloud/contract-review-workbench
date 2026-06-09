@@ -1,4 +1,5 @@
 const { printJson, readStdinJson, runJsonTask } = require("./ai-runner-lib");
+const PROMPT_VERSION = "suggestion-action-v1";
 
 function buildPrompt(payload) {
   return [
@@ -27,6 +28,9 @@ async function main() {
     schemaPath: "schemas/suggestion-action-response.schema.json",
     outputPrefix: "legal-ai-suggestion",
   });
+  result.promptVersion = PROMPT_VERSION;
+  result.skillPath = "legal-work-orchestrator";
+  result.downstreamSkill = "legal-contract-orchestrator";
   printJson(result);
 }
 

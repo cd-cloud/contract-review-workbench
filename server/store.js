@@ -17,6 +17,7 @@ module.exports = {
   getContractFolder: sqlite.getContractFolder,
   listAllContractsWithPaths: sqlite.listAllContractsWithPaths,
   runAutoBackup: sqlite.runAutoBackup,
+  restoreBackupToDirectory: sqlite.restoreBackupToDirectory,
   search: sqlite.search,
   searchContracts: sqlite.searchContracts,
   searchClauses: sqlite.searchClauses,

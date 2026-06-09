@@ -37,6 +37,17 @@ global.state = {
   ],
   auditLogsCollapsed: true,
   activeContractId: "c1",
+  runnerStatus: {
+    provider: "codex-cli",
+    launcherMode: "codex-cli",
+    lastRunState: "succeeded",
+    summary: "Agent A healthy",
+  },
+  runnerStatuses: {
+    intake: { provider: "kimi", lastRunState: "fallback", summary: "Intake degraded" },
+    suggestion: { provider: "kimi", lastRunState: "succeeded", summary: "Suggestion healthy" },
+    visualQa: { provider: "kimi", lastRunState: "failed", summary: "Visual QA failed" },
+  },
 };
 
 loadScript("js/dashboard.js");
@@ -119,6 +130,14 @@ test("globalSearchRow renders contract link", () => {
   const html = globalSearchRow({ kind: "合同", title: "合同A", body: "甲公司", contractId: "c1" });
   assert.ok(html.includes("data-open-contract"));
   assert.ok(html.includes("合同A"));
+});
+
+test("renderRunnerDiagnostics renders runner summaries", () => {
+  const html = renderRunnerDiagnostics();
+  assert.ok(html.includes("Agent A"));
+  assert.ok(html.includes("Intake"));
+  assert.ok(html.includes("Visual QA"));
+  assert.ok(html.includes("fallback"));
 });
 
 // --- contractTaskRow ---

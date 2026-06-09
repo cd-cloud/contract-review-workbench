@@ -18,6 +18,17 @@ const JOB_PHASES = {
 
 const analysisJobs = new Map();
 
+function publicJobError(error) {
+  const message = String(error?.message || error || "");
+  if (/cancelled|canceled|已取消/i.test(message)) return "AI 分析已取消";
+  if (/timed out|timeout|超时/i.test(message)) return "AI 分析超时，请稍后重试";
+  if (/401|403|Unauthorized|Forbidden/i.test(message)) return "AI 服务认证失败，请检查本地运行配置";
+  if (/429|Too many|rate limit/i.test(message)) return "AI 服务请求过于频繁，请稍后再试";
+  return process.env.NODE_ENV === "development"
+    ? message
+    : "AI 审阅暂不可用，请稍后重试";
+}
+
 function withTimeout(promise, timeoutMs, message) {
   let timer = null;
   return Promise.race([
@@ -193,7 +204,7 @@ function createAnalysisJob(request) {
         status: "failed",
         phase: JOB_PHASES.failed,
         updatedAt: new Date().toISOString(),
-        error: error.message || String(error),
+        error: publicJobError(error),
       });
     }
   });

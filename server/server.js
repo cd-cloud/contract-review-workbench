@@ -1,7 +1,7 @@
 const http = require("http");
 const { handleStatic } = require("./routes/static");
 const { handleApi } = require("./routes/api");
-const { sendJson, getCorsHeaders } = require("./http-utils");
+const { sendJson, getCorsHeaders, serverErrorPayload } = require("./http-utils");
 
 const PORT = Number(process.env.LEGAL_WORKBENCH_PORT || 8787);
 
@@ -25,7 +25,7 @@ const server = http.createServer(async (req, res) => {
 
     sendJson(res, 404, { ok: false, error: "Not found" }, req);
   } catch (error) {
-    sendJson(res, 500, { ok: false, error: error.message || String(error) }, req);
+    sendJson(res, 500, serverErrorPayload(error, "Server error"), req);
   }
 });
 

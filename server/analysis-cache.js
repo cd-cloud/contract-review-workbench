@@ -21,9 +21,17 @@ class AnalysisCache {
     const norm = {
       text: String(request.contract_text || request.text || "").trim(),
       type: request.contract_type || "",
+      typeCategory: request.contract_type_category || "",
+      jurisdiction: request.jurisdiction || "",
       party: request.represented_party || "",
       counterparty: request.counterparty || "",
       background: request.business_background || "",
+      extraRequirements: request.drafting_requirements || request.extraRequirements || "",
+      provider: request.provider || request.model_provider || "",
+      model: request.model || request.model_name || "",
+      promptVersion: request.prompt_version || request.promptVersion || "",
+      skill: request.skill || "",
+      downstreamSkill: request.downstream_skill || request.downstreamSkill || "",
     };
     const payload = JSON.stringify(norm);
     return crypto.createHash("sha256").update(payload).digest("hex");
