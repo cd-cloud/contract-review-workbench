@@ -29,8 +29,15 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Clean previous Windows build output
+        shell: powershell
+        run: |
+          if (Test-Path dist) {
+            Remove-Item dist -Recurse -Force
+          }
+
       - name: Build Windows app
-        run: npm run build:win
+        run: npm run build:win:ci
         env:
           ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
           ELECTRON_BUILDER_BINARIES_MIRROR: https://npmmirror.com/mirrors/electron-builder-binaries/

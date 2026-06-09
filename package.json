@@ -21,6 +21,7 @@
     "desktop:launch": "powershell -ExecutionPolicy Bypass -File scripts/setup-windows.ps1 -SkipInstall -SkipBuild -SkipSmoke -Launch",
     "build": "npm run build:win",
     "build:win": "electron-rebuild -f -w better-sqlite3 && electron-builder --win",
+    "build:win:ci": "electron-rebuild -f -w better-sqlite3 && electron-builder --win nsis --publish never",
     "build:mac": "electron-builder --mac",
     "portability:check": "node scripts/portability-check.js",
     "portable:smoke": "node scripts/portable-smoke.js",
