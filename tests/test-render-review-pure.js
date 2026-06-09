@@ -76,6 +76,15 @@ global.renderContractBrief = () => "";
 global.setupReviewAdviceScrollSync = () => {};
 global.getWorkbenchMaterial = () => ({});
 global.buildReviewQueueItems = () => [];
+global.normalizeRunnerResultMeta = (result = {}) => ({
+  source: result.source || "",
+  isFallback: Boolean(result.isFallback) || /fallback/i.test(result.source || ""),
+  fallbackReason: result.fallbackReason || "",
+  promptVersion: result.promptVersion || result.prompt_version || "",
+  skillPath: result.skillPath || result.skill_path || "",
+  downstreamSkill: result.downstreamSkill || result.downstream_skill || "",
+  checkedAt: result.checkedAt || result.checked_at || "",
+});
 
 loadScript("js/render-review.js");
 
@@ -243,6 +252,24 @@ test("buildCodexWorkflowSteps: fallback visual report labels local guard complet
 test("formatVisualQaStatusForProgress distinguishes fallback vs agent report", () => {
   assert.strictEqual(formatVisualQaStatusForProgress({ status: "completed" }, { source: "visual-qa-fallback" }).includes("本地"), true);
   assert.strictEqual(formatVisualQaStatusForProgress({ status: "completed" }, { source: "agent-b" }).includes("Agent B"), true);
+});
+
+test("summarizeLegalSkillResult carries skill metadata", () => {
+  const summary = summarizeLegalSkillResult({
+    source: "configured-legal-skill-runner",
+    promptVersion: "agent-a-review-v1",
+    skillPath: "legal-work-orchestrator",
+    downstreamSkill: "legal-contract-orchestrator",
+    response: { clauseSegmentation: [1], clauseAnalyses: [{ clauseId: "c1" }] },
+  });
+  assert.strictEqual(summary.promptVersion, "agent-a-review-v1");
+  assert.strictEqual(summary.skillPath, "legal-work-orchestrator");
+  assert.strictEqual(summary.downstreamSkill, "legal-contract-orchestrator");
+});
+
+test("formatVisualQaStatusForProgress includes prompt version when available", () => {
+  const value = formatVisualQaStatusForProgress({ status: "completed" }, { source: "agent-b", promptVersion: "agent-b-visual-v1" });
+  assert.strictEqual(value.includes("agent-b-visual-v1"), true);
 });
 
 // --- getClauseQueueStatus ---

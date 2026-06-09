@@ -1043,6 +1043,15 @@ function replaceClauseActions(sourceKey, clauseMap = {}) {
   return clauseMap;
 }
 
+function appendInsertedClause(sourceKey, insertedClause = {}) {
+  const auxState = readAuxState();
+  auxState.insertedClauses = auxState.insertedClauses || {};
+  auxState.insertedClauses[sourceKey] = auxState.insertedClauses[sourceKey] || [];
+  auxState.insertedClauses[sourceKey].push(deepClone(insertedClause));
+  writeAuxState(auxState);
+  return insertedClause;
+}
+
 function patchAuxState(partialState = {}) {
   const current = readAuxState();
   const merged = {
@@ -1134,6 +1143,19 @@ function getFileById(fileId) {
   };
 }
 
+function deleteFilesForContract(contractId) {
+  const files = getContractFiles(contractId);
+  files.forEach((file) => {
+    if (file?.path && fs.existsSync(file.path)) fs.unlinkSync(file.path);
+  });
+  db.prepare("DELETE FROM files WHERE contract_id = ?").run(contractId);
+}
+
+function deleteFilesForVersion(versionId) {
+  const rows = db.prepare("SELECT id FROM files WHERE version_id = ?").all(versionId);
+  rows.forEach((row) => deleteFile(row.id));
+}
+
 function deleteFile(fileId) {
   const file = getFileById(fileId);
   if (file && fs.existsSync(file.path)) {
@@ -1147,6 +1169,29 @@ function listAllContractsWithPaths() {
   return db.prepare("SELECT id, name, counterparty_name, folder_path FROM contracts").all().map(row => ({
     id: row.id, name: row.name, counterpartyName: row.counterparty_name, folderPath: row.folder_path,
   }));
+}
+
+function deleteContractCascade(contractId) {
+  const contract = db.prepare("SELECT id, name, folder_path FROM contracts WHERE id = ?").get(contractId);
+  if (!contract) return null;
+  deleteFilesForContract(contractId);
+  db.prepare("DELETE FROM contracts WHERE id = ?").run(contractId);
+  if (contract.folder_path && fs.existsSync(contract.folder_path)) {
+    fs.rmSync(contract.folder_path, { recursive: true, force: true });
+  }
+  return {
+    id: contract.id,
+    name: contract.name,
+    folderPath: contract.folder_path,
+  };
+}
+
+function deleteContractVersionCascade(versionId) {
+  const version = db.prepare("SELECT id, contract_id as contractId, type, created_at as createdAt FROM contract_versions WHERE id = ?").get(versionId);
+  if (!version) return null;
+  deleteFilesForVersion(versionId);
+  db.prepare("DELETE FROM contract_versions WHERE id = ?").run(versionId);
+  return version;
 }
 
 /* ─────────────── Auto-backup ─────────────── */
@@ -1334,8 +1379,11 @@ module.exports = {
   replaceContractClauses,
   replaceContractFindings,
   replaceClauseActions,
+  appendInsertedClause,
   patchAuxState,
   appendAuditLog,
+  deleteContractCascade,
+  deleteContractVersionCascade,
   saveFile,
   flattenClauseActions,
   saveContractFile,

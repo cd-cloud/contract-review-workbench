@@ -143,6 +143,86 @@ function authedReq(method = "GET") {
     assert.strictEqual(body.ok, true);
   });
 
+  await testAsync("handleApi handles POST /api/contracts", async () => {
+    const res = mockRes();
+    const req = mockReqWithBody({
+      contract: {
+        id: "contract-api-1",
+        name: "API 合同",
+        type: "测试合同",
+        counterpartyName: "Acme",
+        createdAt: "2026-06-09",
+        updatedAt: "2026-06-09",
+      },
+    });
+    const handled = await handleApi(req, res, makeUrl("/api/contracts"));
+    assert.strictEqual(handled, true);
+    assert.strictEqual(res.status, 200);
+    const body = JSON.parse(res.body);
+    assert.strictEqual(body.ok, true);
+    assert.strictEqual(body.contract.id, "contract-api-1");
+  });
+
+  await testAsync("handleApi handles POST /api/contract-versions", async () => {
+    const res = mockRes();
+    const req = mockReqWithBody({
+      version: {
+        id: "version-api-1",
+        contractId: "contract-api-1",
+        type: "初稿",
+        versionText: "测试文本",
+        createdAt: "2026-06-09",
+      },
+    });
+    const handled = await handleApi(req, res, makeUrl("/api/contract-versions"));
+    assert.strictEqual(handled, true);
+    assert.strictEqual(res.status, 200);
+    const body = JSON.parse(res.body);
+    assert.strictEqual(body.ok, true);
+    assert.strictEqual(body.version.id, "version-api-1");
+  });
+
+  await testAsync("handleApi handles POST /api/inserted-clauses", async () => {
+    const res = mockRes();
+    const req = mockReqWithBody({
+      sourceKey: "contract-api-1:version-api-1",
+      contractId: "contract-api-1",
+      contractName: "API 合同",
+      insertedClause: {
+        id: "inserted-api-1",
+        title: "新增条款",
+        text: "新增条款内容",
+        createdAt: "2026-06-09T00:00:00.000Z",
+      },
+    });
+    const handled = await handleApi(req, res, makeUrl("/api/inserted-clauses"));
+    assert.strictEqual(handled, true);
+    assert.strictEqual(res.status, 200);
+    const body = JSON.parse(res.body);
+    assert.strictEqual(body.ok, true);
+    assert.strictEqual(body.insertedClause.id, "inserted-api-1");
+  });
+
+  await testAsync("handleApi handles DELETE /api/contract-versions/:id", async () => {
+    const res = mockRes();
+    const handled = await handleApi(authedReq("DELETE"), res, makeUrl("/api/contract-versions/version-api-1"));
+    assert.strictEqual(handled, true);
+    assert.strictEqual(res.status, 200);
+    const body = JSON.parse(res.body);
+    assert.strictEqual(body.ok, true);
+    assert.strictEqual(body.version.id, "version-api-1");
+  });
+
+  await testAsync("handleApi handles DELETE /api/contracts/:id", async () => {
+    const res = mockRes();
+    const handled = await handleApi(authedReq("DELETE"), res, makeUrl("/api/contracts/contract-api-1"));
+    assert.strictEqual(handled, true);
+    assert.strictEqual(res.status, 200);
+    const body = JSON.parse(res.body);
+    assert.strictEqual(body.ok, true);
+    assert.strictEqual(body.contract.id, "contract-api-1");
+  });
+
   await testAsync("handleApi handles POST /api/files", async () => {
     const res = mockRes();
     const req = mockReqWithBody({ name: "test.txt", content: "hello" });

@@ -314,6 +314,15 @@ function getCodexRunStatus(contract, material) {
 }
 
 function summarizeLegalSkillResult(result) {
+  const meta = typeof normalizeRunnerResultMeta === "function" ? normalizeRunnerResultMeta(result) : {
+    source: result?.source || "",
+    isFallback: Boolean(result?.isFallback) || /fallback/i.test(result?.source || ""),
+    fallbackReason: result?.fallbackReason || "",
+    promptVersion: result?.promptVersion || result?.prompt_version || "",
+    skillPath: result?.skillPath || result?.skill_path || "",
+    downstreamSkill: result?.downstreamSkill || result?.downstream_skill || "",
+    checkedAt: result?.checkedAt || result?.checked_at || "",
+  };
   const response = result?.response || {};
   const segmentationCount = response.clauseSegmentation?.length || 0;
   const findingCount = (response.clauseAnalyses?.length || 0) + (response.contractLevelRisks?.length || 0);
@@ -323,9 +332,13 @@ function summarizeLegalSkillResult(result) {
     hasFindings: findingCount > 0,
     segmentationCount,
     findingCount,
-    source: result?.source || "",
-    promptVersion: result?.promptVersion || "",
-    isFallback: Boolean(result?.isFallback) || /fallback/i.test(result?.source || ""),
+    source: meta.source,
+    promptVersion: meta.promptVersion,
+    skillPath: meta.skillPath,
+    downstreamSkill: meta.downstreamSkill,
+    fallbackReason: meta.fallbackReason,
+    checkedAt: meta.checkedAt,
+    isFallback: meta.isFallback,
   };
 }
 
@@ -372,6 +385,13 @@ function renderCodexStatusPanel(status) {
       tone: legalSummary.isFallback ? "medium" : "low",
     },
     {
+      label: "Skill 链路",
+      value: legalSummary.hasResult
+        ? `${legalSummary.skillPath || "unknown"}${legalSummary.downstreamSkill ? ` -> ${legalSummary.downstreamSkill}` : ""}`
+        : "等待结果",
+      tone: "low",
+    },
+    {
       label: "语义切分",
       value: formatReviewJobSummary(segmentationJob, "segmentation", hasAiSegmentation ? "已有 AI 切分" : "等待切分"),
       tone: jobTone(segmentationJob),
@@ -410,8 +430,10 @@ function formatVisualQaStatusForProgress(visual, report = null) {
   if (!visual) return "按需检查";
   if (["queued", "running", "deferred", "failed"].includes(visual.status)) return formatReviewJobSummary(visual, "visual", "按需检查");
   if (visual.status === "completed") {
-    if (report?.source === "visual-qa-fallback") return "本地兜底已检查";
-    return "Agent B 最近已检查";
+    if (report?.source === "visual-qa-fallback") {
+      return `本地兜底已检查${report?.promptVersion ? ` | ${report.promptVersion}` : ""}`;
+    }
+    return `Agent B 最近已检查${report?.promptVersion ? ` | ${report.promptVersion}` : ""}`;
   }
   return "按需检查";
 }

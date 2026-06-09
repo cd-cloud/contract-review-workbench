@@ -196,6 +196,18 @@ test("appendAuditLog writes audit rows incrementally", () => {
   assert.strictEqual(audit.action, "manual-test-audit");
 });
 
+test("appendInsertedClause persists inserted clause in aux state", () => {
+  const insertedClause = {
+    id: "inserted-store-1",
+    title: "新增条款",
+    text: "新增内容",
+    createdAt: "2026-06-09T00:00:00.000Z",
+  };
+  store.appendInsertedClause("contract-1:update-1", insertedClause);
+  const db = store.readDb();
+  assert.strictEqual(db.snapshot.insertedClauses["contract-1:update-1"][0].id, "inserted-store-1");
+});
+
 test("upsertContract and upsertContractVersion persist incrementally", () => {
   store.upsertContract({
     id: "c-upsert",
@@ -215,6 +227,41 @@ test("upsertContract and upsertContractVersion persist incrementally", () => {
   const db = store.readDb();
   assert.ok(db.snapshot.contracts.some((item) => item.id === "c-upsert"));
   assert.ok(db.snapshot.updates.some((item) => item.id === "u-upsert"));
+});
+
+test("deleteContractVersionCascade removes version incrementally", () => {
+  store.upsertContract({
+    id: "c-delete-version",
+    name: "Delete Version Contract",
+    counterpartyName: "Acme",
+    createdAt: "2026-06-08",
+    updatedAt: "2026-06-08",
+  });
+  store.upsertContractVersion({
+    id: "u-delete-version",
+    contractId: "c-delete-version",
+    type: "初稿",
+    versionText: "版本文本",
+    createdAt: "2026-06-08",
+  });
+  const deleted = store.deleteContractVersionCascade("u-delete-version");
+  assert.strictEqual(deleted.id, "u-delete-version");
+  const db = store.readDb();
+  assert.ok(!db.snapshot.updates.some((item) => item.id === "u-delete-version"));
+});
+
+test("deleteContractCascade removes contract incrementally", () => {
+  store.upsertContract({
+    id: "c-delete-contract",
+    name: "Delete Contract",
+    counterpartyName: "Acme",
+    createdAt: "2026-06-08",
+    updatedAt: "2026-06-08",
+  });
+  const deleted = store.deleteContractCascade("c-delete-contract");
+  assert.strictEqual(deleted.id, "c-delete-contract");
+  const db = store.readDb();
+  assert.ok(!db.snapshot.contracts.some((item) => item.id === "c-delete-contract"));
 });
 
 test("saveContractFile avoids overwriting duplicate original names", () => {

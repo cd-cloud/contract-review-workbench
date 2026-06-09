@@ -99,11 +99,11 @@
   - 验收：核心写路径集中；直接散写 `state.xxx = ...` 明显减少。
 - [~] 3.3 增加 `promptVersion` / `skillVersion` 追踪。
   - 涉及：`scripts/ai-*.js`、`server/legal-skill-adapter.js`、`server/contract-intake-adapter.js`、`server/visual-qa-adapter.js`
-  - 进展：已为当前主要 runner 输出补上 `promptVersion`、`skillPath`、`downstreamSkill` 元数据；后续仍需统一更多结果链路。
+  - 进展：已为当前主要 runner 输出补上 `promptVersion`、`skillPath`、`downstreamSkill` 元数据，并开始在审阅台状态面板和 Visual QA 状态中展示；后续继续扩展到更多业务链路。
   - 验收：结果中能看到版本；缓存可感知版本差异。
 - [~] 3.4 统一结果来源元数据。
   - 涉及：`js/api.js`、`server/*-adapter.js`、`js/render-review.js`
-  - 进展：Legal Skill / intake / suggestion / visual QA 已逐步补齐 `source`、`fallbackReason`、`promptVersion` 等字段；UI 已开始展示关键来源信息。
+  - 进展：Legal Skill / intake / suggestion / visual QA 已逐步补齐 `source`、`fallbackReason`、`promptVersion` 等字段；UI 已开始展示 `source / promptVersion / skillPath / downstreamSkill` 等关键来源信息。
   - 验收：UI 能稳定展示 provider、fallback、checkedAt、skill/prompt 版本。
 - [~] 3.5 `runner-status` 页面化/诊断化。
   - 涉及：`server/routes/api.js`、诊断视图或 `js/render-review.js`
@@ -118,7 +118,7 @@
 
 - [~] 4.1 设计 SQLite 增量持久化方案。
   - 涉及：`server/store-sqlite.js`、`server/store.js`
-  - 进展：已补设计稿 `docs/sqlite-incremental-persistence-plan.md`，并新增第一批实际接口：`upsertContract`、`upsertContractVersion`、`replaceContractClauses`、`replaceContractFindings`、`replaceClauseActions`、`patchAuxState`、`appendAuditLog`；后续继续把前端高频链路逐步切到局部写入。
+  - 进展：已补设计稿 `docs/sqlite-incremental-persistence-plan.md`，并新增第一批实际接口：`upsertContract`、`upsertContractVersion`、`replaceContractClauses`、`replaceContractFindings`、`replaceClauseActions`、`patchAuxState`、`appendAuditLog`；合同/条款建议采纳链路已开始双写后端增量审计。
   - 验收：先有设计稿，明确哪些实体增量写、哪些仍保留 aux state。
 - [~] 4.2 实现 mock runner 的端到端 smoke。
   - 涉及：`tests/`，新增 `tests/e2e-smoke.js`

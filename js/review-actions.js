@@ -6,6 +6,17 @@ function getCurrentReviewContext() {
   return { contract, material, clauses };
 }
 
+function enqueueBackendAudit(action, details = {}, contract = null, clauseId = "") {
+  if (typeof appendBackendAudit !== "function") return;
+  appendBackendAudit({
+    action,
+    contractId: contract?.id || state.activeContractId || null,
+    contractName: contract?.name || "",
+    clauseId: clauseId || null,
+    details,
+  }).catch(() => {});
+}
+
 function getContractRiskFindings(contract, clauses) {
   return getAnalysisFindings(contract, clauses).filter((item) => !item.clauseId && (item.fix || item.issue || item.title));
 }
@@ -28,6 +39,7 @@ function adoptAllContractRiskSuggestions() {
   });
   if (adopted) {
     recordAudit("一键采纳合同级AI建议", { contractName: context.contract.name, note: `新增 ${adopted} 条拟补充条款` });
+    enqueueBackendAudit("一键采纳合同级AI建议", { contractName: context.contract.name, note: `新增 ${adopted} 条拟补充条款` }, context.contract);
     saveState();
     requestVisualQaAfterSuggestionAction(context.contract.id, "adopt-all-contract-risks");
     renderReview();
@@ -77,6 +89,7 @@ function adoptContractRiskSuggestion(index) {
       note: finding.fix || finding.proposedClauseText || "",
     });
     recordAudit("采纳合同级AI建议", { contractName: context.contract.name, note: finding.title || finding.issue });
+    enqueueBackendAudit("采纳合同级AI建议", { contractName: context.contract.name, note: finding.title || finding.issue }, context.contract);
     saveState();
     requestVisualQaAfterSuggestionAction(context.contract.id, "adopt-contract-risk");
     renderReview();
@@ -120,6 +133,7 @@ function rejectContractRiskSuggestion(index) {
     note: finding.fix || "",
   });
   recordAudit("拒绝合同级AI建议", { contractName: context.contract.name, note: finding.title || finding.issue });
+  enqueueBackendAudit("拒绝合同级AI建议", { contractName: context.contract.name, note: finding.title || finding.issue }, context.contract);
   saveState();
   requestVisualQaAfterSuggestionAction(context.contract.id, "reject-contract-risk");
   renderReview();
@@ -138,6 +152,7 @@ function restoreContractRiskSuggestion(index) {
     title: finding.title || finding.issue,
   });
   recordAudit("恢复合同级AI建议", { contractName: context.contract.name, note: finding.title || finding.issue });
+  enqueueBackendAudit("恢复合同级AI建议", { contractName: context.contract.name, note: finding.title || finding.issue }, context.contract);
   saveState();
   requestVisualQaAfterSuggestionAction(context.contract.id, "restore-contract-risk");
   renderReview();
@@ -323,6 +338,7 @@ function applyStructuredSuggestionAdjustment(context, sourceKey, clauseId, targe
     note: adjusted.fix || adjusted.issue || action.comment || "",
   });
   recordAudit("调整AI建议文本", { contractName: context.contract.name, clauseTitle: target.clause.title || clauseId, note: userInstruction || action.comment });
+  enqueueBackendAudit("调整AI建议文本", { contractName: context.contract.name, clauseTitle: target.clause.title || clauseId, note: userInstruction || action.comment }, context.contract, clauseId);
   if (clauseId.includes("::sub-")) state.activeSubclauseId = clauseId;
   else state.activeWorkbenchClauseId = clauseId;
   saveState();
@@ -398,6 +414,7 @@ function applyStructuredSuggestionAction(context, sourceKey, clauseId, target, r
     note: action.knowledgeNote || action.comment || risk.fix || risk.issue || "",
   });
   recordAudit("后端 AI 处理建议", { contractName: context.contract.name, clauseTitle: target.clause.title || clauseId, note: action.comment || action.status });
+  enqueueBackendAudit("后端 AI 处理建议", { contractName: context.contract.name, clauseTitle: target.clause.title || clauseId, note: action.comment || action.status }, context.contract, clauseId);
   if (clauseId.includes("::sub-")) state.activeSubclauseId = clauseId;
   else state.activeWorkbenchClauseId = clauseId;
   saveState();

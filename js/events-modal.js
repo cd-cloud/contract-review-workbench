@@ -19,7 +19,7 @@ function handleModalClick(event) {
   return false;
 }
 
-function handleProgressClick(event) {
+async function handleProgressClick(event) {
   const progressButton = event.target.closest("[data-open-progress]");
   if (progressButton) openProgressModal(progressButton.dataset.openProgress);
 
@@ -32,6 +32,12 @@ function handleProgressClick(event) {
     event.stopPropagation();
     const contract = state.contracts.find((item) => item.id === deleteContractButton.dataset.deleteContract);
     if (contract && confirm(`确定删除合同“${contract.name}”及其全部版本和审阅记录吗？`)) {
+      try {
+        await deleteBackendContract(contract.id);
+      } catch (error) {
+        showToast(`删除合同失败：${error.message || String(error)}`, "error");
+        return true;
+      }
       deleteContract(contract.id);
       render();
       showToast("合同已删除。");
@@ -44,6 +50,12 @@ function handleProgressClick(event) {
     event.stopPropagation();
     const update = (state.updates || []).find((item) => item.id === deleteUpdateButton.dataset.deleteUpdate);
     if (update && confirm(`确定删除版本“${update.type} ${update.createdAt || ""}”吗？`)) {
+      try {
+        await deleteBackendContractVersion(update.id);
+      } catch (error) {
+        showToast(`删除版本失败：${error.message || String(error)}`, "error");
+        return true;
+      }
       deleteContractVersion(update.id);
       renderReview();
       showToast("版本已删除。");
@@ -58,7 +70,7 @@ function handleProgressClick(event) {
   return false;
 }
 
-function handleUploadFormSubmit(event) {
+async function handleUploadFormSubmit(event) {
   event.preventDefault();
   const nameInput = document.querySelector("#contract-name-input");
   const counterpartyInput = document.querySelector("#counterparty-input");
@@ -113,6 +125,12 @@ function handleUploadFormSubmit(event) {
     createdAt: today(),
     updatedAt: today(),
   };
+  try {
+    await createBackendContract(contract);
+  } catch (error) {
+    showToast(`创建合同失败：${error.message || String(error)}`, "error");
+    return;
+  }
   Store.mutate("create-contract-review", (draft) => {
     draft.contracts.unshift(contract);
   }, {
@@ -138,7 +156,7 @@ function handleUploadFormSubmit(event) {
   setView("review");
 }
 
-function handleProgressFormSubmit(event) {
+async function handleProgressFormSubmit(event) {
   event.preventDefault();
   const contractId = document.querySelector("#progress-contract-id").value;
   const contract = state.contracts.find((item) => item.id === contractId);
@@ -178,6 +196,13 @@ function handleProgressFormSubmit(event) {
     hasComments: materialKind === "comments",
     createdAt: today(),
   };
+  try {
+    await createBackendContract(contract);
+    await createBackendContractVersion(nextUpdate);
+  } catch (error) {
+    showToast(`创建版本失败：${error.message || String(error)}`, "error");
+    return;
+  }
   Store.mutate("append-progress-update", (draft) => {
     if (versionText) {
       if (materialKind === "comments") {
@@ -235,7 +260,7 @@ function handleProgressFormSubmit(event) {
   setView("review");
 }
 
-function handleAddClauseFormSubmit(event) {
+async function handleAddClauseFormSubmit(event) {
   event.preventDefault();
   const sourceKey = document.querySelector("#add-clause-source-key").value;
   const targetClauseId = document.querySelector("#add-clause-target").value;
@@ -262,6 +287,12 @@ function handleAddClauseFormSubmit(event) {
     comment,
     createdAt: new Date().toISOString(),
   };
+  try {
+    await createBackendInsertedClause(sourceKey, item, contract);
+  } catch (error) {
+    showToast(`新增条款失败：${error.message || String(error)}`, "error");
+    return;
+  }
   Store.mutate("insert-clause", () => {
     getInsertedClauses(sourceKey).push(item);
   }, {

@@ -441,6 +441,62 @@ async function archiveContractFile(contractId, base64Content, originalName, mime
   return response.ok;
 }
 
+async function createBackendContract(contract) {
+  const response = await legalWorkbenchFetch("/api/contracts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ contract }),
+  });
+  if (!response.ok) throw new Error(await readBackendError(response, "创建合同失败"));
+  const data = await response.json();
+  return data.contract || contract;
+}
+
+async function createBackendContractVersion(version) {
+  const response = await legalWorkbenchFetch("/api/contract-versions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ version }),
+  });
+  if (!response.ok) throw new Error(await readBackendError(response, "创建合同版本失败"));
+  const data = await response.json();
+  return data.version || version;
+}
+
+async function createBackendInsertedClause(sourceKey, insertedClause, contract = null) {
+  const response = await legalWorkbenchFetch("/api/inserted-clauses", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sourceKey,
+      contractId: contract?.id || null,
+      contractName: contract?.name || "",
+      insertedClause,
+    }),
+  });
+  if (!response.ok) throw new Error(await readBackendError(response, "新增条款失败"));
+  const data = await response.json();
+  return data.insertedClause || insertedClause;
+}
+
+async function deleteBackendContract(contractId) {
+  const response = await legalWorkbenchFetch(`/api/contracts/${encodeURIComponent(contractId)}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) throw new Error(await readBackendError(response, "删除合同失败"));
+  const data = await response.json();
+  return data.contract || null;
+}
+
+async function deleteBackendContractVersion(versionId) {
+  const response = await legalWorkbenchFetch(`/api/contract-versions/${encodeURIComponent(versionId)}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) throw new Error(await readBackendError(response, "删除版本失败"));
+  const data = await response.json();
+  return data.version || null;
+}
+
 async function archiveContractExport(contractId, base64Content, originalName, mimeType) {
   const response = await legalWorkbenchFetch(`/api/contracts/${encodeURIComponent(contractId)}/exports`, {
     method: "POST",
@@ -453,6 +509,17 @@ async function archiveContractExport(contractId, base64Content, originalName, mi
   });
   if (!response.ok) console.error("[Archive] Export save failed:", response.status);
   return response.ok;
+}
+
+async function appendBackendAudit(entry = {}) {
+  const response = await legalWorkbenchFetch("/api/audit", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(entry),
+  });
+  if (!response.ok) return null;
+  const data = await response.json();
+  return data.audit || null;
 }
 
 let backendSyncTimer = null;
@@ -502,6 +569,18 @@ async function refreshRunnerStatus() {
     state.runnerStatuses = {};
     return state.runnerStatus;
   }
+}
+
+function normalizeRunnerResultMeta(result = {}) {
+  return {
+    source: result.source || "",
+    isFallback: Boolean(result.isFallback) || /fallback/i.test(result.source || ""),
+    fallbackReason: result.fallbackReason || "",
+    promptVersion: result.promptVersion || result.prompt_version || "",
+    skillPath: result.skillPath || result.skill_path || "",
+    downstreamSkill: result.downstreamSkill || result.downstream_skill || "",
+    checkedAt: result.checkedAt || result.checked_at || "",
+  };
 }
 
 function scheduleBackendSync() {
@@ -715,6 +794,10 @@ function normalizeVisualQaResult(result = {}) {
   return {
     ok: result.ok !== false,
     source: result.source || "",
+    promptVersion: result.promptVersion || result.prompt_version || "",
+    skillPath: result.skillPath || result.skill_path || "",
+    downstreamSkill: result.downstreamSkill || result.downstream_skill || "",
+    fallbackReason: result.fallbackReason || "",
     visualQa: {
       status: ["pass", "needs_attention", "blocked"].includes(report.status) ? report.status : "needs_attention",
       summary: report.summary || "",
@@ -825,6 +908,10 @@ async function runVisualQaForMaterial(contract, material = getWorkbenchMaterial(
     state.visualQaReports[sourceKey] = {
       ...report.visualQa,
       source: report.source || "",
+      promptVersion: report.promptVersion || "",
+      skillPath: report.skillPath || "",
+      downstreamSkill: report.downstreamSkill || "",
+      fallbackReason: report.fallbackReason || "",
       reason,
       checkedAt: new Date().toISOString(),
     };
