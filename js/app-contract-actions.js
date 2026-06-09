@@ -3,6 +3,13 @@ function setActiveContract(contractId) {
   state.activeClauseId = state.clauses.find((clause) => clause.contractId === contractId)?.id || null;
   const updates = getContractUpdates(contractId);
   state.activeUpdateId = updates.at(-1)?.id || null;
+  if (typeof persistBackendAuxState === "function") {
+    persistBackendAuxState({
+      activeContractId: state.activeContractId,
+      activeClauseId: state.activeClauseId,
+      activeUpdateId: state.activeUpdateId,
+    }).catch(() => {});
+  }
 }
 
 function ensureInitialUpdate(targetState, contract) {

@@ -150,5 +150,13 @@ function createPreparedSendingVersion(contract) {
   contract.workflowStatus = "拟发送版本复核";
   contract.status = "审阅中";
   contract.updatedAt = today();
+  if (typeof persistBackendAuxState === "function") {
+    persistBackendAuxState({
+      activeUpdateId: state.activeUpdateId,
+      activeWorkbenchClauseId: state.activeWorkbenchClauseId,
+      activeSubclauseId: state.activeSubclauseId,
+      subclauseReferenceMap: state.subclauseReferenceMap,
+    }).catch(() => {});
+  }
   return { update, sourceKey, changeSummary, reviewChecks, clauses, text };
 }
