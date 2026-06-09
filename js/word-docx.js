@@ -320,9 +320,9 @@ function decodeWordSymbol(font, charCode) {
 
 function normalizeDocxTextArtifacts(text) {
   return String(text || "")
-    .replace(/（([0-9一二三四五六七八九十]+)�+/g, "（$1）")
-    .replace(/\(([0-9a-zA-Z]+)�+/g, "($1)")
-    .replace(/([0-9一二三四五六七八九十]+)���/g, "$1）");
+    .replace(/（([0-9一二三四五六七八九十]+)[�）]+/g, "（$1）")
+    .replace(/\(([0-9a-zA-Z]+)[�)]+/g, "($1)")
+    .replace(/([0-9一二三四五六七八九十]+)[�）]{2,}/g, "$1）");
 }
 
 function createBrowserNumberingContext(numberingXml, stylesXml) {

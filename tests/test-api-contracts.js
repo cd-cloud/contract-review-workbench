@@ -5,6 +5,9 @@
 
 const http = require("http");
 const assert = require("assert");
+const path = require("path");
+
+process.env.LEGAL_WORKBENCH_DATA_DIR = path.join(__dirname, ".tmp-test-api-contracts");
 
 const TEST_PORT = 9877;
 

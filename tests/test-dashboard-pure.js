@@ -44,9 +44,9 @@ global.state = {
     summary: "Agent A healthy",
   },
   runnerStatuses: {
-    intake: { provider: "kimi", lastRunState: "fallback", summary: "Intake degraded" },
-    suggestion: { provider: "kimi", lastRunState: "succeeded", summary: "Suggestion healthy" },
-    visualQa: { provider: "kimi", lastRunState: "failed", summary: "Visual QA failed" },
+    intake: { provider: "kimi", lastRunState: "fallback", summary: "Intake degraded", promptVersion: "agent-intake-v1", downstreamSkill: "legal-contract-orchestrator", lastFallbackReason: "runner missing" },
+    suggestion: { provider: "kimi", lastRunState: "succeeded", summary: "Suggestion healthy", promptVersion: "agent-suggestion-v1", downstreamSkill: "legal-contract-orchestrator" },
+    visualQa: { provider: "kimi", lastRunState: "failed", summary: "Visual QA failed", promptVersion: "agent-b-visual-v1", downstreamSkill: "legal-contract-orchestrator" },
   },
 };
 
@@ -138,6 +138,9 @@ test("renderRunnerDiagnostics renders runner summaries", () => {
   assert.ok(html.includes("Intake"));
   assert.ok(html.includes("Visual QA"));
   assert.ok(html.includes("fallback"));
+  assert.ok(html.includes("prompt=agent-intake-v1"));
+  assert.ok(html.includes("skill=legal-contract-orchestrator"));
+  assert.ok(html.includes("runner missing"));
 });
 
 // --- contractTaskRow ---

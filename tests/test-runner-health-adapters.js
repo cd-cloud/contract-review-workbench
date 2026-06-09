@@ -55,6 +55,8 @@ asyncTests.push(testAsync("contract intake status records fallback after a real 
     assert.strictEqual(status.healthy, false);
     assert.ok(status.lastFallbackReason);
     assert.ok(status.lastFailureAt);
+    assert.strictEqual(status.promptVersion, "agent-intake-v1");
+    assert.strictEqual(status.downstreamSkill, "legal-contract-orchestrator");
   });
 }));
 
@@ -72,6 +74,8 @@ asyncTests.push(testAsync("suggestion action status records successful runner ex
     assert.strictEqual(status.healthy, true);
     assert.strictEqual(status.degraded, false);
     assert.ok(status.lastSuccessAt);
+    assert.strictEqual(status.promptVersion, "agent-suggestion-v1");
+    assert.strictEqual(status.downstreamSkill, "legal-contract-orchestrator");
   }, () => {
     const childProcess = require("child_process");
     const original = childProcess.execFile;
@@ -102,6 +106,8 @@ asyncTests.push(testAsync("visual QA status records fallback after model runner 
     assert.strictEqual(status.lastRunState, "fallback");
     assert.strictEqual(status.lastUsedFallback, true);
     assert.ok(status.lastFailureAt);
+    assert.strictEqual(status.promptVersion, "agent-b-visual-v1");
+    assert.strictEqual(status.downstreamSkill, "legal-contract-orchestrator");
   }, () => {
     const childProcess = require("child_process");
     const original = childProcess.execFile;

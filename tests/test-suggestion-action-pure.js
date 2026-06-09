@@ -54,7 +54,7 @@ assert.strictEqual(rejectRes.action.status, "rejected");
 assert.strictEqual(rejectRes.action.actionType, "none");
 assert.strictEqual(rejectRes.action.targetClauseId, "c1");
 assert.strictEqual(rejectRes.action.rejectionReason, "issue text");
-assert.ok(rejectRes.action.comment.toLowerCase().includes("reject ai suggestion"));
+assert.ok(rejectRes.action.comment.includes("拒绝 AI 建议"));
 
 const adoptReq = {
   userAction: "adopt",
@@ -91,7 +91,7 @@ const commentReq = {
 const commentRes = buildFallbackSuggestionAction(commentReq);
 assert.strictEqual(commentRes.action.status, "comment_only");
 assert.strictEqual(commentRes.action.actionType, "comment_only");
-assert.strictEqual(commentRes.action.comment, "Comment only: note");
+assert.strictEqual(commentRes.action.comment, "仅保留批注：note");
 
 const confirmReq = {
   userAction: "business_confirmed",
@@ -100,7 +100,7 @@ const confirmReq = {
 };
 const confirmRes = buildFallbackSuggestionAction(confirmReq);
 assert.strictEqual(confirmRes.action.status, "business_confirmed");
-assert.strictEqual(confirmRes.action.comment, "Business confirmed: confirmed");
+assert.strictEqual(confirmRes.action.comment, "业务已确认：confirmed");
 
 const adjustReq = {
   userAction: "adjust",

@@ -36,6 +36,9 @@ function getStaticRunnerStatus() {
     providerBaseUrl: runnerConfig.providerStatus.codexProviderBaseUrl || "",
     timeoutMs: runnerConfig.timeoutMs,
     preferFastFallback: runnerConfig.preferFastFallback,
+    promptVersion: "agent-b-visual-v1",
+    skillPath: "legal-work-orchestrator",
+    downstreamSkill: "legal-contract-orchestrator",
   };
 }
 
@@ -62,6 +65,9 @@ function runVisualQa(request) {
       ok: true,
       source: "visual-qa-fallback",
       fallbackReason: error.message || String(error),
+      promptVersion: "agent-b-visual-v1",
+      skillPath: "legal-work-orchestrator",
+      downstreamSkill: "legal-contract-orchestrator",
       ...buildFallbackVisualQa(request),
     };
     runnerHealth.markFallback({
@@ -94,6 +100,9 @@ function runConfiguredVisualQa(request, runnerConfig = getRunnerConfig()) {
         resolve({
           ok: true,
           source: path.basename(runnerConfig.runner),
+          promptVersion: "agent-b-visual-v1",
+          skillPath: "legal-work-orchestrator",
+          downstreamSkill: "legal-contract-orchestrator",
           ...parseRunnerJson(stdout),
         });
       } catch (parseError) {
@@ -114,8 +123,8 @@ function buildFallbackVisualQa(request = {}) {
     visualQa: {
       status,
       summary: high.length || medium.length
-        ? `Local fallback found ${high.length} high-risk and ${medium.length} medium-risk presentation or delivery issues. Agent B model check is unavailable.`
-        : "Agent B model check is unavailable; local fallback found no obvious blocking presentation or numbering issues.",
+        ? `本地兜底共识别到 ${high.length} 个高风险、${medium.length} 个中风险的展示或交付问题；当前无法使用 Agent B 模型检查。`
+        : "当前无法使用 Agent B 模型检查，本地兜底未发现明显的阻断级展示或编号问题。",
       displayIssues: [],
       structureIssues: localChecks.filter((item) => ["numbering", "subclause-numbering"].includes(item.type)).map(toIssue),
       suggestionPlacementIssues: [],
@@ -132,9 +141,9 @@ function toIssue(item = {}) {
     severity: ["high", "medium", "low"].includes(item.severity) ? item.severity : "low",
     type: item.type || "local-check",
     targetId: item.clauseId || "",
-    title: item.title || "Review item",
+    title: item.title || "待复核事项",
     detail: item.detail || "",
-    recommendation: item.recommendation || "Please review before sending.",
+    recommendation: item.recommendation || "发送前请人工复核。",
   };
 }
 

@@ -237,6 +237,11 @@ function setAnalysisStatus(contractId, status, message) {
     message,
     updatedAt: new Date().toISOString(),
   };
+  if (typeof persistBackendAuxState === "function") {
+    persistBackendAuxState({
+      analysisJobs: state.analysisJobs,
+    }).catch(() => {});
+  }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   if (state.activeContractId === contractId) renderReview();
 }
@@ -244,6 +249,11 @@ function setAnalysisStatus(contractId, status, message) {
 function clearAnalysisStatus(contractId) {
   if (!state.analysisJobs) return;
   delete state.analysisJobs[contractId];
+  if (typeof persistBackendAuxState === "function") {
+    persistBackendAuxState({
+      analysisJobs: state.analysisJobs,
+    }).catch(() => {});
+  }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
@@ -261,6 +271,11 @@ function setManualLegalSkillRunStatus(contract, material, status, message = "") 
     ...(status === "completed" ? { completedAt: new Date().toISOString() } : {}),
     ...(status === "failed" ? { failedAt: new Date().toISOString() } : {}),
   };
+  if (typeof persistBackendAuxState === "function") {
+    persistBackendAuxState({
+      autoReviewJobs: state.autoReviewJobs,
+    }).catch(() => {});
+  }
 }
 
 function markLegalSkillRunCompleted(contract, material) {
@@ -277,6 +292,11 @@ function markLegalSkillRunCompleted(contract, material) {
       updatedAt: new Date().toISOString(),
       completedAt: new Date().toISOString(),
     };
+    if (typeof persistBackendAuxState === "function") {
+      persistBackendAuxState({
+        segmentationJobs: state.segmentationJobs,
+      }).catch(() => {});
+    }
   }
 }
 
@@ -413,7 +433,11 @@ async function runBackendSuggestionAction(payload) {
     body: JSON.stringify(payload),
   });
   if (!response.ok) throw new Error(await readBackendError(response, "后端 AI 建议动作失败"));
-  return await response.json();
+  const result = await response.json();
+  return {
+    ...result,
+    ...normalizeRunnerResultMeta(result),
+  };
 }
 
 async function runContractIntake(contractText) {
@@ -423,7 +447,11 @@ async function runContractIntake(contractText) {
     body: JSON.stringify({ contractText }),
   });
   if (!response.ok) throw new Error(await readBackendError(response, "AI 信息填充失败"));
-  return await response.json();
+  const result = await response.json();
+  return {
+    ...result,
+    ...normalizeRunnerResultMeta(result),
+  };
 }
 
 async function archiveContractFile(contractId, base64Content, originalName, mimeType) {
@@ -479,6 +507,20 @@ async function createBackendInsertedClause(sourceKey, insertedClause, contract =
   return data.insertedClause || insertedClause;
 }
 
+async function persistBackendClauseActions(sourceKey, clauseActions) {
+  const response = await legalWorkbenchFetch("/api/clause-actions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sourceKey,
+      clauseActions,
+    }),
+  });
+  if (!response.ok) throw new Error(await readBackendError(response, "保存条款动作失败"));
+  const data = await response.json();
+  return data.clauseActions || clauseActions;
+}
+
 async function deleteBackendContract(contractId) {
   const response = await legalWorkbenchFetch(`/api/contracts/${encodeURIComponent(contractId)}`, {
     method: "DELETE",
@@ -520,6 +562,20 @@ async function appendBackendAudit(entry = {}) {
   if (!response.ok) return null;
   const data = await response.json();
   return data.audit || null;
+}
+
+async function persistBackendAuxState(partialState = {}) {
+  const response = await legalWorkbenchFetch("/api/db/sync", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      syncMode: "aux-patch",
+      state: partialState,
+    }),
+  });
+  if (!response.ok) throw new Error(await readBackendError(response, "同步辅助状态失败"));
+  const data = await response.json();
+  return data.db?.auxState || partialState;
 }
 
 let backendSyncTimer = null;
@@ -848,6 +904,11 @@ function scheduleVisualQa(contractId = state.activeContractId, reason = "review-
       message: "Agent B 模型检查已节流；本地即时兜底仍在运行。可手动点击“运行 Agent B 检查”。",
       deferredAt: new Date().toISOString(),
     };
+    if (typeof persistBackendAuxState === "function") {
+      persistBackendAuxState({
+        visualQaJobs: state.visualQaJobs,
+      }).catch(() => {});
+    }
     saveState();
     return;
   }
@@ -859,6 +920,11 @@ function scheduleVisualQa(contractId = state.activeContractId, reason = "review-
       message: "Visual QA 正在运行；本次变更已加入下一轮后台检查。",
       updatedAt: new Date().toISOString(),
     };
+    if (typeof persistBackendAuxState === "function") {
+      persistBackendAuxState({
+        visualQaJobs: state.visualQaJobs,
+      }).catch(() => {});
+    }
     saveState();
     return;
   }
@@ -873,6 +939,11 @@ function scheduleVisualQa(contractId = state.activeContractId, reason = "review-
     queuedAt: new Date().toISOString(),
     scheduledFor: new Date(Date.now() + delay).toISOString(),
   };
+  if (typeof persistBackendAuxState === "function") {
+    persistBackendAuxState({
+      visualQaJobs: state.visualQaJobs,
+    }).catch(() => {});
+  }
   saveState();
   visualQaTimers[sourceKey] = setTimeout(() => runVisualQaForMaterial(contract, material, reason), delay);
 }
@@ -899,6 +970,11 @@ async function runVisualQaForMaterial(contract, material = getWorkbenchMaterial(
     message: "Visual QA 正在检查审阅台展示、建议归属和编号一致性。",
     startedAt: new Date().toISOString(),
   };
+  if (typeof persistBackendAuxState === "function") {
+    persistBackendAuxState({
+      visualQaJobs: state.visualQaJobs,
+    }).catch(() => {});
+  }
   saveState();
   if (state.activeContractId === contract.id) renderReview();
   try {
@@ -923,6 +999,12 @@ async function runVisualQaForMaterial(contract, material = getWorkbenchMaterial(
       message: report.visualQa.summary || "Visual QA 已完成。",
       completedAt: new Date().toISOString(),
     };
+    if (typeof persistBackendAuxState === "function") {
+      persistBackendAuxState({
+        visualQaJobs: state.visualQaJobs,
+        visualQaReports: state.visualQaReports,
+      }).catch(() => {});
+    }
     saveState();
     if (state.activeContractId === contract.id) renderReview();
     if (queuedNext) scheduleVisualQa(contract.id, queuedReason, { delay: VISUAL_QA_INTERACTION_DELAY_MS });
@@ -936,6 +1018,11 @@ async function runVisualQaForMaterial(contract, material = getWorkbenchMaterial(
       message: error.message || String(error),
       failedAt: new Date().toISOString(),
     };
+    if (typeof persistBackendAuxState === "function") {
+      persistBackendAuxState({
+        visualQaJobs: state.visualQaJobs,
+      }).catch(() => {});
+    }
     saveState();
     if (state.activeContractId === contract.id) renderReview();
     if (queuedNext) scheduleVisualQa(contract.id, queuedReason, { delay: VISUAL_QA_INTERACTION_DELAY_MS });
@@ -984,6 +1071,12 @@ function applyVisualQaAutoFixes(sourceKey, options = {}) {
       message: report.summary,
       completedAt: new Date().toISOString(),
     };
+    if (typeof persistBackendAuxState === "function") {
+      persistBackendAuxState({
+        visualQaJobs: state.visualQaJobs,
+        visualQaReports: state.visualQaReports,
+      }).catch(() => {});
+    }
     saveState();
     if (state.activeContractId === contract.id) renderReview();
     return { applied, skipped, message: "Agent B 的修复项没有匹配到本地建议。" };
@@ -1004,6 +1097,12 @@ function applyVisualQaAutoFixes(sourceKey, options = {}) {
   state.findings.push(...getStoredSkillFindings(contract, clauses));
   report.autoFixes = (report.autoFixes || []).map((fix) => fix.safeToApply ? { ...fix, applied: true } : fix);
   report.summary = `已执行 ${applied} 项 Agent B 安全修复。${report.summary || ""}`;
+  if (typeof persistBackendAuxState === "function") {
+    persistBackendAuxState({
+      visualQaReports: state.visualQaReports,
+      visualQaAutoFixAudits: state.visualQaAutoFixAudits,
+    }).catch(() => {});
+  }
   saveState();
   if (options.rerun !== false) scheduleVisualQa(contract.id, "visual-qa-autofix-applied", { delay: 800, force: true });
   if (state.activeContractId === contract.id) renderReview();

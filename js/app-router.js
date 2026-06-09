@@ -37,6 +37,9 @@ function setView(name) {
   document.querySelector("#view-title").textContent = title;
   const subtitleNode = document.querySelector("#view-subtitle");
   if (subtitleNode) subtitleNode.textContent = subtitle;
+  if (typeof persistBackendAuxState === "function") {
+    persistBackendAuxState({ currentViewName }).catch(() => {});
+  }
   render();
 }
 
@@ -68,6 +71,11 @@ function toggleTreeNodeExpansion(nodeId) {
   if (!nodeId) return;
   state.expandedTreeNodes = state.expandedTreeNodes || {};
   state.expandedTreeNodes[nodeId] = !state.expandedTreeNodes[nodeId];
+  if (typeof persistBackendAuxState === "function") {
+    persistBackendAuxState({
+      expandedTreeNodes: state.expandedTreeNodes,
+    }).catch(() => {});
+  }
   saveState();
   renderReview();
 }
@@ -75,6 +83,12 @@ function toggleTreeNodeExpansion(nodeId) {
 function focusWorkbenchClause(clauseId) {
   if (!clauseId) return;
   state.activeWorkbenchClauseId = clauseId;
+  if (typeof persistBackendAuxState === "function") {
+    persistBackendAuxState({
+      activeWorkbenchClauseId: state.activeWorkbenchClauseId,
+      activeSubclauseId: state.activeSubclauseId,
+    }).catch(() => {});
+  }
   saveState();
   renderReview();
   scrollToWorkbenchClause(clauseId);
@@ -89,6 +103,13 @@ function focusWorkbenchSubclause(parentClauseId, subclauseId) {
     state.activeWorkbenchClauseId = parentId;
   }
   state.activeSubclauseId = subclauseId;
+  if (typeof persistBackendAuxState === "function") {
+    persistBackendAuxState({
+      expandedTreeNodes: state.expandedTreeNodes,
+      activeWorkbenchClauseId: state.activeWorkbenchClauseId,
+      activeSubclauseId: state.activeSubclauseId,
+    }).catch(() => {});
+  }
   saveState();
   renderReview();
   scrollToSubclause(subclauseId);

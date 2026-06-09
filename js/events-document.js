@@ -3,6 +3,9 @@ function handleDocumentInput(event) {
     Store.mutate("filter-task-owner", (draft) => {
       draft.taskFilters = { ...getTaskFilters(), owner: event.target.value.trim() };
     });
+    if (typeof persistBackendAuxState === "function") {
+      persistBackendAuxState({ taskFilters: state.taskFilters }).catch(() => {});
+    }
     filterFeedbackTasks();
     return;
   }
@@ -42,6 +45,9 @@ function handleDocumentInput(event) {
         risk: document.querySelector("#reader-risk-filter")?.value || "",
       };
     });
+    if (typeof persistBackendAuxState === "function") {
+      persistBackendAuxState({ readerFilters: state.readerFilters }).catch(() => {});
+    }
     renderReview();
     requestAnimationFrame(() => {
       const restored = document.querySelector(`#${sourceId}`);
@@ -59,6 +65,9 @@ function handleDocumentInput(event) {
         queue: reviewQueueButton.dataset.reviewQueue || "",
       };
     });
+    if (typeof persistBackendAuxState === "function") {
+      persistBackendAuxState({ readerFilters: state.readerFilters }).catch(() => {});
+    }
     renderReview();
     return;
   }
@@ -82,6 +91,12 @@ function handleDocumentDblclick(event) {
         draft.activeWorkbenchClauseId = parentCard?.dataset.clauseCard || draft.activeWorkbenchClauseId;
         draft.activeSubclauseId = subcard.dataset.subclauseCard;
       });
+      if (typeof persistBackendAuxState === "function") {
+        persistBackendAuxState({
+          activeWorkbenchClauseId: state.activeWorkbenchClauseId,
+          activeSubclauseId: state.activeSubclauseId,
+        }).catch(() => {});
+      }
       renderReview();
       scrollToSubclause(state.activeSubclauseId);
       return;
@@ -91,6 +106,11 @@ function handleDocumentDblclick(event) {
       Store.mutate("focus-clause-card", (draft) => {
         draft.activeWorkbenchClauseId = clauseCard.dataset.clauseCard;
       });
+      if (typeof persistBackendAuxState === "function") {
+        persistBackendAuxState({
+          activeWorkbenchClauseId: state.activeWorkbenchClauseId,
+        }).catch(() => {});
+      }
       renderReview();
       scrollToWorkbenchClause(state.activeWorkbenchClauseId);
       return;
@@ -118,6 +138,11 @@ function handleDocumentChange(event) {
     Store.mutate("select-workbench-clause", (draft) => {
       draft.activeWorkbenchClauseId = clauseSelect.value;
     });
+    if (typeof persistBackendAuxState === "function") {
+      persistBackendAuxState({
+        activeWorkbenchClauseId: state.activeWorkbenchClauseId,
+      }).catch(() => {});
+    }
     renderReview();
     return;
   }
@@ -125,6 +150,9 @@ function handleDocumentChange(event) {
     Store.mutate("filter-task-counterparty", (draft) => {
       draft.taskFilters = { ...getTaskFilters(), counterpartyId: event.target.value };
     });
+    if (typeof persistBackendAuxState === "function") {
+      persistBackendAuxState({ taskFilters: state.taskFilters }).catch(() => {});
+    }
     filterFeedbackTasks();
     return;
   }
@@ -149,6 +177,9 @@ function handleDocumentChange(event) {
         risk: document.querySelector("#reader-risk-filter")?.value || "",
       };
     });
+    if (typeof persistBackendAuxState === "function") {
+      persistBackendAuxState({ readerFilters: state.readerFilters }).catch(() => {});
+    }
     renderReview();
     return;
   }

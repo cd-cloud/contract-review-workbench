@@ -29,6 +29,9 @@ function getStaticRunnerStatus() {
     baseUrlConfigured: runnerConfig.providerStatus.baseUrlConfigured,
     codexRunnable: runnerConfig.providerStatus.codexRunnable,
     codexDetail: runnerConfig.providerStatus.codexDetail || "",
+    promptVersion: "agent-intake-v1",
+    skillPath: "legal-work-orchestrator",
+    downstreamSkill: "legal-contract-orchestrator",
   };
 }
 
@@ -55,6 +58,9 @@ function runContractIntake(request) {
       ok: true,
       source: "backend-fallback",
       fallbackReason: error.message || String(error),
+      promptVersion: "agent-intake-v1",
+      skillPath: "legal-work-orchestrator",
+      downstreamSkill: "legal-contract-orchestrator",
       intake: buildFallbackContractIntake(request),
     };
     runnerHealth.markFallback({
@@ -87,6 +93,9 @@ function runConfiguredContractIntake(request, runnerConfig = getRunnerConfig()) 
         resolve({
           ok: true,
           source: path.basename(runnerConfig.runner),
+          promptVersion: "agent-intake-v1",
+          skillPath: "legal-work-orchestrator",
+          downstreamSkill: "legal-contract-orchestrator",
           ...parseRunnerJson(stdout),
         });
       } catch (parseError) {
@@ -119,10 +128,10 @@ function buildFallbackContractIntake(request = {}) {
     ourRole: partyA && partyB ? "待确认" : partyA ? "甲方（待确认）" : partyB ? "乙方（待确认）" : "待确认",
     purpose,
     businessBackground: [
-      `Local fallback identified the contract as ${contractType}.`,
-      counterparty ? `Possible counterparty: ${counterparty}.` : "Counterparty could not be identified reliably.",
-      `Possible purpose: ${purpose}.`,
-      missingFacts.length ? `Please confirm: ${missingFacts.join(", ")}.` : "Please confirm role, business background, and negotiation priorities before formal review.",
+      `本地兜底识别结果：合同类型可能为“${contractType}”。`,
+      counterparty ? `可能的相对方：${counterparty}。` : "暂未可靠识别出相对方，请人工确认。",
+      `可能的合同目的：${purpose}。`,
+      missingFacts.length ? `仍需补充确认：${missingFacts.join("、")}。` : "正式审阅前，请继续确认我方角色、交易背景和谈判重点。",
     ].join("\n"),
     confidence: text ? 48 : 0,
     missingFacts,

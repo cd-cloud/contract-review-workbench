@@ -14,6 +14,8 @@ global.saveState = () => {};
 global.renderReview = () => {};
 global.scrollToSubclause = () => {};
 global.scrollToWorkbenchClause = () => {};
+global.persistBackendClauseActions = () => Promise.resolve({});
+global.persistBackendAuxState = () => Promise.resolve({});
 global.uid = () => "uid";
 global.today = () => "2026-01-01";
 global.splitSubclauses = (parent) => parent.subclauses || [];

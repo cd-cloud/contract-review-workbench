@@ -23,7 +23,7 @@
 
 - [~] 1.1 全仓中文编码治理，优先修用户可见文案、seed 文本、提示文案、导出文本。
   - 涉及：`index.html`、`js/state.js`、`js/api.js`、`js/review-risk.js`、`README.md`、`RUNNING.md`、`PORTABILITY.md`
-  - 进展：首页/新建审阅文案、示例合同、关键运行提示、README/RUNNING/PORTABILITY 已清理；其余遗留乱码继续滚动清理。
+  - 进展：首页/新建审阅文案、示例合同、关键运行提示、README/RUNNING/PORTABILITY 已清理；fallback 提示、docx 文本归一化规则和若干脏编码标点已继续收口，剩余零散文案继续滚动清理。
   - 验收：主界面、审阅台、导出相关文案无乱码；关键测试不再依赖 mojibake 文本。
 - [x] 1.2 去掉 `buildLegalSkillRequest()` 中的 `jurisdiction: "中国大陆"` 硬编码，改为从合同字段读取。
   - 涉及：`js/api.js`、`js/state.js`
@@ -103,7 +103,7 @@
   - 验收：结果中能看到版本；缓存可感知版本差异。
 - [~] 3.4 统一结果来源元数据。
   - 涉及：`js/api.js`、`server/*-adapter.js`、`js/render-review.js`
-  - 进展：Legal Skill / intake / suggestion / visual QA 已逐步补齐 `source`、`fallbackReason`、`promptVersion` 等字段；UI 已开始展示 `source / promptVersion / skillPath / downstreamSkill` 等关键来源信息。
+  - 进展：Legal Skill / intake / suggestion / visual QA 已逐步补齐 `source`、`fallbackReason`、`promptVersion` 等字段；UI 和运行诊断已开始展示 `source / promptVersion / skillPath / downstreamSkill / fallbackReason` 等关键信息。
   - 验收：UI 能稳定展示 provider、fallback、checkedAt、skill/prompt 版本。
 - [~] 3.5 `runner-status` 页面化/诊断化。
   - 涉及：`server/routes/api.js`、诊断视图或 `js/render-review.js`
@@ -118,7 +118,7 @@
 
 - [~] 4.1 设计 SQLite 增量持久化方案。
   - 涉及：`server/store-sqlite.js`、`server/store.js`
-  - 进展：已补设计稿 `docs/sqlite-incremental-persistence-plan.md`，并新增第一批实际接口：`upsertContract`、`upsertContractVersion`、`replaceContractClauses`、`replaceContractFindings`、`replaceClauseActions`、`patchAuxState`、`appendAuditLog`；合同/条款建议采纳链路已开始双写后端增量审计。
+  - 进展：已补设计稿 `docs/sqlite-incremental-persistence-plan.md`，并新增第一批实际接口：`upsertContract`、`upsertContractVersion`、`replaceContractClauses`、`replaceContractFindings`、`replaceClauseActions`、`patchAuxState`、`appendAuditLog`；合同/条款建议采纳、重排、Visual QA 运行态和多类 UI 辅助状态已开始双写后端增量存储。
   - 验收：先有设计稿，明确哪些实体增量写、哪些仍保留 aux state。
 - [~] 4.2 实现 mock runner 的端到端 smoke。
   - 涉及：`tests/`，新增 `tests/e2e-smoke.js`

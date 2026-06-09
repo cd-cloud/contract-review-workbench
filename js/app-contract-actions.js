@@ -156,16 +156,16 @@ async function autofillNewReviewFromLocalRules() {
     fillIfEmpty("#party-role-input", parsed.ourRole);
     fillIfEmpty("#contract-type-input", parsed.type);
     fillIfEmpty("#contract-background-input", parsed.background);
-    fillIfEmpty("#contract-jurisdiction-input", "中国大陆");
+    fillIfEmpty("#contract-jurisdiction-input", "待确认");
     if (form) {
       form.dataset.detectedContractType = parsed.type || "";
       form.dataset.detectedPurpose = parsed.purpose || "";
-      form.dataset.detectedJurisdiction = "中国大陆";
+      form.dataset.detectedJurisdiction = "待确认";
       form.dataset.detectedMissingFacts = "";
     }
     if (statusNode) {
       const type = parsed.type || "合同类型待确认";
-      const jurisdiction = form?.dataset.detectedJurisdiction || "中国大陆";
+      const jurisdiction = form?.dataset.detectedJurisdiction || "待确认";
       const party = parsed.counterparty ? ` | 相对方 ${parsed.counterparty}` : "";
       statusNode.textContent = `本地规则已识别：${type} | 法域 ${jurisdiction}${party}`;
     }
@@ -198,20 +198,24 @@ async function autofillNewReviewFromMaterial() {
     fillIfEmpty("#party-role-input", intake.ourRole);
     fillIfEmpty("#contract-type-input", intake.contractType);
     fillIfEmpty("#contract-background-input", intake.businessBackground);
-    fillIfEmpty("#contract-jurisdiction-input", intake.jurisdiction || "中国大陆");
+    fillIfEmpty("#contract-jurisdiction-input", intake.jurisdiction || "待确认");
     if (form) {
       form.dataset.detectedContractType = intake.contractType || "";
       form.dataset.detectedPurpose = intake.purpose || "";
-      form.dataset.detectedJurisdiction = intake.jurisdiction || "中国大陆";
+      form.dataset.detectedJurisdiction = intake.jurisdiction || "待确认";
       form.dataset.detectedMissingFacts = Array.isArray(intake.missingFacts) ? intake.missingFacts.join("，") : "";
+      form.dataset.detectedPromptVersion = intake.promptVersion || "";
+      form.dataset.detectedSource = intake.source || "";
     }
     if (statusNode) {
       const confidence = Number.isFinite(Number(intake.confidence)) ? ` | 置信度 ${Math.round(Number(intake.confidence))}%` : "";
       const type = intake.contractType || "合同类型待确认";
-      const jurisdiction = intake.jurisdiction || "中国大陆";
+      const jurisdiction = intake.jurisdiction || "待确认";
       const party = intake.counterparty ? ` | 相对方 ${intake.counterparty}` : "";
       const missing = Array.isArray(intake.missingFacts) && intake.missingFacts.length ? ` | 待补充 ${intake.missingFacts.length} 项` : "";
-      statusNode.textContent = `AI 已识别：${type} | 法域 ${jurisdiction}${party}${confidence}${missing}`;
+      const sourceMeta = intake.source ? ` | 来源 ${intake.source}` : "";
+      const promptMeta = intake.promptVersion ? ` | ${intake.promptVersion}` : "";
+      statusNode.textContent = `AI 已识别：${type} | 法域 ${jurisdiction}${party}${confidence}${missing}${sourceMeta}${promptMeta}`;
     }
   } catch (error) {
     if (statusNode) statusNode.textContent = `AI 信息填充失败：${error.message || error}`;

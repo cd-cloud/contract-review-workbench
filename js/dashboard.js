@@ -125,13 +125,17 @@ function runnerDiagnosticRow(label, status) {
     status.provider ? `provider=${status.provider}` : "",
     status.model ? `model=${status.model}` : "",
     status.launcherMode ? `mode=${status.launcherMode}` : "",
+    status.promptVersion ? `prompt=${status.promptVersion}` : "",
+    status.downstreamSkill ? `skill=${status.downstreamSkill}` : "",
   ].filter(Boolean).join(" | ");
+  const detail = status.lastFallbackReason || status.fallbackReason || "";
   return `
     <div class="contract-row">
       <div>
         <strong>${escapeHtml(label)}</strong>
         <p>${escapeHtml(summary)}</p>
         ${meta ? `<span class="muted">${escapeHtml(meta)}</span>` : ""}
+        ${detail ? `<p class="muted">${escapeHtml(detail)}</p>` : ""}
       </div>
       <span class="risk ${tone}">${escapeHtml(stateLabel)}</span>
     </div>

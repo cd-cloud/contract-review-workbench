@@ -25,6 +25,7 @@ function reorderSubclauseByDrag(draggedSubclauseId, targetSubclauseId) {
   state.activeSubclauseId = dragged.id;
   recordAudit("调整小条款顺序", { contractName: contract.name, clauseTitle: dragged.title });
   saveState();
+  persistBackendReorderState(material.sourceKey);
   renderReview();
   scrollToSubclause(state.activeSubclauseId);
 }
@@ -97,6 +98,7 @@ function reorderClauseByDrag(draggedClauseId, targetClauseId) {
   }
   state.activeWorkbenchClauseId = draggedClauseId;
   saveState();
+  persistBackendReorderState(material.sourceKey);
   renderReview();
   scrollToWorkbenchClause(`${material.sourceKey}:${dragged.stableId}`);
 }
@@ -109,4 +111,23 @@ function recordReorderAudit(sourceKey, draggedTitle, targetTitle) {
     message: `已调整“${draggedTitle}”的位置，并基于新顺序全局重排条款序号；系统已同步迁移可识别的“第X条”引用，请复核复杂交叉引用。`,
     createdAt: today(),
   });
+}
+
+function persistBackendReorderState(sourceKey) {
+  if (typeof persistBackendAuxState !== "function") return;
+  const clauseOrder = state.clauseOrder?.[sourceKey];
+  const insertionAudits = state.insertionAudits?.[sourceKey] || [];
+  const payload = {
+    clauseOrder: {
+      ...(state.clauseOrder || {}),
+      ...(Array.isArray(clauseOrder) && clauseOrder.length ? { [sourceKey]: clauseOrder } : {}),
+    },
+    subclauseOrder: state.subclauseOrder || {},
+    subclauseMoves: state.subclauseMoves || [],
+    insertionAudits: {
+      ...(state.insertionAudits || {}),
+      ...(Array.isArray(insertionAudits) && insertionAudits.length ? { [sourceKey]: insertionAudits } : {}),
+    },
+  };
+  persistBackendAuxState(payload).catch(() => {});
 }

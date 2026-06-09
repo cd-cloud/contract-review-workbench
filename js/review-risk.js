@@ -111,7 +111,7 @@ function uniqueContractRiskFindings(contract, material, clauses, findings) {
 function normalizeContractRiskDisplayKey(title, suggestion) {
   return `${title || ""}|${suggestion || ""}`
     .replace(/\s+/g, "")
-    .replace(/[锛屻€傦紱;:锛氥€?.]/g, "")
+    .replace(/[，。；;:：.?]/g, "")
     .slice(0, 220);
 }
 

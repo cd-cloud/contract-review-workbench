@@ -11,6 +11,9 @@ function handleReviewClick(event) {
     Store.mutate("change-review-mode", (draft) => {
       draft.reviewMode = reviewModeButton.dataset.reviewMode;
     });
+    if (typeof persistBackendAuxState === "function") {
+      persistBackendAuxState({ reviewMode: state.reviewMode }).catch(() => {});
+    }
     renderReview();
   }
 
@@ -23,6 +26,9 @@ function handleReviewClick(event) {
       draft.clauseViewModes = draft.clauseViewModes || {};
       draft.clauseViewModes[`${sourceKey}||${clauseId}`] = mode;
     });
+    if (typeof persistBackendAuxState === "function") {
+      persistBackendAuxState({ clauseViewModes: state.clauseViewModes }).catch(() => {});
+    }
     renderReview();
     clauseId.includes("::sub-") ? scrollToSubclause(clauseId) : scrollToWorkbenchClause(clauseId);
     return true;
@@ -47,6 +53,14 @@ function handleReviewClick(event) {
         draft.activeSubclauseId = null;
       }
     });
+    if (typeof persistBackendAuxState === "function") {
+      persistBackendAuxState({
+        focusedAdviceKey: state.focusedAdviceKey,
+        expandedTreeNodes: state.expandedTreeNodes,
+        activeWorkbenchClauseId: state.activeWorkbenchClauseId,
+        activeSubclauseId: state.activeSubclauseId,
+      }).catch(() => {});
+    }
     renderReview();
     requestAnimationFrame(() => {
       const body = findByDataAttribute("data-clause-body-anchor", state.focusedAdviceKey);
@@ -61,6 +75,9 @@ function handleReviewClick(event) {
     Store.mutate("focus-body-anchor", (draft) => {
       draft.focusedAdviceKey = bodyAnchor.dataset.clauseBodyAnchor;
     });
+    if (typeof persistBackendAuxState === "function") {
+      persistBackendAuxState({ focusedAdviceKey: state.focusedAdviceKey }).catch(() => {});
+    }
     renderReview();
     requestAnimationFrame(() => {
       const advice = findByDataAttribute("data-clause-advice-anchor", state.focusedAdviceKey);
@@ -83,6 +100,13 @@ function handleReviewClick(event) {
         draft.inlineEditClauseId = null;
         draft.inlineCommentClauseId = null;
       }, { save: false });
+      if (typeof persistBackendAuxState === "function") {
+        persistBackendAuxState({
+          activeWorkbenchClauseId: state.activeWorkbenchClauseId,
+          inlineEditClauseId: state.inlineEditClauseId,
+          inlineCommentClauseId: state.inlineCommentClauseId,
+        }).catch(() => {});
+      }
       openAddClauseModal(sourceKey || material.sourceKey, clauses);
     }
     return true;
@@ -100,6 +124,14 @@ function handleReviewClick(event) {
       draft.expandedTreeNodes[clauseId] = true;
       draft.inlineEditClauseId = null;
     });
+    if (typeof persistBackendAuxState === "function") {
+      persistBackendAuxState({
+        activeWorkbenchClauseId: state.activeWorkbenchClauseId,
+        activeSubclauseId: state.activeSubclauseId,
+        expandedTreeNodes: state.expandedTreeNodes,
+        inlineEditClauseId: state.inlineEditClauseId,
+      }).catch(() => {});
+    }
     renderReview();
     requestAnimationFrame(() => {
       const exactEditor = findByDataAttribute("data-clause-edit", `${sourceKey}||${clauseId}`);
@@ -125,6 +157,14 @@ function handleReviewClick(event) {
       draft.inlineCommentClauseId = draft.inlineCommentClauseId === clauseId ? null : clauseId;
       draft.inlineEditClauseId = draft.inlineCommentClauseId ? null : draft.inlineEditClauseId;
     });
+    if (typeof persistBackendAuxState === "function") {
+      persistBackendAuxState({
+        activeWorkbenchClauseId: state.activeWorkbenchClauseId,
+        activeSubclauseId: state.activeSubclauseId,
+        inlineCommentClauseId: state.inlineCommentClauseId,
+        inlineEditClauseId: state.inlineEditClauseId,
+      }).catch(() => {});
+    }
     renderReview();
     clauseId.includes("::sub-") ? scrollToSubclause(clauseId) : scrollToWorkbenchClause(clauseId);
     return true;
@@ -144,6 +184,9 @@ function handleReviewClick(event) {
         draft.readerPaneTabs = draft.readerPaneTabs || {};
         draft.readerPaneTabs[reader.dataset.readerScope] = tabName;
       });
+      if (typeof persistBackendAuxState === "function") {
+        persistBackendAuxState({ readerPaneTabs: state.readerPaneTabs }).catch(() => {});
+      }
     }
     reader.querySelectorAll("[data-reader-tab]").forEach((button) => {
       button.classList.toggle("active", button.dataset.readerTab === tabName);
@@ -229,6 +272,9 @@ function handleWorkbenchClick(event) {
     Store.mutate("toggle-contract-risk", (draft) => {
       draft.contractRiskCollapsed = !draft.contractRiskCollapsed;
     });
+    if (typeof persistBackendAuxState === "function") {
+      persistBackendAuxState({ contractRiskCollapsed: state.contractRiskCollapsed }).catch(() => {});
+    }
     renderReview();
   }
 

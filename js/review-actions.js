@@ -17,6 +17,25 @@ function enqueueBackendAudit(action, details = {}, contract = null, clauseId = "
   }).catch(() => {});
 }
 
+function enqueueClauseActionPersistence(sourceKey, clauseId) {
+  if (typeof persistBackendClauseActions !== "function" || typeof getClauseActions !== "function") return;
+  const actions = getClauseActions(sourceKey);
+  const payload = {
+    ...(clauseId ? { [clauseId]: actions[clauseId] || {} } : actions),
+  };
+  persistBackendClauseActions(sourceKey, payload).catch(() => {});
+}
+
+function enqueueInsertedClausePersistence(sourceKey, insertedClause, contract = null) {
+  if (typeof createBackendInsertedClause !== "function") return;
+  createBackendInsertedClause(sourceKey, insertedClause, contract).catch(() => {});
+}
+
+function enqueueAuxStatePatch(partialState = {}) {
+  if (typeof persistBackendAuxState !== "function") return;
+  persistBackendAuxState(partialState).catch(() => {});
+}
+
 function getContractRiskFindings(contract, clauses) {
   return getAnalysisFindings(contract, clauses).filter((item) => !item.clauseId && (item.fix || item.issue || item.title));
 }
@@ -115,6 +134,17 @@ function adoptContractRiskSuggestionByFinding(context, finding) {
     comment: `采纳合同级AI建议：${finding.title || finding.issue || ""}`,
     createdAt: new Date().toISOString(),
   });
+  enqueueInsertedClausePersistence(
+    context.material.sourceKey,
+    inserted[inserted.length - 1],
+    context.contract
+  );
+  enqueueAuxStatePatch({
+    insertedClauses: {
+      [context.material.sourceKey]: inserted,
+    },
+    contractRiskDecisions: state.contractRiskDecisions,
+  });
   state.expandedTreeNodes = state.expandedTreeNodes || {};
   state.activeWorkbenchClauseId = null;
   return true;
@@ -134,6 +164,7 @@ function rejectContractRiskSuggestion(index) {
   });
   recordAudit("拒绝合同级AI建议", { contractName: context.contract.name, note: finding.title || finding.issue });
   enqueueBackendAudit("拒绝合同级AI建议", { contractName: context.contract.name, note: finding.title || finding.issue }, context.contract);
+  enqueueAuxStatePatch({ contractRiskDecisions: state.contractRiskDecisions });
   saveState();
   requestVisualQaAfterSuggestionAction(context.contract.id, "reject-contract-risk");
   renderReview();
@@ -153,6 +184,7 @@ function restoreContractRiskSuggestion(index) {
   });
   recordAudit("恢复合同级AI建议", { contractName: context.contract.name, note: finding.title || finding.issue });
   enqueueBackendAudit("恢复合同级AI建议", { contractName: context.contract.name, note: finding.title || finding.issue }, context.contract);
+  enqueueAuxStatePatch({ contractRiskDecisions: state.contractRiskDecisions });
   saveState();
   requestVisualQaAfterSuggestionAction(context.contract.id, "restore-contract-risk");
   renderReview();
@@ -342,6 +374,7 @@ function applyStructuredSuggestionAdjustment(context, sourceKey, clauseId, targe
   if (clauseId.includes("::sub-")) state.activeSubclauseId = clauseId;
   else state.activeWorkbenchClauseId = clauseId;
   saveState();
+  enqueueClauseActionPersistence(sourceKey, clauseId);
   requestVisualQaAfterSuggestionAction(context.contract.id, "adjust-clause-risk");
   renderReview();
   clauseId.includes("::sub-") ? scrollToSubclause(clauseId) : scrollToWorkbenchClause(clauseId);
@@ -398,6 +431,16 @@ function applyStructuredSuggestionAction(context, sourceKey, clauseId, target, r
         createdAt: new Date().toISOString(),
         adoptedFromSuggestion: true,
       });
+      enqueueInsertedClausePersistence(
+        sourceKey,
+        inserted[inserted.length - 1],
+        context.contract
+      );
+      enqueueAuxStatePatch({
+        insertedClauses: {
+          [sourceKey]: inserted,
+        },
+      });
     }
   } else if (action.actionType === "delete_clause") {
     actions[clauseId].deleted = true;
@@ -418,6 +461,7 @@ function applyStructuredSuggestionAction(context, sourceKey, clauseId, target, r
   if (clauseId.includes("::sub-")) state.activeSubclauseId = clauseId;
   else state.activeWorkbenchClauseId = clauseId;
   saveState();
+  enqueueClauseActionPersistence(sourceKey, clauseId);
   requestVisualQaAfterSuggestionAction(context.contract.id, `clause-action-${action.actionType || action.status || "updated"}`);
   renderReview();
   clauseId.includes("::sub-") ? scrollToSubclause(clauseId) : scrollToWorkbenchClause(clauseId);

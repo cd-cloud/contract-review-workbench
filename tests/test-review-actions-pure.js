@@ -32,6 +32,7 @@ global.getContractRiskDecisionKey = (finding) => `${finding.title || finding.iss
 global.getWorkbenchMaterial = () => ({ text: "合同文本", sourceKey: "c1:test" });
 global.splitVersionClauses = () => [];
 global.getInsertedClauses = () => [];
+global.getClauseActions = () => ({});
 global.uid = (prefix) => `${prefix}-test-001`;
 global.today = () => "2026-05-29";
 global.saveState = () => {};
@@ -39,12 +40,17 @@ global.recordAudit = () => {};
 global.renderReview = () => {};
 global.requestVisualQaAfterSuggestionAction = () => {};
 global.recordAiSuggestionFeedback = () => {};
+global.appendBackendAudit = () => Promise.resolve();
+global.persistBackendClauseActions = () => Promise.resolve({});
+global.createBackendInsertedClause = () => Promise.resolve({});
+global.persistBackendAuxState = () => Promise.resolve({});
 
 global.buildClauseFromContractRisk = (finding, context) => ({
   type: finding.type || "其他",
   title: finding.title || finding.issue || "新增条款",
   text: finding.fix || finding.proposedClauseText || "",
 });
+global.buildConcreteContractRiskSuggestion = () => null;
 
 loadScript("js/utils.js");
 loadScript("js/review-actions.js");
@@ -95,6 +101,25 @@ test("recordAiSuggestionFeedback caps at 1000 entries", () => {
   global.state.aiSuggestionFeedback = Array(1000).fill({ id: "old" });
   recordAiSuggestionFeedback("clause", "rejected", {});
   assert.strictEqual(global.state.aiSuggestionFeedback.length, 1000);
+});
+
+test("adoptContractRiskSuggestionByFinding appends inserted clause", () => {
+  global.state.contractRiskDecisions = {};
+  const inserted = [];
+  global.getInsertedClauses = () => inserted;
+  const context = {
+    contract: { id: "c1", name: "合同A" },
+    material: { sourceKey: "c1:test" },
+    clauses: [],
+  };
+  const adopted = adoptContractRiskSuggestionByFinding(context, {
+    title: "保密条款",
+    fix: "双方应保密",
+    type: "保密",
+  });
+  assert.strictEqual(adopted, true);
+  assert.strictEqual(inserted.length, 1);
+  assert.strictEqual(inserted[0].title.includes("保密"), true);
 });
 
 summary();
