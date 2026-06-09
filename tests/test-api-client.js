@@ -25,7 +25,7 @@ async function main() {
     const { client, calls } = loadClient("test-token");
     await client("/api/db", { headers: { "Content-Type": "application/json" } });
     assert.strictEqual(calls[0].input, "http://127.0.0.1:8787/api/db");
-    assert.strictEqual(calls[0].init.headers.get("X-Legal-Workbench-Token"), "test-token");
+    assert.strictEqual(calls[0].init.headers.has("X-Legal-Workbench-Token"), false);
     assert.strictEqual(calls[0].init.headers.get("Content-Type"), "application/json");
     assert.strictEqual(calls[0].init.credentials, "include");
   }
@@ -55,7 +55,7 @@ async function main() {
     vm.runInNewContext(source, context);
     await context.legalWorkbenchFetch("http://localhost:8787/api/contracts?x=1");
     assert.strictEqual(calls[0].input, "http://127.0.0.1:8791/api/contracts?x=1");
-    assert.strictEqual(calls[0].init.headers.get("X-Legal-Workbench-Token"), "config-token");
+    assert.strictEqual(calls[0].init.headers.has("X-Legal-Workbench-Token"), false);
     assert.strictEqual(calls[0].init.credentials, "include");
   }
 

@@ -386,5 +386,36 @@ test("buildBusinessSummary summarizes contract type and risk level", () => {
   assert(result.summary.includes("风险"));
 });
 
+test("analyzeLegalReview chunks long contracts and merges clause analyses", () => {
+  const out = runInFreshEnv(
+    `const clauses = Array.from({ length: 225 }, (_, index) => ({` +
+    `id: "c" + index, stableId: "s" + index, number: String(index + 1), title: "条款" + (index + 1), type: "其他", text: "内容".repeat(40), hierarchyLevel: "article"` +
+    `}));` +
+    `const { analyzeLegalReview } = require("./server/legal-skill-adapter");` +
+    `analyzeLegalReview({ contract_text: "X".repeat(95000), contract_name: "长合同", contract_type: "测试合同", clauses })` +
+    `.then(r => console.log(JSON.stringify({` +
+    `source: r.source, chunked: r.chunkedAnalysis?.enabled, chunkCount: r.chunkedAnalysis?.chunkCount,` +
+    `clauseCount: r.response.clauseAnalyses.length, segmentationCount: r.response.clauseSegmentation.length,` +
+    `summary: r.response.businessSummary` +
+    `})))` +
+    `.catch(e => { console.error(e.stack || e.message); process.exit(1); });`,
+    {
+      LEGAL_AI_PROVIDER: "openai-compatible",
+      LEGAL_SKILL_ALLOW_FALLBACK: "0",
+      LEGAL_SKILL_RUNNER_SCRIPT: "tests/fixtures/mock-legal-skill-runner.js",
+      LEGAL_AI_API_KEY: "test-key",
+      LEGAL_AI_BASE_URL: "https://example.invalid/v1",
+      LEGAL_AI_MODEL: "mock-model",
+    }
+  );
+  const result = JSON.parse(out);
+  assert.strictEqual(result.source, "configured-legal-skill-runner-chunked");
+  assert.strictEqual(result.chunked, true);
+  assert(result.chunkCount > 1);
+  assert.strictEqual(result.clauseCount, 225);
+  assert.strictEqual(result.segmentationCount, 225);
+  assert(result.summary.includes("chunk-summary-1"));
+});
+
 // Wait for async tests before printing summary
 Promise.all(asyncTests).then(() => summary());

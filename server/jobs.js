@@ -17,6 +17,7 @@ const JOB_PHASES = {
 };
 
 const analysisJobs = new Map();
+const queuedJobIds = [];
 
 function publicJobError(error) {
   const message = String(error?.message || error || "");
@@ -41,7 +42,29 @@ function withTimeout(promise, timeoutMs, message) {
 
 function countActiveAnalysisJobs() {
   cleanupAnalysisJobs();
-  return [...analysisJobs.values()].filter((job) => job.status === "queued" || job.status === "running").length;
+  return [...analysisJobs.values()].filter((job) => job.status === "running").length;
+}
+
+function queuePhaseForPosition(position) {
+  return position > 0 ? `排队中（第 ${position} 位）` : JOB_PHASES.queued;
+}
+
+function updateQueuePositions() {
+  queuedJobIds.forEach((id, index) => {
+    const job = analysisJobs.get(id);
+    if (!job || job.status !== "queued") return;
+    job.positionInQueue = index;
+    job.phase = queuePhaseForPosition(index);
+    job.updatedAt = new Date().toISOString();
+  });
+}
+
+function removeFromQueue(id) {
+  const index = queuedJobIds.indexOf(id);
+  if (index >= 0) {
+    queuedJobIds.splice(index, 1);
+    updateQueuePositions();
+  }
 }
 
 function cleanupAnalysisJobs() {
@@ -59,6 +82,7 @@ function cleanupAnalysisJobs() {
     const completedAt = Date.parse(job.completedAt || job.updatedAt || job.createdAt || "1970-01-01T00:00:00Z") || 0;
     if (!["queued", "running"].includes(job.status) && now - completedAt > ANALYSIS_JOB_TTL_MS) {
       analysisJobs.delete(id);
+      removeFromQueue(id);
     }
   }
 }
@@ -106,13 +130,97 @@ async function runWithRetry(fn, job, signal) {
   throw lastError;
 }
 
+async function executeAnalysisJob(job, request) {
+  const current = analysisJobs.get(job.id);
+  if (!current || current.status === "cancelled") return;
+
+  // 1. Check cache
+  const cached = globalCache.get(request);
+  if (cached) {
+    Object.assign(current, {
+      status: "completed",
+      phase: JOB_PHASES.completed,
+      completedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      result: cached.result,
+      costMeta: { ...cached.result?.__costMeta, cacheHit: true },
+      positionInQueue: null,
+    });
+    return;
+  }
+
+  // 2. Diff review if previous text provided
+  let diffResult = null;
+  if (request.previous_text && request.contract_text && request.previous_text !== request.contract_text) {
+    try {
+      const { buildInlineDiffParts } = require("../js/diff-engine");
+      diffResult = buildInlineDiffParts(request.previous_text, request.contract_text);
+    } catch (e) {}
+  }
+
+  Object.assign(current, {
+    status: "running",
+    phase: JOB_PHASES.running,
+    updatedAt: new Date().toISOString(),
+    positionInQueue: null,
+  });
+
+  try {
+    const { analyzeLegalReview } = require("./legal-skill-adapter");
+    const result = await withTimeout(
+      runWithRetry(() => analyzeLegalReview(request, { signal: current.__controller.signal }), current, current.__controller.signal),
+      ANALYSIS_JOB_TIMEOUT_MS,
+      "AI legal review job timed out"
+    );
+    if (current.status === "cancelled" || current.__aborted) return;
+
+    if (diffResult) {
+      result.diffReview = {
+        changed: true,
+        parts: diffResult.slice(0, 200),
+        summary: `检测到文本差异，共 ${diffResult.length} 个差异片段`,
+      };
+    }
+
+    const costMeta = buildCostMetadata(result);
+    result.__costMeta = costMeta;
+    current.costMeta = costMeta;
+
+    globalCache.set(request, result);
+
+    Object.assign(current, {
+      status: "completed",
+      phase: JOB_PHASES.completed,
+      completedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      result,
+    });
+  } catch (error) {
+    if (current.status === "cancelled" || current.__aborted) return;
+    Object.assign(current, {
+      status: "failed",
+      phase: JOB_PHASES.failed,
+      updatedAt: new Date().toISOString(),
+      error: publicJobError(error),
+    });
+  } finally {
+    processAnalysisQueue();
+  }
+}
+
+function processAnalysisQueue() {
+  cleanupAnalysisJobs();
+  while (countActiveAnalysisJobs() < MAX_ANALYSIS_JOBS && queuedJobIds.length) {
+    const nextId = queuedJobIds.shift();
+    updateQueuePositions();
+    const nextJob = analysisJobs.get(nextId);
+    if (!nextJob || nextJob.status !== "queued" || nextJob.__aborted) continue;
+    void executeAnalysisJob(nextJob, nextJob.request);
+  }
+}
+
 function createAnalysisJob(request) {
   cleanupAnalysisJobs();
-  if (countActiveAnalysisJobs() >= MAX_ANALYSIS_JOBS) {
-    const error = new Error("Too many legal review jobs are already running");
-    error.statusCode = 429;
-    throw error;
-  }
   const id = `job-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
   const controller = new AbortController();
   const job = {
@@ -126,88 +234,13 @@ function createAnalysisJob(request) {
     __controller: controller,
     __child: null,
     costMeta: null,
+    request,
+    positionInQueue: null,
   };
   analysisJobs.set(id, job);
-
-  setImmediate(async () => {
-    const current = analysisJobs.get(id);
-    if (!current) return;
-    if (current.status === "cancelled") return;
-
-    // 1. Check cache
-    const cached = globalCache.get(request);
-    if (cached) {
-      Object.assign(current, {
-        status: "completed",
-        phase: JOB_PHASES.completed,
-        completedAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        result: cached.result,
-        costMeta: { ...cached.result?.__costMeta, cacheHit: true },
-      });
-      return;
-    }
-
-    // 2. Diff review if previous text provided
-    let diffResult = null;
-    if (request.previous_text && request.contract_text && request.previous_text !== request.contract_text) {
-      try {
-        const { buildInlineDiffParts } = require("../js/diff-engine");
-        diffResult = buildInlineDiffParts(request.previous_text, request.contract_text);
-      } catch (e) {
-        // Non-fatal: diff engine may fail on extreme sizes
-      }
-    }
-
-    Object.assign(current, {
-      status: "running",
-      phase: JOB_PHASES.running,
-      updatedAt: new Date().toISOString(),
-    });
-
-    try {
-      const { analyzeLegalReview } = require("./legal-skill-adapter");
-      const result = await withTimeout(
-        runWithRetry(() => analyzeLegalReview(request, { signal: controller.signal }), current, controller.signal),
-        ANALYSIS_JOB_TIMEOUT_MS,
-        "AI legal review job timed out"
-      );
-      if (current.status === "cancelled" || current.__aborted) return;
-
-      // Attach diff result if computed
-      if (diffResult) {
-        result.diffReview = {
-          changed: true,
-          parts: diffResult.slice(0, 200),
-          summary: `检测到文本差异，共 ${diffResult.length} 个差异片段`,
-        };
-      }
-
-      // Build cost metadata
-      const costMeta = buildCostMetadata(result);
-      result.__costMeta = costMeta;
-      current.costMeta = costMeta;
-
-      // Store in cache
-      globalCache.set(request, result);
-
-      Object.assign(current, {
-        status: "completed",
-        phase: JOB_PHASES.completed,
-        completedAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        result,
-      });
-    } catch (error) {
-      if (current.status === "cancelled" || current.__aborted) return;
-      Object.assign(current, {
-        status: "failed",
-        phase: JOB_PHASES.failed,
-        updatedAt: new Date().toISOString(),
-        error: publicJobError(error),
-      });
-    }
-  });
+  queuedJobIds.push(id);
+  updateQueuePositions();
+  setImmediate(processAnalysisQueue);
   return job;
 }
 
@@ -217,6 +250,7 @@ function cancelJob(id) {
   if (job.status !== "queued" && job.status !== "running") return job;
 
   job.__aborted = true;
+  removeFromQueue(id);
   if (job.__controller) {
     try { job.__controller.abort(); } catch (e) {}
   }
@@ -234,7 +268,9 @@ function cancelJob(id) {
     phase: "Analysis cancelled",
     updatedAt: new Date().toISOString(),
     error: null,
+    positionInQueue: null,
   });
+  processAnalysisQueue();
   return job;
 }
 
@@ -247,6 +283,7 @@ function summarizeJob(job, includeResult = false) {
     updatedAt: job.updatedAt,
     completedAt: job.completedAt || null,
     error: job.error,
+    positionInQueue: job.status === "queued" ? job.positionInQueue ?? 0 : null,
     result: includeResult ? job.result : undefined,
   };
   if (job.costMeta) {
@@ -261,6 +298,7 @@ function getJob(id) {
 
 function _clearAllJobsForTesting() {
   analysisJobs.clear();
+  queuedJobIds.splice(0, queuedJobIds.length);
 }
 
 module.exports = { createAnalysisJob, cancelJob, summarizeJob, getJob, _clearAllJobsForTesting };

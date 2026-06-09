@@ -9,7 +9,7 @@ const checks = [
   },
   {
     file: "js/api.js",
-    patterns: ["clauseSegmentation", "dedupeSkillFindings", "getClauseSegmentationStatus", "collapseDuplicateSegmentationHeadings", "matchClauseByExplicitNumber"],
+    patterns: ["clauseSegmentation", "dedupeSkillFindings", "getClauseSegmentationStatus", "matchClauseByExplicitNumber"],
   },
   {
     file: "scripts/codex-skill-runner.js",
@@ -49,7 +49,7 @@ const checks = [
   },
   {
     file: "js/api-client.js",
-    patterns: ["LEGAL_WORKBENCH_API_TOKEN", "X-Legal-Workbench-Token"],
+    patterns: ["credentials: init.credentials || \"include\"", "legalWorkbenchApiUrl"],
   },
   {
     file: "js/app-contract-actions.js",

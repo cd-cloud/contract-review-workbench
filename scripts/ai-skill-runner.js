@@ -9,6 +9,7 @@ function buildPrompt(payload) {
     contract_text: compact(request.contract_text || "", 90000),
     clauses: Array.isArray(request.clauses) ? request.clauses.slice(0, 220) : [],
   };
+  const chunkMeta = compactRequest.analysis_chunk_meta;
   return [
     "你是合同审阅工作台的 Agent A：法律审阅与建议生成代理。",
     `当前模型接入方式：${provider.provider}${provider.model ? ` / ${provider.model}` : ""}。`,
@@ -43,6 +44,14 @@ function buildPrompt(payload) {
     "6. 同一个新增条款建议只能输出一次，不得既出现在合同级风险又出现在多个条款卡片。",
     "7. 如果无法可靠定位，宁可放入 contractLevelRisks 或写明需要人工确认，不要随意挂到相邻条款。",
     "",
+    ...(chunkMeta ? [
+      "分块分析附加规则：",
+      `1. 当前请求是第 ${chunkMeta.chunkIndex}/${chunkMeta.totalChunks} 个条款分块，总条款数 ${chunkMeta.totalClauses}。`,
+      "2. 只对当前 request.clauses 中提供的条款输出 clauseAnalyses，不要为未出现在本块中的 clauseId 生成建议。",
+      "3. contractLevelRisks 仅保留确实无法挂靠到当前条款卡片的全局问题，并避免与其他分块重复。",
+      "4. response.clauseSegmentation 只返回当前分块条款。",
+      "",
+    ] : []),
     "质量要求：",
     "1. 不要输出泛泛建议，不要把“建议进一步确认”单独作为风险。",
     "2. proposedRevision / replacementText / proposedClauseText 必须是可直接粘贴进合同的完整中文文本。",

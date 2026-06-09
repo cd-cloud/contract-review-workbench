@@ -832,6 +832,253 @@ function saveFile(name, content) {
   return { name: safeName, path: filePath };
 }
 
+function upsertContract(contract = {}) {
+  if (!contract?.id) throw new Error("Contract id is required");
+  const contractForFolder = {
+    id: contract.id,
+    name: contract.name || "untitled",
+    counterpartyName: contract.counterpartyName || "unknown",
+    createdAt: contract.createdAt || nowIso(),
+  };
+  const folderPath = ensureContractFolder(contractForFolder);
+  db.prepare(`
+    INSERT INTO contracts (
+      id, name, type, purpose, business_background, status, our_role, counterparty_id, counterparty_name,
+      amount, term, payment, governing_law, dispute, text, clean_text, redline_text, comments_text,
+      clause_source, risk_level, ai_tags, created_at, updated_at, folder_path
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      name = excluded.name,
+      type = excluded.type,
+      purpose = excluded.purpose,
+      business_background = excluded.business_background,
+      status = excluded.status,
+      our_role = excluded.our_role,
+      counterparty_id = excluded.counterparty_id,
+      counterparty_name = excluded.counterparty_name,
+      amount = excluded.amount,
+      term = excluded.term,
+      payment = excluded.payment,
+      governing_law = excluded.governing_law,
+      dispute = excluded.dispute,
+      text = excluded.text,
+      clean_text = excluded.clean_text,
+      redline_text = excluded.redline_text,
+      comments_text = excluded.comments_text,
+      clause_source = excluded.clause_source,
+      risk_level = excluded.risk_level,
+      ai_tags = excluded.ai_tags,
+      created_at = excluded.created_at,
+      updated_at = excluded.updated_at,
+      folder_path = excluded.folder_path
+  `).run(
+    contract.id,
+    contract.name || "",
+    contract.type || "",
+    contract.purpose || "",
+    contract.businessBackground || "",
+    contract.status || "",
+    contract.ourRole || "",
+    contract.counterpartyId || "",
+    contract.counterpartyName || "",
+    contract.amount || "",
+    contract.term || "",
+    contract.payment || "",
+    contract.governingLaw || contract.jurisdiction || "",
+    contract.dispute || "",
+    contract.text || "",
+    contract.cleanText || "",
+    contract.redlineText || "",
+    contract.commentsText || "",
+    contract.clauseSource || "draft",
+    contract.riskLevel || "low",
+    safeJson(contract.aiTags || []),
+    contract.createdAt || nowIso(),
+    contract.updatedAt || nowIso(),
+    folderPath
+  );
+  return {
+    ...contract,
+    folderPath,
+  };
+}
+
+function upsertContractVersion(version = {}) {
+  if (!version?.id || !version?.contractId) throw new Error("Version id and contractId are required");
+  db.prepare(`
+    INSERT INTO contract_versions (
+      id, contract_id, version_number, type, note, material_kind, text, clean_text, redline_text,
+      comments_text, accepted_text, file_path, created_at, feedback_deadline, status
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      contract_id = excluded.contract_id,
+      version_number = excluded.version_number,
+      type = excluded.type,
+      note = excluded.note,
+      material_kind = excluded.material_kind,
+      text = excluded.text,
+      clean_text = excluded.clean_text,
+      redline_text = excluded.redline_text,
+      comments_text = excluded.comments_text,
+      accepted_text = excluded.accepted_text,
+      file_path = excluded.file_path,
+      created_at = excluded.created_at,
+      feedback_deadline = excluded.feedback_deadline,
+      status = excluded.status
+  `).run(
+    version.id,
+    version.contractId,
+    version.versionNumber || 0,
+    version.type || "",
+    version.note || "",
+    version.materialKind || "",
+    version.versionText || version.text || "",
+    version.cleanText || "",
+    version.redlineText || "",
+    version.commentsText || "",
+    version.acceptedText || "",
+    version.filePath || null,
+    version.createdAt || nowIso(),
+    version.feedbackDeadline || "",
+    version.status || ""
+  );
+  return version;
+}
+
+function replaceContractClauses(contractId, versionId, clauses = []) {
+  if (!contractId) throw new Error("Contract id is required");
+  const deleteSql = versionId
+    ? "DELETE FROM clauses WHERE contract_id = ? AND version_id = ?"
+    : "DELETE FROM clauses WHERE contract_id = ? AND version_id IS NULL";
+  const deleteArgs = versionId ? [contractId, versionId] : [contractId];
+  const insertClause = db.prepare(`
+    INSERT INTO clauses (id, contract_id, version_id, stable_id, number, title, clause_type, text, hierarchy_level, chapter_title, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const tx = db.transaction(() => {
+    db.prepare(deleteSql).run(...deleteArgs);
+    for (const clause of clauses) {
+      insertClause.run(
+        clause.id,
+        contractId,
+        versionId || clause.versionId || null,
+        clause.stableId || clause.id,
+        clause.number || "",
+        clause.title || "",
+        clause.type || "",
+        clause.text || "",
+        clause.hierarchyLevel || "article",
+        clause.chapterTitle || "",
+        clause.createdAt || nowIso()
+      );
+    }
+  });
+  tx();
+  return clauses;
+}
+
+function replaceContractFindings(contractId, findings = []) {
+  if (!contractId) throw new Error("Contract id is required");
+  const insertFinding = db.prepare(`
+    INSERT INTO findings (
+      id, contract_id, clause_id, severity, action_type, title, issue, consequence, proposed_revision, target_text,
+      replacement_text, comment_text, negotiation_position, fallback_text, business_decision, adoption_note,
+      negotiation_bottom_line, acceptable_fallback, linked_clause_ids, quality_score, status, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const tx = db.transaction(() => {
+    db.prepare("DELETE FROM findings WHERE contract_id = ?").run(contractId);
+    for (const finding of findings) {
+      insertFinding.run(
+        finding.id,
+        contractId,
+        finding.clauseId || null,
+        finding.severity || "low",
+        finding.actionType || "",
+        finding.title || "",
+        finding.issue || "",
+        finding.consequence || "",
+        finding.proposedRevision || "",
+        finding.targetText || "",
+        finding.replacementText || "",
+        finding.commentText || "",
+        finding.negotiationPosition || "",
+        finding.fallbackText || "",
+        finding.businessDecision || "",
+        finding.adoptionNote || "",
+        finding.negotiationBottomLine || "",
+        finding.acceptableFallback || "",
+        safeJson(finding.linkedClauseIds || []),
+        finding.qualityScore || 0,
+        finding.status || "",
+        finding.createdAt || nowIso()
+      );
+    }
+  });
+  tx();
+  return findings;
+}
+
+function replaceClauseActions(sourceKey, clauseMap = {}) {
+  if (!sourceKey) throw new Error("sourceKey is required");
+  const insertAction = db.prepare(`
+    INSERT INTO clause_actions (id, source_key, clause_id, action_type, text, comment, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+  const tx = db.transaction(() => {
+    db.prepare("DELETE FROM clause_actions WHERE source_key = ?").run(sourceKey);
+    for (const [clauseId, action] of Object.entries(clauseMap || {})) {
+      insertAction.run(
+        `${sourceKey}:${clauseId}`,
+        sourceKey,
+        clauseId,
+        action.actionType || "",
+        action.text || action.editedText || "",
+        action.comment || "",
+        action.createdAt || nowIso()
+      );
+    }
+  });
+  tx();
+  return clauseMap;
+}
+
+function patchAuxState(partialState = {}) {
+  const current = readAuxState();
+  const merged = {
+    ...current,
+    ...deepClone(partialState || {}),
+  };
+  writeAuxState(merged);
+  return merged;
+}
+
+function appendAuditLog(entry = {}) {
+  const audit = {
+    id: entry.id || `audit-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+    action: entry.action || "state-update",
+    contractId: entry.contractId || null,
+    contractName: entry.contractName || null,
+    clauseId: entry.clauseId || null,
+    userId: entry.userId || "local-admin",
+    details: entry.details || {},
+    createdAt: entry.createdAt || nowIso(),
+  };
+  db.prepare(`
+    INSERT INTO audit_logs (action, contract_id, contract_name, clause_id, user_id, details, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    audit.action,
+    audit.contractId,
+    audit.contractName,
+    audit.clauseId,
+    audit.userId,
+    safeJson(audit.details),
+    audit.createdAt
+  );
+  return audit;
+}
+
 /* ─────────────── File archive API ─────────────── */
 function saveContractFile(contractId, versionId, buffer, originalName, mimeType, fileType = "attachment") {
   const contract = db.prepare("SELECT id, name, counterparty_name as counterpartyName, created_at FROM contracts WHERE id = ?").get(contractId);
@@ -1082,6 +1329,13 @@ module.exports = {
   readDb,
   writeDb,
   replaceDb,
+  upsertContract,
+  upsertContractVersion,
+  replaceContractClauses,
+  replaceContractFindings,
+  replaceClauseActions,
+  patchAuxState,
+  appendAuditLog,
   saveFile,
   flattenClauseActions,
   saveContractFile,

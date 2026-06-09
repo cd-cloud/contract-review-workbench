@@ -432,9 +432,10 @@ ipcMain.handle("app:get-paths", () => ({
   backupsDir: path.join(WORKBENCH_ROOT, "backups"),
 }));
 function openWorkbenchFolder(folderPath) {
-  const resolved = path.resolve(folderPath);
-  const root = path.resolve(WORKBENCH_ROOT);
-  if (!resolved.startsWith(root + path.sep) && resolved !== root) {
+  const resolved = path.resolve(path.normalize(folderPath));
+  const root = path.resolve(path.normalize(WORKBENCH_ROOT));
+  const relative = path.relative(root, resolved);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
     dialog.showErrorBox("安全限制", "只能打开工作台根目录内的文件夹。");
     return;
   }
@@ -442,9 +443,10 @@ function openWorkbenchFolder(folderPath) {
 }
 
 ipcMain.handle("app:open-folder", async (_, folderPath) => {
-  const resolved = path.resolve(folderPath);
-  const root = path.resolve(WORKBENCH_ROOT);
-  if (!resolved.startsWith(root + path.sep) && resolved !== root) {
+  const resolved = path.resolve(path.normalize(folderPath));
+  const root = path.resolve(path.normalize(WORKBENCH_ROOT));
+  const relative = path.relative(root, resolved);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
     return { ok: false, error: "Access denied: path outside workbench root" };
   }
   const error = await shell.openPath(resolved);

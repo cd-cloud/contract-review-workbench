@@ -4,6 +4,10 @@ const path = require("path");
 const { getProviderStatus } = require("../scripts/ai-runner-lib");
 const { parseRunnerJson } = require("./utils");
 const { splitClauses, classifyClause } = require("../lib/contract-splitter");
+const MAX_DIRECT_ANALYSIS_TEXT = Number(process.env.LEGAL_WORKBENCH_DIRECT_ANALYSIS_MAX_TEXT || 90000);
+const MAX_DIRECT_ANALYSIS_CLAUSES = Number(process.env.LEGAL_WORKBENCH_DIRECT_ANALYSIS_MAX_CLAUSES || 220);
+const CHUNK_ANALYSIS_MAX_TEXT = Number(process.env.LEGAL_WORKBENCH_CHUNK_ANALYSIS_MAX_TEXT || 45000);
+const CHUNK_ANALYSIS_MAX_CLAUSES = Number(process.env.LEGAL_WORKBENCH_CHUNK_ANALYSIS_MAX_CLAUSES || 80);
 
 function getSkillPath() {
   return process.env.LEGAL_WORK_ORCHESTRATOR_SKILL || path.join(process.env.USERPROFILE || "", ".codex", "skills", "legal-work-orchestrator", "SKILL.md");
@@ -48,6 +52,9 @@ function getRunnerConfig() {
 async function analyzeLegalReview(request, options = {}) {
   const runnerConfig = getRunnerConfig();
   if (runnerConfig.runnerCommand) {
+    if (shouldUseChunkedAnalysis(request)) {
+      return analyzeLegalReviewInChunks(request, options, runnerConfig);
+    }
     return runConfiguredSkillCommand(request, options, runnerConfig);
   }
   if (process.env.LEGAL_SKILL_ALLOW_FALLBACK !== "1") {
@@ -103,6 +110,183 @@ function getRunnerStatus() {
   };
 }
 
+function ensureRequestClauses(request = {}) {
+  if (Array.isArray(request.clauses) && request.clauses.length) return request.clauses;
+  return splitClauses(request.contract_text || "");
+}
+
+function shouldUseChunkedAnalysis(request = {}) {
+  if (request.analysis_chunk_meta) return false;
+  const clauses = ensureRequestClauses(request);
+  return String(request.contract_text || "").length > MAX_DIRECT_ANALYSIS_TEXT || clauses.length > MAX_DIRECT_ANALYSIS_CLAUSES;
+}
+
+function clauseChunkText(clause = {}) {
+  return [
+    clause.chapterTitle ? `章节：${clause.chapterTitle}` : "",
+    clause.number ? `编号：${clause.number}` : "",
+    clause.title ? `标题：${clause.title}` : "",
+    clause.text || "",
+  ].filter(Boolean).join("\n");
+}
+
+function buildChunkRequests(request = {}) {
+  const clauses = ensureRequestClauses(request);
+  const chunks = [];
+  let currentClauses = [];
+  let currentLength = 0;
+
+  for (const clause of clauses) {
+    const text = clauseChunkText(clause);
+    const nextLength = currentLength + text.length;
+    if (currentClauses.length && (currentClauses.length >= CHUNK_ANALYSIS_MAX_CLAUSES || nextLength > CHUNK_ANALYSIS_MAX_TEXT)) {
+      chunks.push(currentClauses);
+      currentClauses = [];
+      currentLength = 0;
+    }
+    currentClauses.push(clause);
+    currentLength += text.length;
+  }
+  if (currentClauses.length) chunks.push(currentClauses);
+
+  const totalChunks = chunks.length;
+  const outline = clauses.map((clause) => [clause.number || "", clause.title || clause.type || "未命名条款"].filter(Boolean).join(" ")).join(" | ");
+  return {
+    clauses,
+    requests: chunks.map((chunkClauses, index) => ({
+      ...request,
+      contract_text: [
+        request.contract_name ? `合同名称：${request.contract_name}` : "",
+        request.contract_type ? `合同类型：${request.contract_type}` : "",
+        request.jurisdiction ? `法域：${request.jurisdiction}` : "",
+        outline ? `合同结构索引：${outline}` : "",
+        "以下是本次需要重点审阅的条款快照：",
+        ...chunkClauses.map(clauseChunkText),
+      ].filter(Boolean).join("\n\n"),
+      clauses: chunkClauses,
+      drafting_requirements: [
+        request.drafting_requirements || "",
+        `这是分块分析任务的第 ${index + 1}/${totalChunks} 块。请只对当前 request.clauses 中提供的条款输出 clauseAnalyses，并避免与其他分块重复生成合同级建议。`,
+      ].filter(Boolean).join("\n"),
+      analysis_chunk_meta: {
+        chunkIndex: index + 1,
+        totalChunks,
+        totalClauses: clauses.length,
+        clauseIds: chunkClauses.map((clause) => clause.id),
+      },
+    })),
+  };
+}
+
+function dedupeBy(items, keyBuilder) {
+  const seen = new Set();
+  return (items || []).filter((item) => {
+    const key = keyBuilder(item);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function mergeChunkedCostMeta(chunkResults = []) {
+  const meta = {
+    chunked: true,
+    chunkCount: chunkResults.length,
+    estimatedCostCny: 0,
+    totalTokens: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+  };
+  for (const result of chunkResults) {
+    const current = result?.__costMeta || {};
+    meta.provider = meta.provider || current.provider;
+    meta.model = meta.model || current.model;
+    meta.source = meta.source || current.source;
+    meta.estimatedCostCny += Number(current.estimatedCostCny || 0);
+    meta.totalTokens += Number(current.totalTokens || 0);
+    meta.inputTokens += Number(current.inputTokens || 0);
+    meta.outputTokens += Number(current.outputTokens || 0);
+  }
+  meta.estimatedCostCny = Number(meta.estimatedCostCny.toFixed(4));
+  return meta;
+}
+
+function mergeChunkedResults(request, clauses, chunkResults) {
+  const firstResponse = chunkResults[0]?.response || {};
+  const clauseSegmentation = dedupeBy(
+    clauses.map((clause, index) => ({
+      stableId: clause.stableId || clause.id || `merged-${index + 1}`,
+      order: clause.order || index + 1,
+      title: clause.title || "",
+      text: clause.text || "",
+      type: clause.type || classifyClause(clause.text || "", clause.title || ""),
+      chapterTitle: clause.chapterTitle || "",
+      hierarchyLevel: clause.hierarchyLevel || "article",
+    })),
+    (item) => item.stableId || item.order
+  );
+
+  const clauseAnalyses = dedupeBy(
+    chunkResults.flatMap((result) => result?.response?.clauseAnalyses || []),
+    (item) => [item.clauseId, item.issue, item.proposedRevision, item.targetText].map((part) => String(part || "")).join("||")
+  );
+  const contractLevelRisks = dedupeBy(
+    chunkResults.flatMap((result) => result?.response?.contractLevelRisks || []),
+    (item) => [item.title, item.issue, item.proposedClauseText, item.targetInsertPosition].map((part) => String(part || "")).join("||")
+  );
+  const missingFacts = [...new Set(chunkResults.flatMap((result) => result?.response?.missingFacts || []))];
+  const businessSummary = [...new Set(chunkResults.map((result) => result?.response?.businessSummary).filter(Boolean))].join("\n");
+  const riskLevel = contractLevelRisks.some((item) => normalizeSeverity(item.severity) === "high") || clauseAnalyses.some((item) => normalizeSeverity(item.severity) === "high")
+    ? "high"
+    : contractLevelRisks.some((item) => normalizeSeverity(item.severity) === "medium") || clauseAnalyses.some((item) => normalizeSeverity(item.severity) === "medium")
+      ? "medium"
+      : firstResponse.contractSummary?.riskLevel || "low";
+
+  return {
+    ok: true,
+    source: "configured-legal-skill-runner-chunked",
+    runner: getRunnerStatus(),
+    request: { ...request, clauses },
+    chunkedAnalysis: {
+      enabled: true,
+      chunkCount: chunkResults.length,
+      analyzedClauses: clauses.length,
+      totalClauses: clauses.length,
+      maxClausesPerChunk: CHUNK_ANALYSIS_MAX_CLAUSES,
+      maxTextPerChunk: CHUNK_ANALYSIS_MAX_TEXT,
+    },
+    response: {
+      contractSummary: {
+        ...(firstResponse.contractSummary || {}),
+        contractName: firstResponse.contractSummary?.contractName || request.contract_name || "",
+        contractType: firstResponse.contractSummary?.contractType || request.contract_type || "",
+        purpose: firstResponse.contractSummary?.purpose || "",
+        riskLevel,
+      },
+      clauseSegmentation,
+      contractLevelRisks,
+      clauseAnalyses,
+      missingFacts,
+      businessSummary,
+    },
+  };
+}
+
+async function analyzeLegalReviewInChunks(request, options = {}, runnerConfig = getRunnerConfig()) {
+  const { clauses, requests } = buildChunkRequests(request);
+  if (requests.length <= 1) {
+    return runConfiguredSkillCommand({ ...request, clauses }, options, runnerConfig);
+  }
+  const chunkResults = [];
+  for (const chunkRequest of requests) {
+    if (options.signal?.aborted) throw new Error("AI analysis was cancelled");
+    chunkResults.push(await runConfiguredSkillCommand(chunkRequest, options, runnerConfig));
+  }
+  const merged = mergeChunkedResults(request, clauses, chunkResults);
+  merged.__costMeta = mergeChunkedCostMeta(chunkResults);
+  return merged;
+}
+
 function runConfiguredSkillCommand(request, options = {}, runnerConfig = getRunnerConfig()) {
   return new Promise((resolve, reject) => {
     const payload = buildRunnerPayload(request);
@@ -155,7 +339,7 @@ function buildRunnerPayload(request) {
   const skillPath = getSkillPath();
   const skillInstructions = fs.existsSync(skillPath) ? fs.readFileSync(skillPath, "utf8") : "";
   return {
-    instruction: "Use legal-work-orchestrator first and route to legal-contract-orchestrator where available. If the current provider is Kimi, Moonshot, or another OpenAI-compatible model without local Codex skills, complete the same lawyer-style contract review directly. First perform the full legal review internally, then normalize the completed work into the structured JSON expected by the workbench. Return clauseSegmentation based on legal meaning rather than regex-only parsing. If request.clauses is empty, treat it as an automatic segmentation task and prioritize clauseSegmentation with empty risk arrays. If a chapter title duplicates its only child clause title or first line, keep only one node. For add-clause suggestions, fill targetInsertPosition and linkedClauseIds whenever the suggestion belongs near an existing chapter or clause; reserve pure contractLevelRisks for suggestions with no reasonable card-level location. Do not output the same add-clause suggestion in multiple places.",
+    instruction: "Use legal-work-orchestrator first and route to legal-contract-orchestrator where available. If the current provider is Kimi, Moonshot, or another OpenAI-compatible model without local Codex skills, complete the same lawyer-style contract review directly. First perform the full legal review internally, then normalize the completed work into the structured JSON expected by the workbench. Return clauseSegmentation based on legal meaning rather than regex-only parsing. If request.clauses is empty, treat it as an automatic segmentation task and prioritize clauseSegmentation with empty risk arrays. If a chapter title duplicates its only child clause title or first line, keep only one node. For add-clause suggestions, fill targetInsertPosition and linkedClauseIds whenever the suggestion belongs near an existing chapter or clause; reserve pure contractLevelRisks for suggestions with no reasonable card-level location. Do not output the same add-clause suggestion in multiple places. If request.analysis_chunk_meta exists, only analyze the clauses included in this chunk, keep clauseId exact, avoid duplicating other chunks' contract-level suggestions, and treat the provided contract_text as a focused clause snapshot rather than the whole contract.",
     skillInstructions,
     expectedOutput: {
       response: {

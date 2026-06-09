@@ -1,7 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");
-const { getProviderStatus } = require("./ai-runner-lib");
+const { getProviderStatus, getApiProviderStatus } = require("./ai-runner-lib");
 const {
   DEFAULT_PORT,
   appRoot,
@@ -122,6 +122,29 @@ function checkCodexSkill() {
   };
 }
 
+function checkAiProviderReady() {
+  const providerStatus = getProviderStatus();
+  if (providerStatus.mode === "codex-cli") {
+    return {
+      label: "AI provider ready",
+      ok: providerStatus.codexRunnable,
+      detail: providerStatus.codexRunnable
+        ? `codex-cli ready (${providerStatus.codexCommand})`
+        : `codex-cli unavailable: ${providerStatus.codexDetail || "not runnable"}`,
+      fix: "Install or configure Codex CLI, or switch to an OpenAI-compatible provider in .env.",
+    };
+  }
+  const apiStatus = getApiProviderStatus();
+  return {
+    label: "AI provider ready",
+    ok: apiStatus.ready,
+    detail: apiStatus.ready
+      ? `${apiStatus.provider} ready (${apiStatus.baseUrl || "custom endpoint"})`
+      : `${apiStatus.provider} incomplete: apiKey=${apiStatus.apiKeyConfigured}, baseUrl=${apiStatus.baseUrlConfigured}, model=${apiStatus.modelConfigured}`,
+    fix: "Fill LEGAL_AI_PROVIDER / LEGAL_AI_BASE_URL / LEGAL_AI_API_KEY / LEGAL_AI_MODEL in .env, or switch back to codex-cli.",
+  };
+}
+
 function printCheck(check) {
   const mark = check.ok ? "OK" : "FAIL";
   console.log(`${mark} ${check.label}: ${check.detail}`);
@@ -137,6 +160,7 @@ async function main() {
     checkDependency("electron"),
     checkWritableDataDir(),
     await checkPort(),
+    checkAiProviderReady(),
     checkCodexSkill(),
   ];
   checks.forEach(printCheck);

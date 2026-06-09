@@ -169,6 +169,21 @@ function authedReq(method = "GET") {
     assert.strictEqual(body.ok, false);
   });
 
+  await testAsync("handleApi rejects executable bytes disguised as text upload", async () => {
+    const res = mockRes();
+    const req = mockReqWithBody({
+      contentBase64: Buffer.from([0x4d, 0x5a, 0x90, 0x00]).toString("base64"),
+      originalName: "notes.txt",
+      mimeType: "text/plain",
+      fileType: "attachment",
+    });
+    const handled = await handleApi(req, res, makeUrl("/api/contracts/contract-1/files"));
+    assert.strictEqual(handled, true);
+    assert.strictEqual(res.status, 400);
+    const body = JSON.parse(res.body);
+    assert.strictEqual(body.ok, false);
+  });
+
   await testAsync("handleApi rejects oversized upload payload", async () => {
     const res = mockRes();
     const huge = Buffer.alloc(51 * 1024 * 1024, "a").toString("base64");

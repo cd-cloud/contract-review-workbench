@@ -26,7 +26,7 @@ if not exist "node_modules\electron\package.json" (
 
 REM Start Electron
 echo 正在启动桌面应用...
-npx electron .
+call npm run electron
 
 if errorlevel 1 (
     echo.

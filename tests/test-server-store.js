@@ -162,6 +162,61 @@ test("readDb preserves auxiliary frontend state while using structured data as s
   assert.strictEqual(db.snapshot.storageMeta.persistedVia, "sqlite-structured");
 });
 
+test("patchAuxState merges frontend-only state without replacing structured data", () => {
+  store.replaceDb({
+    contracts: [{ id: "c-aux-patch", name: "Aux Patch", createdAt: "2026-06-08" }],
+    updates: [],
+    clauses: [],
+    findings: [],
+    counterparties: [],
+    negotiations: [],
+    playbooks: [],
+    riskRules: [],
+    auditLogs: [],
+    users: [],
+  });
+  const auxState = store.patchAuxState({
+    activeContractId: "c-aux-patch",
+    runnerDiagnostics: { legal: { ready: true } },
+  });
+  assert.strictEqual(auxState.activeContractId, "c-aux-patch");
+  const db = store.readDb();
+  assert.strictEqual(db.snapshot.activeContractId, "c-aux-patch");
+  assert.strictEqual(db.snapshot.contracts[0].id, "c-aux-patch");
+});
+
+test("appendAuditLog writes audit rows incrementally", () => {
+  const audit = store.appendAuditLog({
+    action: "manual-test-audit",
+    contractId: "c-audit",
+    details: { note: "hello" },
+  });
+  const db = store.readDb();
+  assert.ok(db.snapshot.auditLogs.some((item) => item.action === "manual-test-audit"));
+  assert.strictEqual(audit.action, "manual-test-audit");
+});
+
+test("upsertContract and upsertContractVersion persist incrementally", () => {
+  store.upsertContract({
+    id: "c-upsert",
+    name: "Upsert Contract",
+    type: "测试合同",
+    counterpartyName: "Acme",
+    createdAt: "2026-06-08",
+    updatedAt: "2026-06-08",
+  });
+  store.upsertContractVersion({
+    id: "u-upsert",
+    contractId: "c-upsert",
+    type: "初稿",
+    versionText: "合同文本",
+    createdAt: "2026-06-08",
+  });
+  const db = store.readDb();
+  assert.ok(db.snapshot.contracts.some((item) => item.id === "c-upsert"));
+  assert.ok(db.snapshot.updates.some((item) => item.id === "u-upsert"));
+});
+
 test("saveContractFile avoids overwriting duplicate original names", () => {
   const seed = store.replaceDb({
     contracts: [{ id: "c-files", name: "Files Test", counterpartyName: "Acme", createdAt: "2026-06-08" }],

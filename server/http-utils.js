@@ -25,6 +25,13 @@ const STATIC_TYPES = {
   ".ico": "image/x-icon",
 };
 
+function isPathInsideRoot(rootPath, candidatePath) {
+  const normalizedRoot = path.resolve(path.normalize(rootPath));
+  const normalizedCandidate = path.resolve(path.normalize(candidatePath));
+  const relative = path.relative(normalizedRoot, normalizedCandidate);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
 function isDevelopment() {
   return process.env.NODE_ENV === "development";
 }
@@ -91,8 +98,8 @@ function sendJson(res, status, payload, req = null) {
 }
 
 function sendStaticFile(res, filePath, extraHeaders = {}) {
-  const resolved = path.resolve(filePath);
-  if (!resolved.startsWith(ROOT_DIR)) {
+  const resolved = path.resolve(path.normalize(filePath));
+  if (!isPathInsideRoot(ROOT_DIR, resolved)) {
     sendJson(res, 403, { ok: false, error: "Forbidden" });
     return;
   }
@@ -150,4 +157,5 @@ module.exports = {
   getApiToken,
   getSessionCookieHeader,
   serverErrorPayload,
+  isPathInsideRoot,
 };

@@ -66,6 +66,22 @@
 - [x] 2.6 过时辅助脚本标记或隔离。
   - 涉及：`scripts/split-server.py`、`scripts/extract_modules.py` 等
   - 验收：过时脚本有注释/归档说明，不再误导后续维护。
+- [x] 2.7 移除前端 API token 残留逻辑。
+  - 涉及：`js/api-client.js`、`tests/test-api-client.js`
+  - 进展：前端请求已完全改为依赖 `cookie-session`，不再读取 `window.LEGAL_WORKBENCH_API_TOKEN` 或运行时配置中的 token 字段。
+  - 验收：浏览器端不再主动写入 `X-Legal-Workbench-Token` 请求头。
+- [x] 2.8 路径边界检查加固。
+  - 涉及：`server/http-utils.js`、`electron/main.js`、相关测试
+  - 进展：静态文件读取与 Electron 打开工作台目录均改为 `path.normalize + path.resolve + path.relative` 校验，不再依赖脆弱的字符串前缀判断。
+  - 验收：同前缀兄弟目录或 `..` 绕过路径被拒绝。
+- [x] 2.9 上传文件增加内容签名校验。
+  - 涉及：`server/routes/api.js`、`tests/test-routes-api.js`
+  - 进展：已为 `.docx` / `.pdf` / 文本类上传增加魔数或文本特征校验，并阻止可执行文件伪装上传。
+  - 验收：伪装成文档的可执行文件会返回 400。
+- [x] 2.10 补充集中配置模板与启动预检。
+  - 涉及：`.env.example`、`scripts/preflight.js`、`start.bat`
+  - 进展：新增 `.env.example`，`preflight` 增加 AI provider readiness 检查，`start.bat` 改为走 `npm run electron` 的固定本地版本启动方式。
+  - 验收：新环境可直接参考 `.env.example` 配置；启动脚本不再依赖 `npx electron .`。
 
 ## 阶段 3：结构治理
 
@@ -102,7 +118,7 @@
 
 - [~] 4.1 设计 SQLite 增量持久化方案。
   - 涉及：`server/store-sqlite.js`、`server/store.js`
-  - 进展：已补设计稿 `docs/sqlite-incremental-persistence-plan.md`，明确当前“整库 replace”现状、目标分层、优先改造接口和分阶段落地顺序；后续进入高频写路径的局部持久化实现。
+  - 进展：已补设计稿 `docs/sqlite-incremental-persistence-plan.md`，并新增第一批实际接口：`upsertContract`、`upsertContractVersion`、`replaceContractClauses`、`replaceContractFindings`、`replaceClauseActions`、`patchAuxState`、`appendAuditLog`；后续继续把前端高频链路逐步切到局部写入。
   - 验收：先有设计稿，明确哪些实体增量写、哪些仍保留 aux state。
 - [~] 4.2 实现 mock runner 的端到端 smoke。
   - 涉及：`tests/`，新增 `tests/e2e-smoke.js`
@@ -120,6 +136,14 @@
   - 涉及：`server/store-sqlite.js`、相关测试
   - 进展：已把测试从“目录存在”增强到“备份 sqlite 可查询、合同归档文件已写入备份目录、恢复到新目录后可重新打开 sqlite 和归档文件”。
   - 验收：备份可恢复 SQLite + 合同归档文件，不只是“目录存在”。
+- [x] 4.6 分析任务队列替代硬性 429。
+  - 涉及：`server/jobs.js`、`tests/test-jobs.js`
+  - 进展：`MAX_ANALYSIS_JOBS` 已从“超过即拒绝”调整为“并发上限 + FIFO 队列”，job summary 会返回 `positionInQueue`。
+  - 验收：超出并发时新任务进入排队，不再直接返回 429。
+- [x] 4.7 长文档条款分块分析。
+  - 涉及：`server/legal-skill-adapter.js`、`scripts/ai-skill-runner.js`、`tests/test-legal-skill-pure.js`
+  - 进展：当合同文本或条款数量超过阈值时，后端会按条款块拆分请求、分块调用 Agent A，再合并 `clauseAnalyses` / `contractLevelRisks` / `missingFacts`。
+  - 验收：长合同不会只分析前半部分；分块结果能合并回统一输出结构。
 
 ## 每阶段都要回归的核心链路
 
@@ -140,4 +164,4 @@
 
 1. 继续清理 `1.1` 剩余用户可见乱码/旧文案。
 2. 继续补 `3.3 -> 3.4` 的版本与来源元数据统一。
-3. 开始 `4.1` SQLite 增量持久化设计稿。
+3. 继续把高频前端写路径切到 `4.1` 的局部持久化接口。

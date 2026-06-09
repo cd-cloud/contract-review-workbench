@@ -5,6 +5,7 @@
 const assert = require("assert");
 const { createAnalysisJob, cancelJob, summarizeJob, getJob, _clearAllJobsForTesting } = require("../server/jobs");
 const { globalCache } = require("../server/analysis-cache");
+const legalSkillAdapter = require("../server/legal-skill-adapter");
 
 let totalTests = 0;
 let passedTests = 0;
@@ -239,6 +240,38 @@ test("cancelJob aborts the AbortController", () => {
     // With no runner and fallback disabled, job fails after retries
     // With fallback enabled (in dev), job completes
     assert.ok(["completed", "failed"].includes(updated.status));
+  });
+
+  await testAsync("createAnalysisJob queues jobs beyond concurrency limit instead of throwing 429", async () => {
+    _clearAllJobsForTesting();
+    globalCache.clear();
+    const originalAnalyzeLegalReview = legalSkillAdapter.analyzeLegalReview;
+    legalSkillAdapter.analyzeLegalReview = async (request) => {
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      return { ok: true, source: "mock-job-runner", request, response: { contractSummary: {}, clauseSegmentation: [], contractLevelRisks: [], clauseAnalyses: [], missingFacts: [], businessSummary: "" } };
+    };
+
+    try {
+      const job1 = createAnalysisJob({ contract_text: "queue-a" });
+      const job2 = createAnalysisJob({ contract_text: "queue-b" });
+      const job3 = createAnalysisJob({ contract_text: "queue-c" });
+      assert.strictEqual(summarizeJob(job3).positionInQueue, 2);
+
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      const current1 = getJob(job1.id);
+      const current2 = getJob(job2.id);
+      const current3 = getJob(job3.id);
+      assert.strictEqual(current1.status, "running");
+      assert.strictEqual(current2.status, "running");
+      assert.strictEqual(current3.status, "queued");
+      assert.strictEqual(summarizeJob(current3).positionInQueue, 0);
+
+      await new Promise((resolve) => setTimeout(resolve, 180));
+      const final3 = getJob(job3.id);
+      assert.strictEqual(final3.status, "completed");
+    } finally {
+      legalSkillAdapter.analyzeLegalReview = originalAnalyzeLegalReview;
+    }
   });
 
   summary();

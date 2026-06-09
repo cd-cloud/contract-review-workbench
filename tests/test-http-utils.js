@@ -7,12 +7,15 @@ const { Readable } = require("stream");
 const {
   safeJsonStringify,
   sendJson,
+  sendStaticFile,
   readJson,
   getCorsHeaders,
   isAuthorizedApiRequest,
   getApiToken,
   getSessionCookieHeader,
+  isPathInsideRoot,
 } = require("../server/http-utils");
+const path = require("path");
 
 let totalTests = 0;
 let passedTests = 0;
@@ -107,6 +110,18 @@ console.log("\n=== test-http-utils.js ===\n");
     assert.deepStrictEqual(headers, {});
   });
 
+  test("isPathInsideRoot accepts nested child path", () => {
+    const root = path.resolve(__dirname, "..");
+    const child = path.join(root, "js", "api-client.js");
+    assert.strictEqual(isPathInsideRoot(root, child), true);
+  });
+
+  test("isPathInsideRoot rejects same-prefix sibling path", () => {
+    const root = path.resolve("C:\\temp\\root");
+    const sibling = path.resolve("C:\\temp\\root-evil\\secret.txt");
+    assert.strictEqual(isPathInsideRoot(root, sibling), false);
+  });
+
   // --- isAuthorizedApiRequest ---
   test("isAuthorizedApiRequest returns true with correct token", () => {
     const token = getApiToken();
@@ -171,6 +186,18 @@ console.log("\n=== test-http-utils.js ===\n");
     obj.self = obj;
     sendJson(mockRes, 200, obj);
     assert.ok(capturedBody.includes('"[Circular]"'));
+  });
+
+  test("sendStaticFile blocks traversal via same-prefix path", () => {
+    let capturedStatus;
+    let capturedBody;
+    const mockRes = {
+      writeHead(status) { capturedStatus = status; },
+      end(body) { capturedBody = body; },
+    };
+    sendStaticFile(mockRes, path.resolve("C:\\Users\\x1462\\Documents\\New project\\contract-review-workbench-evil\\secret.txt"));
+    assert.strictEqual(capturedStatus, 403);
+    assert.ok(String(capturedBody).includes("Forbidden"));
   });
 
   // --- readJson ---
