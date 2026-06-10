@@ -4,6 +4,7 @@ const { handleApi } = require("./routes/api");
 const { sendJson, getCorsHeaders, serverErrorPayload } = require("./http-utils");
 const { cancelAllJobs } = require("./jobs");
 const { closeDb } = require("./store-sqlite");
+const logger = require("../scripts/logger");
 
 const PORT = Number(process.env.LEGAL_WORKBENCH_PORT || 8787);
 
@@ -32,16 +33,20 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.on("error", (err) => {
-  console.error("[server]", err.message);
-  process.exit(1);
+  logger.error(`[server] ${err.message}`);
+  if (err.code === "EADDRINUSE") {
+    console.error("[server] Port already in use, exiting to allow Electron restart");
+    process.exit(1);
+  }
+  console.error("[server] Non-fatal server error, continuing:", err.code || err.message);
 });
 
 server.listen(PORT, "127.0.0.1", () => {
-  console.log(`Legal workbench local skill bridge listening on http://127.0.0.1:${PORT}`);
+  logger.info(`Legal workbench local skill bridge listening on http://127.0.0.1:${PORT}`);
 });
 
 function gracefulShutdown(signal) {
-  console.log(`[server] Received ${signal}, shutting down gracefully...`);
+  logger.info(`[server] Received ${signal}, shutting down gracefully...`);
   cancelAllJobs();
   server.close(() => {
     closeDb();

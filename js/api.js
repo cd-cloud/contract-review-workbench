@@ -135,6 +135,7 @@ function extractLeadingDecimalNumber(text) {
 }
 
 async function runLegalSkillAnalysis(contract, materialText, extraRequirements = "", options = {}) {
+  showGlobalLoading("AI 正在审阅合同...", true);
   const request = buildLegalSkillRequest(contract, materialText, extraRequirements, options);
   try {
     const response = await legalWorkbenchFetch("/api/legal-review/jobs", {

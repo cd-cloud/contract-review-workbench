@@ -27,7 +27,12 @@ const STATIC_TYPES = {
 
 function isPathInsideRoot(rootPath, candidatePath) {
   const normalizedRoot = path.resolve(path.normalize(rootPath));
-  const normalizedCandidate = path.resolve(path.normalize(candidatePath));
+  let normalizedCandidate;
+  try {
+    normalizedCandidate = fs.realpathSync(path.resolve(path.normalize(candidatePath)));
+  } catch (error) {
+    normalizedCandidate = path.resolve(path.normalize(candidatePath));
+  }
   const relative = path.relative(normalizedRoot, normalizedCandidate);
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
@@ -140,9 +145,10 @@ function sendStaticFile(res, filePath, extraHeaders = {}) {
 
 function serverErrorPayload(error, fallbackMessage = "Server error") {
   const detail = error?.message || String(error || "");
-  return isDevelopment()
-    ? { ok: false, error: fallbackMessage, detail }
-    : { ok: false, error: fallbackMessage };
+  if (isDevelopment() || process.env.LEGAL_WORKBENCH_VERBOSE_ERRORS === "1") {
+    return { ok: false, error: fallbackMessage, detail };
+  }
+  return { ok: false, error: fallbackMessage };
 }
 
 function readJson(req) {

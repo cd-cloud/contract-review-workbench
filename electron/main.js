@@ -24,34 +24,35 @@ function smokeLog(message) {
 }
 
 /* ─────────────── Data directory writable check ─────────────── */
-function ensureWorkbenchRoot() {
+function isDirectoryWritable(dir) {
   try {
-    fs.mkdirSync(WORKBENCH_ROOT, { recursive: true });
-  } catch (error) {
-    if (error.code === "EACCES" || error.code === "EPERM") {
-      dialog.showErrorBox(
-        "数据目录不可写",
-        `合同审阅工作台无法创建数据目录：\n${WORKBENCH_ROOT}\n\n错误：${error.message}\n\n请检查该路径的写入权限，或以管理员身份重新启动应用。`
-      );
-      app.quit();
-      return false;
-    }
-    throw error;
-  }
-  // Verify writable by creating a temp file
-  const testFile = path.join(WORKBENCH_ROOT, `.write-test-${Date.now()}`);
-  try {
+    fs.mkdirSync(dir, { recursive: true });
+    const testFile = path.join(dir, `.write-test-${Date.now()}`);
     fs.writeFileSync(testFile, "test");
     fs.unlinkSync(testFile);
+    return true;
   } catch (error) {
-    dialog.showErrorBox(
-      "数据目录不可写",
-      `合同审阅工作台无法写入数据目录：\n${WORKBENCH_ROOT}\n\n错误：${error.message}\n\n请检查该路径的写入权限，或以管理员身份重新启动应用。`
-    );
-    app.quit();
     return false;
   }
-  return true;
+}
+
+function ensureWorkbenchRoot() {
+  if (isDirectoryWritable(WORKBENCH_ROOT)) return true;
+
+  const fallbackRoot = path.join(app.getPath("userData"), "LegalWorkbench");
+  if (isDirectoryWritable(fallbackRoot)) {
+    WORKBENCH_ROOT = fallbackRoot;
+    process.env.LEGAL_WORKBENCH_DATA_DIR = WORKBENCH_ROOT;
+    console.log(`[Electron] Using fallback data directory: ${WORKBENCH_ROOT}`);
+    return true;
+  }
+
+  dialog.showErrorBox(
+    "数据目录不可写",
+    `合同审阅工作台无法写入数据目录：\n${WORKBENCH_ROOT}\n\n已尝试回退到 ${fallbackRoot} 也失败。\n\n请检查磁盘空间或更换数据目录（设置 LEGAL_WORKBENCH_DATA_DIR 环境变量）。`
+  );
+  app.quit();
+  return false;
 }
 
 if (!ensureWorkbenchRoot()) return;
@@ -61,8 +62,12 @@ smokeLog("workbench root ready");
 let BACKEND_PORT = 8787;
 const BACKEND_URL = () => `http://127.0.0.1:${BACKEND_PORT}`;
 
-function findAvailablePort(startPort) {
+function findAvailablePort(startPort, limit = 20) {
   return new Promise((resolve, reject) => {
+    if (limit <= 0) {
+      reject(new Error(`No available port found from ${startPort}`));
+      return;
+    }
     const server = net.createServer();
     server.listen(startPort, "127.0.0.1", () => {
       const { port } = server.address();
@@ -70,7 +75,7 @@ function findAvailablePort(startPort) {
     });
     server.on("error", (err) => {
       if (err.code === "EADDRINUSE") {
-        findAvailablePort(startPort + 1).then(resolve).catch(reject);
+        findAvailablePort(startPort + 1, limit - 1).then(resolve).catch(reject);
       } else {
         reject(err);
       }
@@ -303,9 +308,30 @@ function createWindow() {
 
   mainWindow.webContents.on("render-process-gone", (_event, details) => {
     smokeLog(`renderer render-process-gone reason=${details?.reason || "unknown"} exitCode=${details?.exitCode ?? "n/a"}`);
-    if (!isTest) {
-      dialog.showErrorBox("页面崩溃", `合同审阅工作台页面渲染进程异常终止（原因: ${details?.reason || "unknown"}）。请重启应用。`);
+    if (isTest) return;
+    if (renderProcessReloadCount < MAX_RENDER_PROCESS_RELOADS) {
+      renderProcessReloadCount += 1;
+      console.log(`[Electron] Render process crashed, attempting reload ${renderProcessReloadCount}/${MAX_RENDER_PROCESS_RELOADS}`);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.reload();
+        return;
+      }
     }
+    dialog.showErrorBox("页面崩溃", `合同审阅工作台页面渲染进程异常终止（原因: ${details?.reason || "unknown"}），已尝试恢复 ${MAX_RENDER_PROCESS_RELOADS} 次均未成功。请重启应用。`);
+  });
+
+  mainWindow.webContents.on("render-process-gone", (_event, details) => {
+    smokeLog(`renderer render-process-gone reason=${details?.reason || "unknown"} exitCode=${details?.exitCode ?? "n/a"}`);
+    if (isTest) return;
+    if (renderProcessReloadCount < MAX_RENDER_PROCESS_RELOADS) {
+      renderProcessReloadCount += 1;
+      console.log(`[Electron] Render process crashed, attempting reload ${renderProcessReloadCount}/${MAX_RENDER_PROCESS_RELOADS}`);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.reload();
+        return;
+      }
+    }
+    dialog.showErrorBox("页面崩溃", `合同审阅工作台页面渲染进程异常终止（原因: ${details?.reason || "unknown"}），已尝试恢复 ${MAX_RENDER_PROCESS_RELOADS} 次均未成功。请重启应用。`);
   });
 
   mainWindow.once("ready-to-show", () => {
@@ -347,15 +373,36 @@ function getAppIcon() {
 /* ─────────────── Tray ─────────────── */
 function createTray() {
   const iconPath = path.join(__dirname, "assets", "tray-icon.png");
+  const fallbackPath = path.join(__dirname, "assets", "icon.png");
   let trayIcon;
   if (fs.existsSync(iconPath)) {
     trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
+  } else if (fs.existsSync(fallbackPath)) {
+    trayIcon = nativeImage.createFromPath(fallbackPath).resize({ width: 16, height: 16 });
   } else {
     trayIcon = nativeImage.createEmpty();
   }
 
   tray = new Tray(trayIcon);
   tray.setToolTip("AI 合同审阅工作台");
+
+  function updateTrayTooltip(status) {
+    if (!tray) return;
+    const base = "AI 合同审阅工作台";
+    tray.setToolTip(status ? `${base} - ${status}` : base);
+  }
+
+  // Update tooltip when backend status changes
+  const originalBackendReadySetter = Object.getOwnPropertyDescriptor(Object.prototype, "backendReady");
+  // Simple polling approach
+  let lastTrayStatus = "";
+  setInterval(() => {
+    const status = backendReady ? (isQuitting ? "正在关闭..." : "后端运行中") : (isQuitting ? "已关闭" : "后端启动中");
+    if (status !== lastTrayStatus) {
+      lastTrayStatus = status;
+      updateTrayTooltip(status);
+    }
+  }, 5000);
   updateTrayMenu();
 
   tray.on("click", () => {

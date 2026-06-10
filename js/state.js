@@ -264,7 +264,11 @@ function saveState(nextState = state, options = {}) {
   }
   writeLocalState(nextState);
   if (!options.localOnly) {
-    scheduleBackendSync(nextState);
+    if (typeof isBackendOnline !== "undefined" && !isBackendOnline) {
+      if (typeof offlineSyncPending !== "undefined") offlineSyncPending = true;
+    } else {
+      scheduleBackendSync(nextState);
+    }
   }
 }
 

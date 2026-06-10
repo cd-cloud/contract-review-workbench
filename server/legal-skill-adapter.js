@@ -326,6 +326,30 @@ async function analyzeLegalReviewInChunks(request, options = {}, runnerConfig = 
   }
   const workerCount = Math.max(1, Math.min(MAX_CHUNK_CONCURRENCY, requests.length));
   await Promise.all(Array.from({ length: workerCount }, () => worker()));
+
+  // Retry failed chunks once
+  if (failedChunks.length > 0 && chunkResults.length > 0) {
+    const retryable = failedChunks.splice(0);
+    for (const failed of retryable) {
+      const chunkRequest = requests[failed.chunkIndex - 1];
+      if (options.signal?.aborted) break;
+      try {
+        const result = await runChunkWithRetry(
+          () => runConfiguredSkillCommand(chunkRequest, options, runnerConfig),
+          { signal: options.signal }
+        );
+        chunkResults.push(result);
+      } catch (error) {
+        failedChunks.push({
+          chunkIndex: failed.chunkIndex,
+          totalChunks: failed.totalChunks,
+          clauseIds: failed.clauseIds,
+          error: error.message || String(error),
+        });
+      }
+    }
+  }
+
   if (!chunkResults.length) {
     const aggregateError = failedChunks[0]?.error || "All chunk analyses failed";
     throw new Error(aggregateError);
@@ -363,7 +387,7 @@ async function analyzeLegalReviewInChunks(request, options = {}, runnerConfig = 
 function runConfiguredSkillCommand(request, options = {}, runnerConfig = getRunnerConfig()) {
   return new Promise((resolve, reject) => {
     const payload = buildRunnerPayload(request);
-    const child = execFile(runnerConfig.runnerCommand, runnerConfig.runnerArgs, { maxBuffer: 40 * 1024 * 1024 }, (error, stdout, stderr) => {
+    const child = execFile(runnerConfig.runnerCommand, runnerConfig.runnerArgs, { maxBuffer: 40 * 1024 * 1024, timeout: 120000 }, (error, stdout, stderr) => {
       if (error) {
         reject(new Error(`${error.message}\n${stderr || ""}`.trim()));
         return;

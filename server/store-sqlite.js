@@ -55,7 +55,22 @@ setInterval(() => {
 }, 5 * 60 * 1000).unref?.();
 
 /* ─────────────── Migrations ─────────────── */
+function getMigrationVersion() {
+  try {
+    const row = db.prepare("PRAGMA user_version").get();
+    return row?.user_version || 0;
+  } catch (error) {
+    return 0;
+  }
+}
+
+function setMigrationVersion(version) {
+  db.prepare(`PRAGMA user_version = ${version}`).run();
+}
+
 function migrate() {
+  const currentVersion = getMigrationVersion();
+  let targetVersion = currentVersion;
   db.exec(`
     CREATE TABLE IF NOT EXISTS app_state (
       key TEXT PRIMARY KEY,
@@ -298,6 +313,13 @@ function migrate() {
       tokenize = 'unicode61'
     );
   `);
+
+  targetVersion = 1;
+
+  if (targetVersion > currentVersion) {
+    setMigrationVersion(targetVersion);
+    console.log(`[store] Migrated database from version ${currentVersion} to ${targetVersion}`);
+  }
 }
 migrate();
 
@@ -852,7 +874,10 @@ function replaceDb(snapshot) {
       );
     }
     db.pragma("foreign_keys = ON");
-    db.pragma("foreign_key_check");
+    const fkViolations = db.pragma("foreign_key_check");
+    if (Array.isArray(fkViolations) && fkViolations.length > 0) {
+      throw new Error(`Foreign key violations detected: ${JSON.stringify(fkViolations)}`);
+    }
 
     // 12. Insert audit logs
     const insertAudit = db.prepare(`

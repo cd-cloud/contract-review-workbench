@@ -16,7 +16,6 @@ const ALLOWED_UPLOAD_MIME_TYPES = new Set([
   "message/rfc822",
   "application/pdf",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "application/octet-stream",
 ]);
 const ALLOWED_UPLOAD_EXTENSIONS = new Set([".txt", ".md", ".text", ".eml", ".pdf", ".docx"]);
 const MACH_O_SIGNATURES = new Set([0xfeedface, 0xcefaedfe, 0xfeedfacf, 0xcffaedfe]);

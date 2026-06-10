@@ -1,111 +1,19 @@
-const { execFile } = require("child_process");
-const fs = require("fs");
-const path = require("path");
-const { getProviderStatus } = require("../scripts/ai-runner-lib");
-const { parseRunnerJson } = require("./utils");
-const { createRunnerHealthTracker } = require("./runner-health");
+const { createAiAdapter } = require("./base-adapter");
 
-function getRunnerConfig() {
-  const providerStatus = getProviderStatus();
-  return {
-    providerStatus,
-    runner: process.env.CONTRACT_INTAKE_RUNNER_SCRIPT || (providerStatus.mode === "openai-compatible" ? "scripts/ai-intake-runner.js" : "scripts/codex-intake-runner.js"),
-    allowFallback: process.env.CONTRACT_INTAKE_ALLOW_FALLBACK === "1",
-  };
-}
-
-function getStaticRunnerStatus() {
-  const runnerConfig = getRunnerConfig();
-  return {
-    configured: Boolean(runnerConfig.runner),
-    runnerScript: runnerConfig.runner,
-    runnerScriptExists: Boolean(runnerConfig.runner && fs.existsSync(path.resolve(process.cwd(), runnerConfig.runner))),
-    provider: runnerConfig.providerStatus.provider,
-    mode: runnerConfig.providerStatus.mode,
-    providerMode: runnerConfig.providerStatus.mode,
-    model: runnerConfig.providerStatus.model || "",
-    allowFallback: runnerConfig.allowFallback,
-    apiKeyConfigured: runnerConfig.providerStatus.apiKeyConfigured,
-    baseUrlConfigured: runnerConfig.providerStatus.baseUrlConfigured,
-    codexRunnable: runnerConfig.providerStatus.codexRunnable,
-    codexDetail: runnerConfig.providerStatus.codexDetail || "",
-    promptVersion: "agent-intake-v1",
-    skillPath: "legal-work-orchestrator",
-    downstreamSkill: "legal-contract-orchestrator",
-  };
-}
-
-const runnerHealth = createRunnerHealthTracker("Contract intake runner", getStaticRunnerStatus);
-
-function getRunnerStatus() {
-  return runnerHealth.getStatus();
-}
+const adapter = createAiAdapter({
+  name: "Contract intake runner",
+  envRunnerScript: "CONTRACT_INTAKE_RUNNER_SCRIPT",
+  envAllowFallback: "CONTRACT_INTAKE_ALLOW_FALLBACK",
+  defaultOpenAiRunner: "scripts/ai-intake-runner.js",
+  defaultCodexRunner: "scripts/codex-intake-runner.js",
+  promptVersion: "agent-intake-v1",
+  skillPath: "legal-work-orchestrator",
+  downstreamSkill: "legal-contract-orchestrator",
+  fallbackKey: "intake",
+});
 
 function runContractIntake(request) {
-  const runnerConfig = getRunnerConfig();
-  const startedAt = Date.now();
-  runnerHealth.startRun();
-  return runConfiguredContractIntake(request, runnerConfig).catch((error) => {
-    if (!runnerConfig.allowFallback) {
-      runnerHealth.markFailure({
-        error: error.message || String(error),
-        durationMs: Date.now() - startedAt,
-        source: path.basename(runnerConfig.runner || ""),
-      });
-      throw new Error(`AI contract intake failed: ${error.message || String(error)}`);
-    }
-    const result = {
-      ok: true,
-      source: "backend-fallback",
-      fallbackReason: error.message || String(error),
-      promptVersion: "agent-intake-v1",
-      skillPath: "legal-work-orchestrator",
-      downstreamSkill: "legal-contract-orchestrator",
-      intake: buildFallbackContractIntake(request),
-    };
-    runnerHealth.markFallback({
-      error: error.message || String(error),
-      fallbackReason: result.fallbackReason,
-      durationMs: Date.now() - startedAt,
-      source: result.source,
-    });
-    return result;
-  }).then((result) => {
-    if (result?.source !== "backend-fallback") {
-      runnerHealth.markSuccess({
-        durationMs: Date.now() - startedAt,
-        source: result?.source || path.basename(runnerConfig.runner || ""),
-      });
-    }
-    return result;
-  });
-}
-
-function runConfiguredContractIntake(request, runnerConfig = getRunnerConfig()) {
-  return new Promise((resolve, reject) => {
-    const runnerPath = path.resolve(process.cwd(), runnerConfig.runner);
-    const child = execFile(process.execPath, [runnerPath], { maxBuffer: 20 * 1024 * 1024 }, (error, stdout, stderr) => {
-      if (error) {
-        reject(new Error(`${error.message}\n${stderr || ""}`.trim()));
-        return;
-      }
-      try {
-        resolve({
-          ok: true,
-          source: path.basename(runnerConfig.runner),
-          promptVersion: "agent-intake-v1",
-          skillPath: "legal-work-orchestrator",
-          downstreamSkill: "legal-contract-orchestrator",
-          ...parseRunnerJson(stdout),
-        });
-      } catch (parseError) {
-        reject(parseError);
-      }
-    });
-    if (child.stdin && typeof child.stdin.on === "function") child.stdin.on("error", () => {});
-    child.stdin.write(JSON.stringify(request || {}, null, 2));
-    child.stdin.end();
-  });
+  return adapter.runWithFallback(request, adapter.runConfiguredCommand, buildFallbackContractIntake);
 }
 
 function buildFallbackContractIntake(request = {}) {
@@ -132,7 +40,7 @@ function buildFallbackContractIntake(request = {}) {
       `本地兜底识别结果：合同类型可能为“${contractType}”。`,
       counterparty ? `可能的相对方：${counterparty}。` : "暂未可靠识别出相对方，请人工确认。",
       `可能的合同目的：${purpose}。`,
-      missingFacts.length ? `仍需补充确认：${missingFacts.join("、")}。` : "正式审阅前，请继续确认我方角色、交易背景和谈判重点。",
+      missingFacts.length ? `仍需补充确认：${missingFacts.join("。")}。` : "正式审阅前，请继续确认我方角色、交易背景和谈判重点。",
     ].join("\n"),
     confidence: text ? 48 : 0,
     missingFacts,
@@ -140,7 +48,7 @@ function buildFallbackContractIntake(request = {}) {
 }
 
 function extractPartyName(text, label) {
-  const match = String(text || "").match(new RegExp(`${label}\\s*[：:]\\s*([^\\n]{2,100})`));
+  const match = String(text || "").match(new RegExp(`${label}\s*[：:]\s*([^\n]{2,100})`));
   return cleanupValue(match?.[1] || "");
 }
 
@@ -173,4 +81,9 @@ function inferPurpose(contractType, text) {
   return `处理${contractType}相关交易安排`;
 }
 
-module.exports = { runContractIntake, getRunnerStatus, buildFallbackContractIntake, _resetRunnerStatusForTesting: () => runnerHealth.resetForTesting() };
+module.exports = {
+  runContractIntake,
+  getRunnerStatus: adapter.getRunnerStatus,
+  buildFallbackContractIntake,
+  _resetRunnerStatusForTesting: adapter._resetRunnerStatusForTesting,
+};
