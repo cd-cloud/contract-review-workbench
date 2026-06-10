@@ -5,16 +5,17 @@ const os = require("os");
 const { getProviderStatus } = require("../scripts/ai-runner-lib");
 const { parseRunnerJson } = require("./utils");
 const { splitClauses, classifyClause } = require("../lib/contract-splitter");
-const MAX_DIRECT_ANALYSIS_TEXT = Number(process.env.LEGAL_WORKBENCH_DIRECT_ANALYSIS_MAX_TEXT || 90000);
-const MAX_DIRECT_ANALYSIS_CLAUSES = Number(process.env.LEGAL_WORKBENCH_DIRECT_ANALYSIS_MAX_CLAUSES || 220);
-const CHUNK_ANALYSIS_MAX_TEXT = Number(process.env.LEGAL_WORKBENCH_CHUNK_ANALYSIS_MAX_TEXT || 45000);
-const CHUNK_ANALYSIS_MAX_CLAUSES = Number(process.env.LEGAL_WORKBENCH_CHUNK_ANALYSIS_MAX_CLAUSES || 80);
-const CHUNK_MAX_RETRIES = Number(process.env.LEGAL_WORKBENCH_CHUNK_MAX_RETRIES || 2);
-const CHUNK_RETRY_BASE_MS = Number(process.env.LEGAL_WORKBENCH_CHUNK_RETRY_BASE_MS || 1500);
-const MAX_CHUNK_CONCURRENCY = Number(process.env.LEGAL_WORKBENCH_CHUNK_CONCURRENCY || 3);
+const config = require("./config");
+const MAX_DIRECT_ANALYSIS_TEXT = config.directAnalysisMaxText;
+const MAX_DIRECT_ANALYSIS_CLAUSES = config.directAnalysisMaxClauses;
+const CHUNK_ANALYSIS_MAX_TEXT = config.chunkAnalysisMaxText;
+const CHUNK_ANALYSIS_MAX_CLAUSES = config.chunkAnalysisMaxClauses;
+const CHUNK_MAX_RETRIES = config.chunkMaxRetries;
+const CHUNK_RETRY_BASE_MS = config.chunkRetryBaseMs;
+const MAX_CHUNK_CONCURRENCY = config.chunkConcurrency;
 
 function getSkillPath() {
-  return process.env.LEGAL_WORK_ORCHESTRATOR_SKILL || path.join(os.homedir(), ".codex", "skills", "legal-work-orchestrator", "SKILL.md");
+  return config.legalWorkOrchestratorSkill;
 }
 
 function parseRunnerArgs(value) {
@@ -40,7 +41,7 @@ function getRunnerConfig() {
   const runnerArgs = runnerScript
     ? [path.resolve(process.cwd(), runnerScript), ...parseRunnerArgs(process.env.LEGAL_SKILL_ARGS_JSON)]
     : parseRunnerArgs(process.env.LEGAL_SKILL_ARGS_JSON);
-  const isPackaged = process.env.NODE_ENV === "production" || process.env.ELECTRON_IS_PACKAGED === "1";
+  const isPackaged = config.nodeEnv === "production" || config.isPackaged;
   if (!runnerCommand && isPackaged && process.env.LEGAL_SKILL_ALLOW_FALLBACK !== "1") {
     process.env.LEGAL_SKILL_ALLOW_FALLBACK = "1";
   }
@@ -106,10 +107,10 @@ function getRunnerStatus() {
     executionContext: runnerConfig.providerStatus.executionContext || null,
     baseUrlConfigured: runnerConfig.providerStatus.baseUrlConfigured,
     apiKeyConfigured: runnerConfig.providerStatus.apiKeyConfigured,
-    launcherProfile: process.env.LEGAL_WORKBENCH_RUNTIME_PROFILE || null,
-    launcherMode: process.env.LEGAL_WORKBENCH_RUNTIME_MODE || null,
-    launcherReason: process.env.LEGAL_WORKBENCH_RUNTIME_REASON || "",
-    effectiveProvider: process.env.LEGAL_WORKBENCH_EFFECTIVE_PROVIDER || runnerConfig.providerStatus.provider,
+    launcherProfile: config.runtimeProfile || null,
+    launcherMode: config.runtimeMode || null,
+    launcherReason: config.runtimeReason || "",
+    effectiveProvider: config.effectiveProvider || runnerConfig.providerStatus.provider,
     mode: runnerConfig.runnerCommand ? (usesCodexCli ? "codex-cli-local-skill" : `configured-runner:${runnerConfig.providerStatus.provider}`) : "fallback",
   };
 }

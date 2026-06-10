@@ -4,7 +4,7 @@ const { sendStaticFile, getSessionCookieHeader } = require("../http-utils");
 const ROOT_DIR = path.resolve(__dirname, "../..");
 
 function resolveBackendOrigin(req) {
-  const port = Number(process.env.LEGAL_WORKBENCH_PORT || 8787);
+  const port = require("../config").port;
   const host = req?.headers?.host || `127.0.0.1:${port}`;
   return `http://${host}`;
 }

@@ -4,11 +4,12 @@ const crypto = require("crypto");
 const os = require("os");
 
 const ROOT_DIR = path.resolve(__dirname, "..");
-const PORT = Number(process.env.LEGAL_WORKBENCH_PORT || 8787);
+const config = require("./config");
+const PORT = config.port;
 
 function loadOrCreateApiToken() {
-  if (process.env.LEGAL_WORKBENCH_TOKEN) return process.env.LEGAL_WORKBENCH_TOKEN;
-  const workbenchRoot = process.env.LEGAL_WORKBENCH_DATA_DIR || path.join(os.homedir(), "LegalWorkbench");
+  if (config.token) return config.token;
+  const workbenchRoot = config.dataDir;
   const tokenPath = path.join(workbenchRoot, ".api_token");
   try {
     if (fs.existsSync(tokenPath)) return fs.readFileSync(tokenPath, "utf8").trim();
@@ -59,7 +60,7 @@ function isPathInsideRoot(rootPath, candidatePath) {
 }
 
 function isDevelopment() {
-  return process.env.NODE_ENV === "development";
+  return config.nodeEnv === "development";
 }
 
 function getCorsHeaders(req) {
@@ -166,7 +167,7 @@ function sendStaticFile(res, filePath, extraHeaders = {}) {
 
 function serverErrorPayload(error, fallbackMessage = "Server error") {
   const detail = error?.message || String(error || "");
-  if (isDevelopment() || process.env.LEGAL_WORKBENCH_VERBOSE_ERRORS === "1") {
+  if (isDevelopment() || config.verboseErrors) {
     return { ok: false, error: fallbackMessage, detail };
   }
   return { ok: false, error: fallbackMessage };

@@ -3,11 +3,12 @@ const { sendJson } = require("./http-utils");
 const { globalCache } = require("./analysis-cache");
 const { saveAnalysisJob, listAnalysisJobs, deleteAnalysisJob } = require("./store");
 
-const MAX_ANALYSIS_JOBS = Number(process.env.LEGAL_WORKBENCH_MAX_JOBS || 2);
-const ANALYSIS_JOB_TIMEOUT_MS = Number(process.env.LEGAL_WORKBENCH_JOB_TIMEOUT_MS || 10 * 60 * 1000);
-const ANALYSIS_JOB_TTL_MS = Number(process.env.LEGAL_WORKBENCH_JOB_TTL_MS || 30 * 60 * 1000);
-const MAX_RETRIES = Number(process.env.LEGAL_WORKBENCH_MAX_RETRIES || 2);
-const RETRY_BASE_DELAY_MS = Number(process.env.LEGAL_WORKBENCH_RETRY_BASE_MS || 2000);
+const config = require("./config");
+const MAX_ANALYSIS_JOBS = config.maxJobs;
+const ANALYSIS_JOB_TIMEOUT_MS = config.jobTimeoutMs;
+const ANALYSIS_JOB_TTL_MS = config.jobTtlMs;
+const MAX_RETRIES = config.maxRetries;
+const RETRY_BASE_DELAY_MS = config.retryBaseMs;
 
 const JOB_PHASES = {
   queued: "已进入 Codex 分析队列",

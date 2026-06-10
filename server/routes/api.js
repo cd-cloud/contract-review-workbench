@@ -9,7 +9,8 @@ const { runVisualQa, getRunnerStatus: getVisualQaRunnerStatus } = require("../vi
 const { extractDocxPackage } = require("../../scripts/docx-extract");
 const { createAnalysisJob, cancelJob, summarizeJob, getJob } = require("../jobs");
 
-const MAX_ARCHIVE_FILE_BYTES = Number(process.env.LEGAL_WORKBENCH_MAX_FILE_BYTES || 50 * 1024 * 1024);
+const config = require("../config");
+const MAX_ARCHIVE_FILE_BYTES = config.maxFileBytes;
 const ALLOWED_UPLOAD_MIME_TYPES = new Set([
   "text/plain",
   "text/markdown",
@@ -129,7 +130,7 @@ async function handleApi(req, res, url) {
     sendJson(res, 200, {
       ok: true,
       service: "legal-contract-workbench-local-skill-bridge",
-      port: Number(process.env.LEGAL_WORKBENCH_PORT || 8787),
+      port: config.port,
       database: DB_PATH,
       walPath: WAL_PATH,
       fileStorage: FILE_DIR,

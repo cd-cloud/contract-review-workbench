@@ -8,7 +8,7 @@ const { cancelAllJobs } = require("./jobs");
 const { closeDb } = require("./store-sqlite");
 const logger = require("../scripts/logger");
 
-const PORT = Number(process.env.LEGAL_WORKBENCH_PORT || 8787);
+const { port: PORT } = require("./config");
 
 const server = http.createServer(async (req, res) => {
   try {

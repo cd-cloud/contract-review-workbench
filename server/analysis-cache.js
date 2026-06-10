@@ -5,8 +5,9 @@
 
 const crypto = require("crypto");
 
-const MAX_CACHE_ENTRIES = Number(process.env.LEGAL_WORKBENCH_CACHE_MAX || 100);
-const CACHE_TTL_MS = Number(process.env.LEGAL_WORKBENCH_CACHE_TTL_MS || 24 * 60 * 60 * 1000);
+const config = require("./config");
+const MAX_CACHE_ENTRIES = config.cacheMaxEntries;
+const CACHE_TTL_MS = config.cacheTtlMs;
 
 class AnalysisCache {
   constructor({ maxEntries = MAX_CACHE_ENTRIES, ttlMs = CACHE_TTL_MS } = {}) {

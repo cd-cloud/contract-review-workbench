@@ -11,13 +11,13 @@ const os = require("os");
 const crypto = require("crypto");
 const { isPathInsideRoot } = require("./http-utils");
 
-const WORKBENCH_ROOT = process.env.LEGAL_WORKBENCH_DATA_DIR
-  || path.join(os.homedir(), "LegalWorkbench");
+const config = require("./config");
+const WORKBENCH_ROOT = config.dataDir;
 const DATA_DIR = path.join(WORKBENCH_ROOT, "data");
 const FILE_DIR = path.join(WORKBENCH_ROOT, "files");
 const DB_PATH = path.join(DATA_DIR, "workbench.sqlite");
 const WAL_PATH = `${DB_PATH}-wal`;
-const MAX_WAL_SIZE_BYTES = Number(process.env.LEGAL_WORKBENCH_MAX_WAL_BYTES || 100 * 1024 * 1024);
+const MAX_WAL_SIZE_BYTES = config.maxWalBytes;
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(FILE_DIR, { recursive: true });
@@ -1442,8 +1442,8 @@ async function runAutoBackup() {
       included: ["contracts", "files"],
     }));
     // Prune old backups by count and total size
-    const MAX_BACKUP_COUNT = Number(process.env.LEGAL_WORKBENCH_MAX_BACKUPS || 20);
-    const MAX_BACKUP_SIZE_BYTES = Number(process.env.LEGAL_WORKBENCH_MAX_BACKUP_SIZE || 50 * 1024 * 1024 * 1024);
+    const MAX_BACKUP_COUNT = config.maxBackups;
+    const MAX_BACKUP_SIZE_BYTES = config.maxBackupSize;
 
     function getDirectorySize(dir) {
       let size = 0;
