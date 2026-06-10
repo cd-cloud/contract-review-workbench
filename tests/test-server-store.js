@@ -208,6 +208,19 @@ test("appendInsertedClause persists inserted clause in aux state", () => {
   assert.strictEqual(db.snapshot.insertedClauses["contract-1:update-1"][0].id, "inserted-store-1");
 });
 
+test("saveAnalysisJob persists queued job rows", () => {
+  store.saveAnalysisJob({
+    id: "job-store-1",
+    status: "queued",
+    phase: "已进入 Codex 分析队列",
+    request: { contract_text: "abc" },
+    createdAt: "2026-06-10T00:00:00.000Z",
+    updatedAt: "2026-06-10T00:00:00.000Z",
+  });
+  const jobs = store.listAnalysisJobs(["queued"]);
+  assert.ok(jobs.some((job) => job.id === "job-store-1"));
+});
+
 test("upsertContract and upsertContractVersion persist incrementally", () => {
   store.upsertContract({
     id: "c-upsert",
@@ -262,6 +275,14 @@ test("deleteContractCascade removes contract incrementally", () => {
   assert.strictEqual(deleted.id, "c-delete-contract");
   const db = store.readDb();
   assert.ok(!db.snapshot.contracts.some((item) => item.id === "c-delete-contract"));
+});
+
+test("runWalCheckpoint returns sqlite wal metadata", () => {
+  const checkpoint = store.runWalCheckpoint("PASSIVE");
+  assert.strictEqual(checkpoint.mode, "PASSIVE");
+  assert.strictEqual(typeof checkpoint.busy, "number");
+  assert.strictEqual(typeof checkpoint.log, "number");
+  assert.strictEqual(typeof checkpoint.checkpointed, "number");
 });
 
 test("saveContractFile avoids overwriting duplicate original names", () => {
@@ -413,6 +434,12 @@ async function runAsyncTests() {
 
   store.deleteFile(uploaded.id);
 });
+
+  await testAsync("runAutoBackup performs truncate checkpoint before backup", async () => {
+    const checkpoint = store.runWalCheckpoint("TRUNCATE");
+    assert.strictEqual(checkpoint.mode, "TRUNCATE");
+    assert.strictEqual(typeof checkpoint.walSizeBytes, "number");
+  });
 }
 
 runAsyncTests().then(() => {

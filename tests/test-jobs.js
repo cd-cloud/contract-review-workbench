@@ -3,9 +3,16 @@
  */
 
 const assert = require("assert");
+const fs = require("fs");
+const path = require("path");
+
+process.env.LEGAL_WORKBENCH_DATA_DIR = path.join(__dirname, ".tmp-test-jobs");
+fs.rmSync(process.env.LEGAL_WORKBENCH_DATA_DIR, { recursive: true, force: true });
+
 const { createAnalysisJob, cancelJob, summarizeJob, getJob, _clearAllJobsForTesting } = require("../server/jobs");
 const { globalCache } = require("../server/analysis-cache");
 const legalSkillAdapter = require("../server/legal-skill-adapter");
+const store = require("../server/store");
 
 let totalTests = 0;
 let passedTests = 0;
@@ -50,7 +57,6 @@ process.env.LEGAL_WORKBENCH_MAX_RETRIES = "0";
 
 console.log("\n=== test-jobs.js ===\n");
 
-// --- summarizeJob ---
 test("summarizeJob returns correct fields without result", () => {
   const job = {
     id: "job-123",
@@ -63,13 +69,13 @@ test("summarizeJob returns correct fields without result", () => {
     result: { data: "secret" },
     costMeta: null,
   };
-  const summary = summarizeJob(job, false);
-  assert.strictEqual(summary.id, "job-123");
-  assert.strictEqual(summary.status, "queued");
-  assert.strictEqual(summary.phase, "test");
-  assert.strictEqual(summary.result, undefined);
-  assert.strictEqual(summary.completedAt, null);
-  assert.strictEqual(summary.costMeta, undefined);
+  const summaryResult = summarizeJob(job, false);
+  assert.strictEqual(summaryResult.id, "job-123");
+  assert.strictEqual(summaryResult.status, "queued");
+  assert.strictEqual(summaryResult.phase, "test");
+  assert.strictEqual(summaryResult.result, undefined);
+  assert.strictEqual(summaryResult.completedAt, null);
+  assert.strictEqual(summaryResult.costMeta, undefined);
 });
 
 test("summarizeJob includes result when requested", () => {
@@ -84,10 +90,10 @@ test("summarizeJob includes result when requested", () => {
     result: { data: "value" },
     costMeta: { model: "test" },
   };
-  const summary = summarizeJob(job, true);
-  assert.deepStrictEqual(summary.result, { data: "value" });
-  assert.strictEqual(summary.completedAt, "2026-01-01T00:01:00Z");
-  assert.deepStrictEqual(summary.costMeta, { model: "test" });
+  const summaryResult = summarizeJob(job, true);
+  assert.deepStrictEqual(summaryResult.result, { data: "value" });
+  assert.strictEqual(summaryResult.completedAt, "2026-01-01T00:01:00Z");
+  assert.deepStrictEqual(summaryResult.costMeta, { model: "test" });
 });
 
 test("summarizeJob handles missing completedAt", () => {
@@ -101,17 +107,15 @@ test("summarizeJob handles missing completedAt", () => {
     result: null,
     costMeta: null,
   };
-  const summary = summarizeJob(job);
-  assert.strictEqual(summary.completedAt, null);
+  const summaryResult = summarizeJob(job);
+  assert.strictEqual(summaryResult.completedAt, null);
 });
 
-// --- getJob ---
 test("getJob returns undefined for unknown id", () => {
   const result = getJob("nonexistent-job-id");
   assert.strictEqual(result, undefined);
 });
 
-// --- createAnalysisJob ---
 test("createAnalysisJob returns job with correct initial state", () => {
   _clearAllJobsForTesting();
   globalCache.clear();
@@ -144,12 +148,10 @@ test("createAnalysisJob generates unique ids", () => {
   assert.notStrictEqual(job1.id, job2.id);
 });
 
-// --- cancelJob ---
 test("cancelJob transitions running job to cancelled", () => {
   _clearAllJobsForTesting();
   globalCache.clear();
   const job = createAnalysisJob({ text: "cancel-me" });
-  // Force status to running for test
   job.status = "running";
   const cancelled = cancelJob(job.id);
   assert.ok(cancelled);
@@ -174,16 +176,14 @@ test("cancelJob no-op for already completed job", () => {
 test("cancelJob aborts the AbortController", () => {
   _clearAllJobsForTesting();
   globalCache.clear();
-  const job = createAnalysisJob({ text: "abort-test" });
+  const job = createAnalysisJob({ contract_text: "abort-test" });
   job.status = "running";
   assert.strictEqual(job.__controller.signal.aborted, false);
   cancelJob(job.id);
   assert.strictEqual(job.__controller.signal.aborted, true);
 });
 
-// Run async tests serially to avoid _clearAllJobsForTesting race conditions
 (async function runAsyncTests() {
-  // --- cache integration ---
   await testAsync("createAnalysisJob hits cache for identical request", async () => {
     _clearAllJobsForTesting();
     globalCache.clear();
@@ -191,7 +191,6 @@ test("cancelJob aborts the AbortController", () => {
     globalCache.set(request, { ok: true, cached: true, __costMeta: { cacheHit: true } });
 
     const job = createAnalysisJob(request);
-    // Wait for setImmediate
     await new Promise((resolve) => setTimeout(resolve, 600));
     const updated = getJob(job.id);
     assert.strictEqual(updated.status, "completed");
@@ -199,7 +198,6 @@ test("cancelJob aborts the AbortController", () => {
     assert.strictEqual(updated.costMeta.cacheHit, true);
   });
 
-  // --- diff integration ---
   await testAsync("createAnalysisJob attaches diff when previous_text differs", async () => {
     _clearAllJobsForTesting();
     globalCache.clear();
@@ -208,17 +206,14 @@ test("cancelJob aborts the AbortController", () => {
       previous_text: "旧文本",
       contract_type: "test",
     };
-    // Fallback path will run because no runner is configured in test
     const job = createAnalysisJob(request);
     await new Promise((resolve) => setTimeout(resolve, 600));
     const updated = getJob(job.id);
-    // In fallback path, result should still contain diffReview
     assert.ok(updated.result);
     assert.ok(updated.result.diffReview);
     assert.strictEqual(updated.result.diffReview.changed, true);
   });
 
-  // --- cost metadata ---
   await testAsync("createAnalysisJob includes costMeta in fallback mode", async () => {
     _clearAllJobsForTesting();
     globalCache.clear();
@@ -230,15 +225,12 @@ test("cancelJob aborts the AbortController", () => {
     assert.strictEqual(updated.costMeta.estimatedCostCny, 0);
   });
 
-  // --- retry integration (observed via fallback path) ---
   await testAsync("createAnalysisJob eventually completes even with no runner", async () => {
     _clearAllJobsForTesting();
     globalCache.clear();
     const job = createAnalysisJob({ contract_text: "retry-test" });
     await new Promise((resolve) => setTimeout(resolve, 600));
     const updated = getJob(job.id);
-    // With no runner and fallback disabled, job fails after retries
-    // With fallback enabled (in dev), job completes
     assert.ok(["completed", "failed"].includes(updated.status));
   });
 
@@ -272,6 +264,35 @@ test("cancelJob aborts the AbortController", () => {
     } finally {
       legalSkillAdapter.analyzeLegalReview = originalAnalyzeLegalReview;
     }
+  });
+
+  await testAsync("restoreJobsFromDb re-queues persisted queued/running jobs", async () => {
+    _clearAllJobsForTesting();
+    globalCache.clear();
+    store.saveAnalysisJob({
+      id: "job-persist-queued",
+      status: "queued",
+      phase: "已进入 Codex 分析队列",
+      request: { contract_text: "persist queued" },
+      createdAt: "2026-06-10T00:00:00.000Z",
+      updatedAt: "2026-06-10T00:00:00.000Z",
+    });
+    store.saveAnalysisJob({
+      id: "job-persist-running",
+      status: "running",
+      phase: "Codex Skill 正在审阅合同",
+      request: { contract_text: "persist running" },
+      createdAt: "2026-06-10T00:00:01.000Z",
+      updatedAt: "2026-06-10T00:00:01.000Z",
+    });
+
+    delete require.cache[require.resolve("../server/jobs")];
+    const reloadedJobs = require("../server/jobs");
+    const queued = reloadedJobs.getJob("job-persist-queued");
+    const running = reloadedJobs.getJob("job-persist-running");
+    assert.strictEqual(queued.status, "queued");
+    assert.strictEqual(running.status, "queued");
+    reloadedJobs._clearAllJobsForTesting();
   });
 
   summary();

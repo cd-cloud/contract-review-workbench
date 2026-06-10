@@ -124,6 +124,18 @@ function authedReq(method = "GET") {
     assert.strictEqual(body.ok, true);
     assert.ok(body.service);
     assert.ok(body.port);
+    assert.ok(body.walPath);
+  });
+
+  await testAsync("handleApi handles POST /api/db/checkpoint", async () => {
+    const res = mockRes();
+    const req = mockReqWithBody({ mode: "TRUNCATE" });
+    const handled = await handleApi(req, res, makeUrl("/api/db/checkpoint"));
+    assert.strictEqual(handled, true);
+    assert.strictEqual(res.status, 200);
+    const body = JSON.parse(res.body);
+    assert.strictEqual(body.ok, true);
+    assert.strictEqual(body.checkpoint.mode, "TRUNCATE");
   });
 
   await testAsync("handleApi handles GET /api/legal-review/runner-status", async () => {

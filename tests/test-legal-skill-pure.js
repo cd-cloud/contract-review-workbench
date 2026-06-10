@@ -417,5 +417,34 @@ test("analyzeLegalReview chunks long contracts and merges clause analyses", () =
   assert(result.summary.includes("chunk-summary-1"));
 });
 
+test("analyzeLegalReview preserves partial chunk results when one chunk fails", () => {
+  const out = runInFreshEnv(
+    `const clauses = Array.from({ length: 225 }, (_, index) => ({` +
+    `id: "c" + index, stableId: "s" + index, number: String(index + 1), title: "条款" + (index + 1), type: "其他", text: "内容".repeat(40), hierarchyLevel: "article"` +
+    `}));` +
+    `const { analyzeLegalReview } = require("./server/legal-skill-adapter");` +
+    `analyzeLegalReview({ contract_text: "X".repeat(95000), contract_name: "长合同", contract_type: "测试合同", clauses })` +
+    `.then(r => console.log(JSON.stringify({` +
+    `partial: r.chunkedAnalysis?.partial || false, failedChunks: r.chunkedAnalysis?.failedChunks?.length || 0,` +
+    `clauseCount: r.response.clauseAnalyses.length, hasPartialRisk: (r.response.contractLevelRisks || []).some(item => String(item.title || '').includes('部分条款未完成 AI 分析'))` +
+    `})))` +
+    `.catch(e => { console.error(e.stack || e.message); process.exit(1); });`,
+    {
+      LEGAL_AI_PROVIDER: "openai-compatible",
+      LEGAL_SKILL_ALLOW_FALLBACK: "0",
+      LEGAL_SKILL_RUNNER_SCRIPT: "tests/fixtures/mock-legal-skill-runner.js",
+      LEGAL_AI_API_KEY: "test-key",
+      LEGAL_AI_BASE_URL: "https://example.invalid/v1",
+      LEGAL_AI_MODEL: "mock-model",
+      LEGAL_SKILL_ARGS_JSON: "[\"--fail-second-chunk\"]",
+    }
+  );
+  const result = JSON.parse(out);
+  assert.strictEqual(result.partial, true);
+  assert.strictEqual(result.failedChunks, 1);
+  assert(result.clauseCount > 0);
+  assert.strictEqual(result.hasPartialRisk, true);
+});
+
 // Wait for async tests before printing summary
 Promise.all(asyncTests).then(() => summary());

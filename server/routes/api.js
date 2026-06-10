@@ -1,7 +1,7 @@
 const path = require("path");
 const fs = require("fs");
 const { sendJson, readJson, isAuthorizedApiRequest, serverErrorPayload } = require("../http-utils");
-const { readDb, replaceDb, upsertContract, upsertContractVersion, replaceClauseActions, appendInsertedClause, patchAuxState, appendAuditLog, deleteContractCascade, deleteContractVersionCascade, saveFile, DB_PATH, FILE_DIR, WORKBENCH_ROOT, saveContractFile, getContractFiles, getFileById, deleteFile, getContractFolder, listAllContractsWithPaths, runAutoBackup, search, searchContracts, searchClauses, searchGlobal } = require("../store");
+const { readDb, replaceDb, upsertContract, upsertContractVersion, replaceClauseActions, appendInsertedClause, patchAuxState, appendAuditLog, deleteContractCascade, deleteContractVersionCascade, saveFile, DB_PATH, WAL_PATH, FILE_DIR, WORKBENCH_ROOT, saveContractFile, getContractFiles, getFileById, deleteFile, getContractFolder, listAllContractsWithPaths, runAutoBackup, runWalCheckpoint, search, searchContracts, searchClauses, searchGlobal } = require("../store");
 const { analyzeLegalReview, getRunnerStatus } = require("../legal-skill-adapter");
 const { runSuggestionAction, getRunnerStatus: getSuggestionRunnerStatus } = require("../suggestion-action-adapter");
 const { runContractIntake, getRunnerStatus: getIntakeRunnerStatus } = require("../contract-intake-adapter");
@@ -130,9 +130,21 @@ async function handleApi(req, res, url) {
       service: "legal-contract-workbench-local-skill-bridge",
       port: Number(process.env.LEGAL_WORKBENCH_PORT || 8787),
       database: DB_PATH,
+      walPath: WAL_PATH,
       fileStorage: FILE_DIR,
       archiveRoot: WORKBENCH_ROOT,
     }, req);
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/db/checkpoint") {
+    try {
+      const payload = await readJson(req);
+      const checkpoint = runWalCheckpoint(payload.mode || "TRUNCATE");
+      sendJson(res, 200, { ok: true, checkpoint }, req);
+    } catch (error) {
+      sendJson(res, error.statusCode || 500, serverErrorPayload(error, "Failed to checkpoint sqlite WAL"), req);
+    }
     return true;
   }
 

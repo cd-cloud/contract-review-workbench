@@ -14,6 +14,8 @@ const WORKBENCH_ROOT = process.env.LEGAL_WORKBENCH_DATA_DIR
 const DATA_DIR = path.join(WORKBENCH_ROOT, "data");
 const FILE_DIR = path.join(WORKBENCH_ROOT, "files");
 const DB_PATH = path.join(DATA_DIR, "workbench.sqlite");
+const WAL_PATH = `${DB_PATH}-wal`;
+const MAX_WAL_SIZE_BYTES = Number(process.env.LEGAL_WORKBENCH_MAX_WAL_BYTES || 100 * 1024 * 1024);
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(FILE_DIR, { recursive: true });
@@ -21,6 +23,35 @@ fs.mkdirSync(FILE_DIR, { recursive: true });
 const db = new Database(DB_PATH);
 db.pragma("journal_mode = WAL");
 db.pragma("foreign_keys = ON");
+
+function runWalCheckpoint(mode = "PASSIVE") {
+  const normalizedMode = ["PASSIVE", "FULL", "RESTART", "TRUNCATE"].includes(String(mode || "").toUpperCase())
+    ? String(mode).toUpperCase()
+    : "PASSIVE";
+  const result = db.pragma(`wal_checkpoint(${normalizedMode})`, { simple: false }) || [];
+  const row = result[0] || {};
+  return {
+    mode: normalizedMode,
+    busy: Number(row.busy || 0),
+    log: Number(row.log || 0),
+    checkpointed: Number(row.checkpointed || 0),
+    walPath: WAL_PATH,
+    walSizeBytes: fs.existsSync(WAL_PATH) ? fs.statSync(WAL_PATH).size : 0,
+  };
+}
+
+function checkpointIfWalLarge() {
+  if (!fs.existsSync(WAL_PATH)) return null;
+  const size = fs.statSync(WAL_PATH).size;
+  if (size < MAX_WAL_SIZE_BYTES) return { skipped: true, walSizeBytes: size, threshold: MAX_WAL_SIZE_BYTES };
+  return runWalCheckpoint("TRUNCATE");
+}
+
+setInterval(() => {
+  try {
+    checkpointIfWalLarge();
+  } catch (error) {}
+}, 5 * 60 * 1000).unref?.();
 
 /* ─────────────── Migrations ─────────────── */
 function migrate() {
@@ -210,6 +241,20 @@ function migrate() {
       created_at TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS analysis_jobs (
+      id TEXT PRIMARY KEY,
+      status TEXT NOT NULL,
+      phase TEXT,
+      request_json TEXT,
+      result_json TEXT,
+      error TEXT,
+      cost_meta_json TEXT,
+      created_at TEXT,
+      updated_at TEXT,
+      completed_at TEXT,
+      position_in_queue INTEGER
+    );
+
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       name TEXT,
@@ -238,6 +283,7 @@ function migrate() {
     CREATE INDEX IF NOT EXISTS idx_clause_actions_source_key ON clause_actions(source_key);
     CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);
     CREATE INDEX IF NOT EXISTS idx_files_contract_id ON files(contract_id);
+    CREATE INDEX IF NOT EXISTS idx_analysis_jobs_status ON analysis_jobs(status);
 
     -- Full-text search index (FTS5 with unicode61; CJK chars are space-separated on insert)
     -- Note: if you need to change tokenizer, delete workbench.sqlite and let it recreate
@@ -792,6 +838,7 @@ function replaceDb(snapshot) {
   });
 
   tx();
+  runWalCheckpoint("PASSIVE");
   pruneOrphanedFiles(validContractIds, validVersionIds);
   const structuredSnapshot = assembleStructuredSnapshot();
   rebuildSearchIndex(structuredSnapshot);
@@ -1088,6 +1135,76 @@ function appendAuditLog(entry = {}) {
   return audit;
 }
 
+function saveAnalysisJob(job = {}) {
+  const persisted = {
+    id: job.id,
+    status: job.status || "queued",
+    phase: job.phase || "",
+    request_json: safeJson(job.request || {}),
+    result_json: safeJson(job.result || null),
+    error: job.error || null,
+    cost_meta_json: safeJson(job.costMeta || null),
+    created_at: job.createdAt || nowIso(),
+    updated_at: job.updatedAt || nowIso(),
+    completed_at: job.completedAt || null,
+    position_in_queue: Number.isFinite(Number(job.positionInQueue)) ? Number(job.positionInQueue) : null,
+  };
+  db.prepare(`
+    INSERT INTO analysis_jobs (
+      id, status, phase, request_json, result_json, error, cost_meta_json,
+      created_at, updated_at, completed_at, position_in_queue
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      status = excluded.status,
+      phase = excluded.phase,
+      request_json = excluded.request_json,
+      result_json = excluded.result_json,
+      error = excluded.error,
+      cost_meta_json = excluded.cost_meta_json,
+      created_at = excluded.created_at,
+      updated_at = excluded.updated_at,
+      completed_at = excluded.completed_at,
+      position_in_queue = excluded.position_in_queue
+  `).run(
+    persisted.id,
+    persisted.status,
+    persisted.phase,
+    persisted.request_json,
+    persisted.result_json,
+    persisted.error,
+    persisted.cost_meta_json,
+    persisted.created_at,
+    persisted.updated_at,
+    persisted.completed_at,
+    persisted.position_in_queue
+  );
+  return persisted;
+}
+
+function listAnalysisJobs(statuses = []) {
+  const normalized = Array.isArray(statuses) ? statuses.filter(Boolean) : [];
+  const rows = normalized.length
+    ? db.prepare(`SELECT * FROM analysis_jobs WHERE status IN (${normalized.map(() => "?").join(",")}) ORDER BY created_at ASC`).all(...normalized)
+    : db.prepare("SELECT * FROM analysis_jobs ORDER BY created_at ASC").all();
+  return rows.map((row) => ({
+    id: row.id,
+    status: row.status,
+    phase: row.phase,
+    request: parseJson(row.request_json, {}) || {},
+    result: parseJson(row.result_json, null),
+    error: row.error || null,
+    costMeta: parseJson(row.cost_meta_json, null),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    completedAt: row.completed_at,
+    positionInQueue: Number.isFinite(Number(row.position_in_queue)) ? Number(row.position_in_queue) : null,
+  }));
+}
+
+function deleteAnalysisJob(id) {
+  db.prepare("DELETE FROM analysis_jobs WHERE id = ?").run(id);
+}
+
 /* ─────────────── File archive API ─────────────── */
 function saveContractFile(contractId, versionId, buffer, originalName, mimeType, fileType = "attachment") {
   const contract = db.prepare("SELECT id, name, counterparty_name as counterpartyName, created_at FROM contracts WHERE id = ?").get(contractId);
@@ -1208,6 +1325,7 @@ function readBackupManifest(backupPath) {
 
 async function runAutoBackup() {
   try {
+    runWalCheckpoint("TRUNCATE");
     const backupDir = path.join(WORKBENCH_ROOT, "backups");
     fs.mkdirSync(backupDir, { recursive: true });
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
@@ -1382,6 +1500,9 @@ module.exports = {
   appendInsertedClause,
   patchAuxState,
   appendAuditLog,
+  saveAnalysisJob,
+  listAnalysisJobs,
+  deleteAnalysisJob,
   deleteContractCascade,
   deleteContractVersionCascade,
   saveFile,
@@ -1393,6 +1514,8 @@ module.exports = {
   getContractFolder,
   listAllContractsWithPaths,
   runAutoBackup,
+  runWalCheckpoint,
+  checkpointIfWalLarge,
   restoreBackupToDirectory,
   search,
   searchContracts,
@@ -1400,6 +1523,7 @@ module.exports = {
   searchGlobal,
   DATA_DIR,
   DB_PATH,
+  WAL_PATH,
   FILE_DIR,
   WORKBENCH_ROOT,
 };

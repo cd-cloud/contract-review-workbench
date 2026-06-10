@@ -85,6 +85,11 @@ function storeAutomaticReviewChecks(contractId, updateId, checks) {
     checks,
     checkedAt: new Date().toISOString(),
   };
+  if (typeof persistBackendAuxState === "function") {
+    persistBackendAuxState({
+      reviewChecks: state.reviewChecks,
+    }).catch(() => {});
+  }
 }
 
 function findDuplicates(values) {

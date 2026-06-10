@@ -1,5 +1,6 @@
 const { sendJson } = require("./http-utils");
 const { globalCache } = require("./analysis-cache");
+const { saveAnalysisJob, listAnalysisJobs, deleteAnalysisJob } = require("./store");
 
 const MAX_ANALYSIS_JOBS = Number(process.env.LEGAL_WORKBENCH_MAX_JOBS || 2);
 const ANALYSIS_JOB_TIMEOUT_MS = Number(process.env.LEGAL_WORKBENCH_JOB_TIMEOUT_MS || 10 * 60 * 1000);
@@ -56,6 +57,7 @@ function updateQueuePositions() {
     job.positionInQueue = index;
     job.phase = queuePhaseForPosition(index);
     job.updatedAt = new Date().toISOString();
+    saveAnalysisJob(job);
   });
 }
 
@@ -83,6 +85,7 @@ function cleanupAnalysisJobs() {
     if (!["queued", "running"].includes(job.status) && now - completedAt > ANALYSIS_JOB_TTL_MS) {
       analysisJobs.delete(id);
       removeFromQueue(id);
+      deleteAnalysisJob(id);
     }
   }
 }
@@ -146,6 +149,7 @@ async function executeAnalysisJob(job, request) {
       costMeta: { ...cached.result?.__costMeta, cacheHit: true },
       positionInQueue: null,
     });
+    saveAnalysisJob(current);
     return;
   }
 
@@ -164,6 +168,7 @@ async function executeAnalysisJob(job, request) {
     updatedAt: new Date().toISOString(),
     positionInQueue: null,
   });
+  saveAnalysisJob(current);
 
   try {
     const { analyzeLegalReview } = require("./legal-skill-adapter");
@@ -195,6 +200,7 @@ async function executeAnalysisJob(job, request) {
       updatedAt: new Date().toISOString(),
       result,
     });
+    saveAnalysisJob(current);
   } catch (error) {
     if (current.status === "cancelled" || current.__aborted) return;
     Object.assign(current, {
@@ -203,6 +209,7 @@ async function executeAnalysisJob(job, request) {
       updatedAt: new Date().toISOString(),
       error: publicJobError(error),
     });
+    saveAnalysisJob(current);
   } finally {
     processAnalysisQueue();
   }
@@ -239,6 +246,7 @@ function createAnalysisJob(request) {
   };
   analysisJobs.set(id, job);
   queuedJobIds.push(id);
+  saveAnalysisJob(job);
   updateQueuePositions();
   setImmediate(processAnalysisQueue);
   return job;
@@ -270,6 +278,7 @@ function cancelJob(id) {
     error: null,
     positionInQueue: null,
   });
+  saveAnalysisJob(job);
   processAnalysisQueue();
   return job;
 }
@@ -299,6 +308,31 @@ function getJob(id) {
 function _clearAllJobsForTesting() {
   analysisJobs.clear();
   queuedJobIds.splice(0, queuedJobIds.length);
+  listAnalysisJobs().forEach((job) => deleteAnalysisJob(job.id));
 }
 
-module.exports = { createAnalysisJob, cancelJob, summarizeJob, getJob, _clearAllJobsForTesting };
+function restoreJobsFromDb() {
+  const restorable = listAnalysisJobs(["queued", "running"]);
+  restorable.forEach((job) => {
+    const restored = {
+      ...job,
+      status: "queued",
+      phase: JOB_PHASES.queued,
+      updatedAt: new Date().toISOString(),
+      completedAt: null,
+      __controller: new AbortController(),
+      __child: null,
+      __aborted: false,
+      positionInQueue: null,
+    };
+    analysisJobs.set(restored.id, restored);
+    queuedJobIds.push(restored.id);
+    saveAnalysisJob(restored);
+  });
+  updateQueuePositions();
+  if (queuedJobIds.length) setImmediate(processAnalysisQueue);
+}
+
+restoreJobsFromDb();
+
+module.exports = { createAnalysisJob, cancelJob, summarizeJob, getJob, _clearAllJobsForTesting, restoreJobsFromDb };

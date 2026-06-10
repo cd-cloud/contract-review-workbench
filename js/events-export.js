@@ -7,6 +7,18 @@ async function handleExportClick(event) {
     generateSendVersion.textContent = "生成并复核中...";
     try {
       const prepared = createPreparedSendingVersion(contract);
+      if (typeof createBackendContractVersion === "function") {
+        await createBackendContractVersion(prepared.update);
+      }
+      if (typeof persistBackendAuxState === "function") {
+        persistBackendAuxState({
+          activeUpdateId: state.activeUpdateId,
+          activeWorkbenchClauseId: state.activeWorkbenchClauseId,
+          activeSubclauseId: state.activeSubclauseId,
+          reviewChecks: state.reviewChecks,
+          subclauseReferenceMap: state.subclauseReferenceMap,
+        }).catch(() => {});
+      }
       recordAudit("生成拟发送版本", {
         contractName: contract.name,
         note: prepared.changeSummary,

@@ -8,6 +8,8 @@ const MAX_DIRECT_ANALYSIS_TEXT = Number(process.env.LEGAL_WORKBENCH_DIRECT_ANALY
 const MAX_DIRECT_ANALYSIS_CLAUSES = Number(process.env.LEGAL_WORKBENCH_DIRECT_ANALYSIS_MAX_CLAUSES || 220);
 const CHUNK_ANALYSIS_MAX_TEXT = Number(process.env.LEGAL_WORKBENCH_CHUNK_ANALYSIS_MAX_TEXT || 45000);
 const CHUNK_ANALYSIS_MAX_CLAUSES = Number(process.env.LEGAL_WORKBENCH_CHUNK_ANALYSIS_MAX_CLAUSES || 80);
+const CHUNK_MAX_RETRIES = Number(process.env.LEGAL_WORKBENCH_CHUNK_MAX_RETRIES || 2);
+const CHUNK_RETRY_BASE_MS = Number(process.env.LEGAL_WORKBENCH_CHUNK_RETRY_BASE_MS || 1500);
 
 function getSkillPath() {
   return process.env.LEGAL_WORK_ORCHESTRATOR_SKILL || path.join(process.env.USERPROFILE || "", ".codex", "skills", "legal-work-orchestrator", "SKILL.md");
@@ -211,6 +213,26 @@ function mergeChunkedCostMeta(chunkResults = []) {
   return meta;
 }
 
+async function runChunkWithRetry(fn, options = {}) {
+  const maxRetries = Number.isFinite(Number(options.maxRetries)) ? Number(options.maxRetries) : CHUNK_MAX_RETRIES;
+  const retryBaseMs = Number.isFinite(Number(options.retryBaseMs)) ? Number(options.retryBaseMs) : CHUNK_RETRY_BASE_MS;
+  let lastError = null;
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    if (options.signal?.aborted) throw new Error("AI analysis was cancelled");
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      if (options.signal?.aborted) throw error;
+      if (attempt < maxRetries) {
+        const delayMs = retryBaseMs * Math.pow(2, attempt);
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+  }
+  throw lastError;
+}
+
 function mergeChunkedResults(request, clauses, chunkResults) {
   const firstResponse = chunkResults[0]?.response || {};
   const clauseSegmentation = dedupeBy(
@@ -278,12 +300,55 @@ async function analyzeLegalReviewInChunks(request, options = {}, runnerConfig = 
     return runConfiguredSkillCommand({ ...request, clauses }, options, runnerConfig);
   }
   const chunkResults = [];
-  for (const chunkRequest of requests) {
+  const failedChunks = [];
+  for (let index = 0; index < requests.length; index += 1) {
+    const chunkRequest = requests[index];
     if (options.signal?.aborted) throw new Error("AI analysis was cancelled");
-    chunkResults.push(await runConfiguredSkillCommand(chunkRequest, options, runnerConfig));
+    try {
+      chunkResults.push(await runChunkWithRetry(
+        () => runConfiguredSkillCommand(chunkRequest, options, runnerConfig),
+        { signal: options.signal }
+      ));
+    } catch (error) {
+      failedChunks.push({
+        chunkIndex: index + 1,
+        totalChunks: requests.length,
+        clauseIds: chunkRequest.analysis_chunk_meta?.clauseIds || [],
+        error: error.message || String(error),
+      });
+    }
+  }
+  if (!chunkResults.length) {
+    const aggregateError = failedChunks[0]?.error || "All chunk analyses failed";
+    throw new Error(aggregateError);
   }
   const merged = mergeChunkedResults(request, clauses, chunkResults);
   merged.__costMeta = mergeChunkedCostMeta(chunkResults);
+  if (failedChunks.length) {
+    merged.chunkedAnalysis.failedChunks = failedChunks;
+    merged.chunkedAnalysis.partial = true;
+    merged.response.contractLevelRisks = [
+      {
+        severity: "high",
+        actionType: "comment_only",
+        title: "部分条款未完成 AI 分析",
+        issue: `共 ${failedChunks.length} 个分块分析失败，以下条款需要人工补充复核。`,
+        consequence: "合同可能只完成了部分条款分析，剩余条款的风险和建议未完整返回。",
+        suggestion: failedChunks
+          .map((chunk) => `第 ${chunk.chunkIndex}/${chunk.totalChunks} 块失败：${(chunk.clauseIds || []).join("、") || "未返回条款 ID"}`)
+          .join("\n"),
+        proposedClauseText: "",
+        targetInsertPosition: "",
+        businessRationale: "该提示用于提醒人工补齐未完成的条款审阅。",
+        adoptionNote: "建议重试失败分块或人工重点复核相关条款。",
+        negotiationBottomLine: "",
+        acceptableFallback: "",
+        linkedClauseIds: failedChunks.flatMap((chunk) => chunk.clauseIds || []),
+        qualityScore: 40,
+      },
+      ...(merged.response.contractLevelRisks || []),
+    ];
+  }
   return merged;
 }
 

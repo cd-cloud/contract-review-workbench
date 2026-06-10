@@ -1,4 +1,5 @@
 const fs = require("fs");
+const shouldFailSecondChunk = process.argv.includes("--fail-second-chunk");
 
 let input = "";
 process.stdin.setEncoding("utf8");
@@ -11,6 +12,10 @@ process.stdin.on("end", () => {
   const request = payload.request || payload;
   const chunkMeta = request.analysis_chunk_meta || null;
   const chunkIndex = chunkMeta?.chunkIndex || 1;
+  if (shouldFailSecondChunk && chunkIndex === 2) {
+    process.stderr.write("mock runner forced second chunk failure");
+    process.exit(1);
+  }
   const clauses = Array.isArray(request.clauses) ? request.clauses : [];
   const response = {
     contractSummary: {
