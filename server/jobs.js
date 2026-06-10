@@ -110,7 +110,8 @@ function cleanupAnalysisJobs() {
   }
 }
 
-setInterval(cleanupAnalysisJobs, 60 * 1000).unref?.();
+const cleanupInterval = setInterval(cleanupAnalysisJobs, 60 * 1000);
+if (typeof cleanupInterval.unref === "function") cleanupInterval.unref();
 
 function buildCostMetadata(result) {
   const meta = {
@@ -377,6 +378,7 @@ function restoreJobsFromDb() {
 }
 
 function cancelAllJobs() {
+  try { clearInterval(cleanupInterval); } catch (e) {}
   for (const [id, job] of analysisJobs.entries()) {
     if (job.status === "queued" || job.status === "running") {
       cancelJob(id);

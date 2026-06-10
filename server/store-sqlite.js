@@ -49,11 +49,12 @@ function checkpointIfWalLarge() {
   return runWalCheckpoint("TRUNCATE");
 }
 
-setInterval(() => {
+const checkpointInterval = setInterval(() => {
   try {
     checkpointIfWalLarge();
   } catch (error) {}
-}, 5 * 60 * 1000).unref?.();
+}, 5 * 60 * 1000);
+if (typeof checkpointInterval.unref === "function") checkpointInterval.unref();
 
 /* ─────────────── Migrations ─────────────── */
 function getMigrationVersion() {
@@ -1608,6 +1609,7 @@ function searchGlobal(query, limit = 50) {
 
 /* ─────────────── Exports ─────────────── */
 function closeDb() {
+  try { clearInterval(checkpointInterval); } catch (e) {}
   try { db.close(); } catch (e) {}
 }
 
