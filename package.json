@@ -29,6 +29,7 @@
     "health": "node scripts/health-check.js",
     "check": "node scripts/check-all.js && node scripts/regression-smoke.js",
     "test": "node tests/test-runner.js",
+    "test:coverage": "c8 --reporter=text --reporter=html --include='server/**/*.js' --include='scripts/**/*.js' --include='js/**/*.js' --include='lib/**/*.js' node tests/test-runner.js",
     "test:layer1": "node scripts/test-layer1-shared-libs.js",
     "test:layer2": "node scripts/test-layer2-fallback-analysis.js",
     "test:utils": "node tests/test-utils-pure.js",
@@ -45,6 +46,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
+    "c8": "^11.0.0",
     "dotenv": "^17.4.2",
     "electron": "^35.0.0",
     "electron-builder": "^26.0.0"
