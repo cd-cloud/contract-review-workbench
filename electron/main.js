@@ -71,7 +71,11 @@ function findAvailablePort(startPort, limit = 20) {
     const server = net.createServer();
     server.listen(startPort, "127.0.0.1", () => {
       const { port } = server.address();
-      server.close(() => resolve(port));
+      const closeTimeout = setTimeout(() => resolve(port), 1000);
+      server.close(() => {
+        clearTimeout(closeTimeout);
+        resolve(port);
+      });
     });
     server.on("error", (err) => {
       if (err.code === "EADDRINUSE") {
@@ -229,6 +233,8 @@ function stopBackend() {
     if (!backendProcess) { resolve(); return; }
     console.log("[Electron] Stopping backend...");
     backendProcess.removeAllListeners("close");
+    try { backendProcess.stdout?.removeAllListeners("data"); } catch (e) {}
+    try { backendProcess.stderr?.removeAllListeners("data"); } catch (e) {}
 
     const pid = backendProcess.pid;
     try {

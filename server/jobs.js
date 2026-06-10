@@ -49,12 +49,17 @@ function withTimeout(promise, timeoutMs, message, onTimeout) {
 
 function terminateJobChild(job) {
   if (!job?.__child) return;
+  if (job.__killTimeout) {
+    try { clearTimeout(job.__killTimeout); } catch (e) {}
+    job.__killTimeout = null;
+  }
   try {
     job.__child.kill("SIGTERM");
-    setTimeout(() => {
+    job.__killTimeout = setTimeout(() => {
       try {
         if (job.__child && !job.__child.killed) job.__child.kill("SIGKILL");
       } catch (error) {}
+      job.__killTimeout = null;
     }, 3000);
   } catch (error) {}
 }
