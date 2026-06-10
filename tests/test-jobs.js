@@ -305,6 +305,7 @@ test("cancelJob terminates attached child process", () => {
 
     delete require.cache[require.resolve("../server/jobs")];
     const reloadedJobs = require("../server/jobs");
+    reloadedJobs.restoreJobsFromDb();
     const queued = reloadedJobs.getJob("job-persist-queued");
     const running = reloadedJobs.getJob("job-persist-running");
     assert.strictEqual(queued.status, "queued");

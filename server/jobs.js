@@ -375,8 +375,6 @@ function restoreJobsFromDb() {
   if (queuedJobIds.length) setImmediate(processAnalysisQueue);
 }
 
-restoreJobsFromDb();
-
 function cancelAllJobs() {
   for (const [id, job] of analysisJobs.entries()) {
     if (job.status === "queued" || job.status === "running") {

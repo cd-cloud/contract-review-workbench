@@ -242,6 +242,16 @@ async function handleApi(req, res, url) {
         "Content-Length": stat.size,
         ...require("../http-utils").getCorsHeaders(req),
       });
+      if (typeof res.setTimeout === "function") {
+        res.setTimeout(30000, () => {
+          stream.destroy();
+          if (!res.headersSent) {
+            sendJson(res, 504, { ok: false, error: "Download timed out" }, req);
+          } else {
+            res.destroy();
+          }
+        });
+      }
       const stream = fs.createReadStream(file.path);
       stream.on("error", (err) => {
         try {

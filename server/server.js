@@ -40,20 +40,29 @@ server.on("error", (err) => {
   }
   if (err.code === "EMFILE" || err.code === "ENFILE") {
     logger.error("[server] Too many open files, reducing maxConnections");
-    server.maxConnections = Math.max(1, (server.maxConnections || Infinity) - 5);
+    server.maxConnections = Math.max(1, (server.maxConnections || 1000) - 5);
     return;
   }
   console.error("[server] Non-fatal server error, continuing:", err.code || err.message);
 });
 
+const { restoreJobsFromDb } = require("./jobs");
+
 server.listen(PORT, "127.0.0.1", () => {
   logger.info(`Legal workbench local skill bridge listening on http://127.0.0.1:${PORT}`);
+  restoreJobsFromDb();
 });
 
 function gracefulShutdown(signal) {
   logger.info(`[server] Received ${signal}, shutting down gracefully...`);
   cancelAllJobs();
+  const forceExit = setTimeout(() => {
+    logger.error("[server] Graceful shutdown timed out, forcing exit");
+    closeDb();
+    process.exit(1);
+  }, 5000);
   server.close(() => {
+    clearTimeout(forceExit);
     closeDb();
     process.exit(0);
   });

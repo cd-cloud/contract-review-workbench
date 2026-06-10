@@ -136,6 +136,15 @@ function applySelectedRuntimeProfile(env, backendRuntime, options = {}) {
 function startBackend() {
   if (backendProcess) return;
 
+  // Ensure backend reads the same token we pass via env
+  const tokenPath = path.join(WORKBENCH_ROOT, ".api_token");
+  try {
+    fs.mkdirSync(WORKBENCH_ROOT, { recursive: true });
+    fs.writeFileSync(tokenPath, BACKEND_API_TOKEN, "utf8");
+  } catch (error) {
+    console.error("[Electron] Failed to persist API token:", error.message);
+  }
+
   const serverScript = isDev
     ? path.join(__dirname, "..", "server", "server.js")
     : path.join(process.resourcesPath, "app", "server", "server.js");

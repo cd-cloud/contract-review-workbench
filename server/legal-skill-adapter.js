@@ -386,8 +386,10 @@ async function analyzeLegalReviewInChunks(request, options = {}, runnerConfig = 
 
 function runConfiguredSkillCommand(request, options = {}, runnerConfig = getRunnerConfig()) {
   return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => reject(new Error("Skill command timed out after 130s")), 130000);
     const payload = buildRunnerPayload(request);
     const child = execFile(runnerConfig.runnerCommand, runnerConfig.runnerArgs, { maxBuffer: 100 * 1024 * 1024, timeout: 120000 }, (error, stdout, stderr) => {
+      clearTimeout(timeoutId);
       if (error) {
         reject(new Error(`${error.message}\n${stderr || ""}`.trim()));
         return;
