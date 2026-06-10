@@ -1,6 +1,7 @@
 const { execFile } = require("child_process");
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
 const { getProviderStatus } = require("../scripts/ai-runner-lib");
 const { parseRunnerJson } = require("./utils");
 const { splitClauses, classifyClause } = require("../lib/contract-splitter");
@@ -13,7 +14,7 @@ const CHUNK_RETRY_BASE_MS = Number(process.env.LEGAL_WORKBENCH_CHUNK_RETRY_BASE_
 const MAX_CHUNK_CONCURRENCY = Number(process.env.LEGAL_WORKBENCH_CHUNK_CONCURRENCY || 3);
 
 function getSkillPath() {
-  return process.env.LEGAL_WORK_ORCHESTRATOR_SKILL || path.join(process.env.USERPROFILE || "", ".codex", "skills", "legal-work-orchestrator", "SKILL.md");
+  return process.env.LEGAL_WORK_ORCHESTRATOR_SKILL || path.join(os.homedir(), ".codex", "skills", "legal-work-orchestrator", "SKILL.md");
 }
 
 function parseRunnerArgs(value) {
@@ -386,9 +387,17 @@ async function analyzeLegalReviewInChunks(request, options = {}, runnerConfig = 
 
 function runConfiguredSkillCommand(request, options = {}, runnerConfig = getRunnerConfig()) {
   return new Promise((resolve, reject) => {
-    const timeoutId = setTimeout(() => reject(new Error("Skill command timed out after 130s")), 130000);
+    let child;
+    const timeoutId = setTimeout(() => {
+      console.error("[legal-skill-adapter] Skill command timed out after 130s, killing child process");
+      try { if (child) child.kill("SIGTERM"); } catch (e) {}
+      setTimeout(() => {
+        try { if (child && !child.killed) child.kill("SIGKILL"); } catch (e) {}
+      }, 3000);
+      reject(new Error("Skill command timed out after 130s"));
+    }, 130000);
     const payload = buildRunnerPayload(request);
-    const child = execFile(runnerConfig.runnerCommand, runnerConfig.runnerArgs, { maxBuffer: 100 * 1024 * 1024, timeout: 120000 }, (error, stdout, stderr) => {
+    child = execFile(runnerConfig.runnerCommand, runnerConfig.runnerArgs, { maxBuffer: 100 * 1024 * 1024 }, (error, stdout, stderr) => {
       clearTimeout(timeoutId);
       if (error) {
         reject(new Error(`${error.message}\n${stderr || ""}`.trim()));

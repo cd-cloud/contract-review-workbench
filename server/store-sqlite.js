@@ -8,6 +8,7 @@ const Database = require("better-sqlite3");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
+const crypto = require("crypto");
 const { isPathInsideRoot } = require("./http-utils");
 
 const WORKBENCH_ROOT = process.env.LEGAL_WORKBENCH_DATA_DIR
@@ -369,9 +370,9 @@ const emptyDb = {
 /* ─────────────── Contract archive helpers ─────────────── */
 function ensureContractFolder(contract) {
   const year = (contract.createdAt || nowIso()).slice(0, 4);
-  const safeId = String(contract.id || "contract").replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 80) || "contract";
-  const safeCounterparty = String(contract.counterpartyName || "unknown").replace(/[\\/:*?"<>|]/g, "_").slice(0, 40);
-  const safeName = String(contract.name || "untitled").replace(/[\\/:*?"<>|]/g, "_").slice(0, 60);
+  const safeId = String(contract.id || "contract").replace(/[.]{2,}/g, "_").replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 80) || "contract";
+  const safeCounterparty = String(contract.counterpartyName || "unknown").replace(/[.]{2,}/g, "_").replace(/[\\/:*?"<>|]/g, "_").slice(0, 40);
+  const safeName = String(contract.name || "untitled").replace(/[.]{2,}/g, "_").replace(/[\\/:*?"<>|]/g, "_").slice(0, 60);
   const folderName = `${safeId}-${safeCounterparty}-${safeName}`;
   const folderPath = path.join(WORKBENCH_ROOT, "contracts", year, folderName);
   if (!isPathInsideRoot(WORKBENCH_ROOT, folderPath)) {
@@ -663,7 +664,11 @@ function pruneOrphanedFiles(validContractIds, validVersionIds, validFileIds = ne
     if (!invalidContract && !invalidVersion) continue;
     if (row.file_path && fs.existsSync(row.file_path)) {
       try {
-        fs.unlinkSync(row.file_path);
+        if (!isPathInsideRoot(WORKBENCH_ROOT, row.file_path)) {
+          logger.error(`[pruneOrphanedFiles] Refusing to delete file outside workbench root: ${row.file_path}`);
+        } else {
+          fs.unlinkSync(row.file_path);
+        }
       } catch (error) {}
     }
     remove.run(row.id);
@@ -1177,7 +1182,7 @@ function patchAuxState(partialState = {}) {
 
 function appendAuditLog(entry = {}) {
   const audit = {
-    id: entry.id || `audit-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+    id: entry.id || `audit-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`,
     action: entry.action || "state-update",
     contractId: entry.contractId || null,
     contractName: entry.contractName || null,
@@ -1284,17 +1289,17 @@ function saveContractFile(contractId, versionId, buffer, originalName, mimeType,
   const ext = path.extname(originalName) || ".bin";
   const base = path.basename(originalName, ext).replace(/[\\/:*?"<>|]/g, "_").slice(0, 80);
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  const uniqueSuffix = Math.random().toString(16).slice(2, 8);
+  const uniqueSuffix = crypto.randomBytes(4).toString("hex");
   let fileName = `${timestamp}-${base}-${uniqueSuffix}${ext}`;
   let filePath = path.join(destDir, fileName);
   while (fs.existsSync(filePath)) {
-    fileName = `${timestamp}-${base}-${Math.random().toString(16).slice(2, 8)}${ext}`;
+    fileName = `${timestamp}-${base}-${crypto.randomBytes(4).toString("hex")}${ext}`;
     filePath = path.join(destDir, fileName);
   }
 
   fs.writeFileSync(filePath, buffer);
 
-  const id = `file-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+  const id = `file-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
   const size = fs.statSync(filePath).size;
   db.prepare(`
     INSERT INTO files (id, contract_id, version_id, name, original_name, mime_type, file_path, size, file_type, created_at)

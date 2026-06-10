@@ -1,3 +1,4 @@
+const crypto = require("crypto");
 const { sendJson } = require("./http-utils");
 const { globalCache } = require("./analysis-cache");
 const { saveAnalysisJob, listAnalysisJobs, deleteAnalysisJob } = require("./store");
@@ -265,7 +266,7 @@ function processAnalysisQueue() {
 
 function createAnalysisJob(request) {
   cleanupAnalysisJobs();
-  const id = `job-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+  const id = `job-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
   const controller = new AbortController();
   const job = {
     id,

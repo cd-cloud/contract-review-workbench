@@ -39,9 +39,9 @@ server.on("error", (err) => {
     process.exit(1);
   }
   if (err.code === "EMFILE" || err.code === "ENFILE") {
-    logger.error("[server] Too many open files, reducing maxConnections");
-    server.maxConnections = Math.max(1, (server.maxConnections || 1000) - 5);
-    return;
+    logger.error("[server] Too many open files. Increase ulimit or restart the application.");
+    console.error("[server] EMFILE/ENFILE: system file descriptor limit reached. Exiting to allow recovery.");
+    process.exit(1);
   }
   console.error("[server] Non-fatal server error, continuing:", err.code || err.message);
 });
