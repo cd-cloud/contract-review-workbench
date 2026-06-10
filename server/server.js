@@ -63,7 +63,11 @@ function gracefulShutdown(signal) {
   }, 5000);
   server.close(() => {
     clearTimeout(forceExit);
-    closeDb();
+    try {
+      closeDb();
+    } catch (err) {
+      logger.error(`[server] closeDb failed during graceful shutdown: ${err.message}`);
+    }
     process.exit(0);
   });
 }

@@ -177,7 +177,7 @@ function readJson(req) {
     let body = "";
     req.on("data", (chunk) => {
       body += chunk;
-      if (Buffer.byteLength(body, "utf8") > 70 * 1024 * 1024) {
+      if (Buffer.byteLength(body, "utf8") > 150 * 1024 * 1024) {
         const error = new Error("Request body too large");
         error.statusCode = 413;
         reject(error);

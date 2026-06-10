@@ -211,7 +211,7 @@ async function executeAnalysisJob(job, request) {
     );
     if (current.status === "cancelled" || current.__aborted) return;
 
-    if (diffResult) {
+    if (diffResult && diffResult.length > 0) {
       diffResult = diffResult.slice(0, 200);
       result.diffReview = {
         changed: true,

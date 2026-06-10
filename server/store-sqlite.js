@@ -1401,23 +1401,21 @@ function readBackupManifest(backupPath) {
 }
 
 async function runAutoBackup() {
+  const backupDir = path.join(WORKBENCH_ROOT, "backups");
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  const backupPath = path.join(backupDir, `auto-${timestamp}`);
+  const tempContractsSnapshot = path.join(backupDir, `.snapshot-contracts-${timestamp}`);
+  const tempFilesSnapshot = path.join(backupDir, `.snapshot-files-${timestamp}`);
   try {
     runWalCheckpoint("FULL");
-    const backupDir = path.join(WORKBENCH_ROOT, "backups");
     fs.mkdirSync(backupDir, { recursive: true });
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-    const backupPath = path.join(backupDir, `auto-${timestamp}`);
-    const backupDbPath = path.join(backupPath, "workbench.sqlite");
-    const tempContractsSnapshot = path.join(backupDir, `.snapshot-contracts-${timestamp}`);
-    const tempFilesSnapshot = path.join(backupDir, `.snapshot-files-${timestamp}`);
     fs.mkdirSync(backupPath, { recursive: true });
     snapshotDirectoryIfExists(path.join(WORKBENCH_ROOT, "contracts"), tempContractsSnapshot);
     snapshotDirectoryIfExists(FILE_DIR, tempFilesSnapshot);
+    const backupDbPath = path.join(backupPath, "workbench.sqlite");
     await db.backup(backupDbPath);
     copyDirectoryIfExists(tempContractsSnapshot, path.join(backupPath, "contracts"));
     copyDirectoryIfExists(tempFilesSnapshot, path.join(backupPath, "files"));
-    fs.rmSync(tempContractsSnapshot, { recursive: true, force: true });
-    fs.rmSync(tempFilesSnapshot, { recursive: true, force: true });
     runWalCheckpoint("TRUNCATE");
     fs.writeFileSync(path.join(backupPath, "manifest.json"), safeJson({
       createdAt: nowIso(),
@@ -1434,6 +1432,17 @@ async function runAutoBackup() {
   } catch (err) {
     console.error("[store-sqlite] Backup failed:", err.message);
     return null;
+  } finally {
+    try {
+      if (fs.existsSync(tempContractsSnapshot)) fs.rmSync(tempContractsSnapshot, { recursive: true, force: true });
+    } catch (e) {
+      console.error("[store-sqlite] Failed to clean up tempContractsSnapshot:", e.message);
+    }
+    try {
+      if (fs.existsSync(tempFilesSnapshot)) fs.rmSync(tempFilesSnapshot, { recursive: true, force: true });
+    } catch (e) {
+      console.error("[store-sqlite] Failed to clean up tempFilesSnapshot:", e.message);
+    }
   }
 }
 

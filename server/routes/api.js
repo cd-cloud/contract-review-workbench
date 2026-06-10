@@ -246,6 +246,7 @@ async function handleApi(req, res, url) {
       if (typeof res.setTimeout === "function") {
         res.setTimeout(30000, () => {
           stream.destroy();
+          if (res.destroyed) return;
           if (!res.headersSent) {
             sendJson(res, 504, { ok: false, error: "Download timed out" }, req);
           } else {
@@ -255,6 +256,7 @@ async function handleApi(req, res, url) {
       }
       stream.on("error", (err) => {
         try {
+          if (res.destroyed) return;
           if (!res.headersSent) {
             sendJson(res, 500, { ok: false, error: "Failed to stream archived file" }, req);
           } else {
