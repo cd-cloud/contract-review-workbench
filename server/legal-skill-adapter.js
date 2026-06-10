@@ -387,7 +387,7 @@ async function analyzeLegalReviewInChunks(request, options = {}, runnerConfig = 
 function runConfiguredSkillCommand(request, options = {}, runnerConfig = getRunnerConfig()) {
   return new Promise((resolve, reject) => {
     const payload = buildRunnerPayload(request);
-    const child = execFile(runnerConfig.runnerCommand, runnerConfig.runnerArgs, { maxBuffer: 40 * 1024 * 1024, timeout: 120000 }, (error, stdout, stderr) => {
+    const child = execFile(runnerConfig.runnerCommand, runnerConfig.runnerArgs, { maxBuffer: 100 * 1024 * 1024, timeout: 120000 }, (error, stdout, stderr) => {
       if (error) {
         reject(new Error(`${error.message}\n${stderr || ""}`.trim()));
         return;

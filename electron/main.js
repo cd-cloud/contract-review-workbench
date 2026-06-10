@@ -320,20 +320,6 @@ function createWindow() {
     dialog.showErrorBox("页面崩溃", `合同审阅工作台页面渲染进程异常终止（原因: ${details?.reason || "unknown"}），已尝试恢复 ${MAX_RENDER_PROCESS_RELOADS} 次均未成功。请重启应用。`);
   });
 
-  mainWindow.webContents.on("render-process-gone", (_event, details) => {
-    smokeLog(`renderer render-process-gone reason=${details?.reason || "unknown"} exitCode=${details?.exitCode ?? "n/a"}`);
-    if (isTest) return;
-    if (renderProcessReloadCount < MAX_RENDER_PROCESS_RELOADS) {
-      renderProcessReloadCount += 1;
-      console.log(`[Electron] Render process crashed, attempting reload ${renderProcessReloadCount}/${MAX_RENDER_PROCESS_RELOADS}`);
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.reload();
-        return;
-      }
-    }
-    dialog.showErrorBox("页面崩溃", `合同审阅工作台页面渲染进程异常终止（原因: ${details?.reason || "unknown"}），已尝试恢复 ${MAX_RENDER_PROCESS_RELOADS} 次均未成功。请重启应用。`);
-  });
-
   mainWindow.once("ready-to-show", () => {
     smokeLog("window ready-to-show");
     mainWindow.show();
@@ -393,7 +379,6 @@ function createTray() {
   }
 
   // Update tooltip when backend status changes
-  const originalBackendReadySetter = Object.getOwnPropertyDescriptor(Object.prototype, "backendReady");
   // Simple polling approach
   let lastTrayStatus = "";
   setInterval(() => {

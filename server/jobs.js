@@ -343,7 +343,19 @@ function _clearAllJobsForTesting() {
 
 function restoreJobsFromDb() {
   const restorable = listAnalysisJobs(["queued", "running"]);
+  const now = Date.now();
   restorable.forEach((job) => {
+    const updatedAt = Date.parse(job.updatedAt || job.createdAt || "1970-01-01T00:00:00Z") || 0;
+    if (now - updatedAt > ANALYSIS_JOB_TIMEOUT_MS) {
+      saveAnalysisJob({
+        ...job,
+        status: "failed",
+        phase: JOB_PHASES.timedOut,
+        updatedAt: new Date().toISOString(),
+        error: "AI legal review job timed out (restored from DB)",
+      });
+      return;
+    }
     const restored = {
       ...job,
       status: "queued",

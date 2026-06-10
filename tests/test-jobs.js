@@ -291,16 +291,16 @@ test("cancelJob terminates attached child process", () => {
       status: "queued",
       phase: "已进入 Codex 分析队列",
       request: { contract_text: "persist queued" },
-      createdAt: "2026-06-10T00:00:00.000Z",
-      updatedAt: "2026-06-10T00:00:00.000Z",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     });
     store.saveAnalysisJob({
       id: "job-persist-running",
       status: "running",
       phase: "Codex Skill 正在审阅合同",
       request: { contract_text: "persist running" },
-      createdAt: "2026-06-10T00:00:01.000Z",
-      updatedAt: "2026-06-10T00:00:01.000Z",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     });
 
     delete require.cache[require.resolve("../server/jobs")];

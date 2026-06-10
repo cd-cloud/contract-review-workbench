@@ -19,7 +19,7 @@ let offlineSyncPending = false;
 let clauseClickTimer = null;
 let clauseEditAutosaveTimer = null;
 
-const STALE_JOB_TIMEOUT_MS = 3 * 60 * 1000;
+const STALE_JOB_TIMEOUT_MS = 10 * 60 * 1000;
 
 async function checkBackendHealth() {
   try {

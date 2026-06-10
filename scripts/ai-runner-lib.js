@@ -367,9 +367,26 @@ function compact(value, maxLength = 120000) {
     });
   }
   if (text.length <= maxLength) return text;
-  const start = 1;
   const end = maxLength;
-  return `${text.slice(0, maxLength)}\n\n[TRUNCATED_FOR_AI_RUNNER: 已处理第 ${start}–${end} 字符，共 ${text.length} 字符]`;
+  let safeSlice = text.slice(0, end);
+  // Avoid cutting in the middle of a Unicode escape sequence
+  safeSlice = safeSlice.replace(/\\u[0-9a-fA-F]{0,3}$/, "");
+  if (safeSlice.endsWith("\\")) safeSlice = safeSlice.slice(0, -1);
+  // Try to close any open string
+  let quoteParity = 0;
+  for (let i = 0; i < safeSlice.length; i++) {
+    if (safeSlice[i] === '"' && (i === 0 || safeSlice[i - 1] !== "\\")) quoteParity ^= 1;
+  }
+  if (quoteParity) safeSlice += '"';
+  // Balance braces/brackets to produce valid-ish JSON
+  const openBraces = (safeSlice.match(/{/g) || []).length - (safeSlice.match(/}/g) || []).length;
+  const openBrackets = (safeSlice.match(/\[/g) || []).length - (safeSlice.match(/\]/g) || []).length;
+  for (let i = 0; i < openBraces; i++) safeSlice += "}";
+  for (let i = 0; i < openBrackets; i++) safeSlice += "]";
+  safeSlice = safeSlice.replace(/,\s*([\}\]])/g, "$1");
+  return `${safeSlice}
+
+[TRUNCATED_FOR_AI_RUNNER: 已处理第 1–${end} 字符，共 ${text.length} 字符]`;
 }
 
 async function runJsonTask({ prompt, schemaPath, outputPrefix = "legal-ai", systemPrompt = "" }) {

@@ -9,3 +9,5 @@ server*.log
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+tests/.tmp-*
+tests/.tmp-*

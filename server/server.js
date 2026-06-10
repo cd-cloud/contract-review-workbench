@@ -38,6 +38,11 @@ server.on("error", (err) => {
     console.error("[server] Port already in use, exiting to allow Electron restart");
     process.exit(1);
   }
+  if (err.code === "EMFILE" || err.code === "ENFILE") {
+    logger.error("[server] Too many open files, reducing maxConnections");
+    server.maxConnections = Math.max(1, (server.maxConnections || Infinity) - 5);
+    return;
+  }
   console.error("[server] Non-fatal server error, continuing:", err.code || err.message);
 });
 
