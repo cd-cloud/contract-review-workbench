@@ -610,7 +610,7 @@ function analyzeClause(clause, request) {
   return findings;
 }
 
-function analyzeContractLevelRisks(clauses) {
+function analyzeContractLevelRisks(clauses, request = {}) {
   const present = new Set(clauses.map((clause) => clause.type || classifyClause(clause.text, clause.title)));
   return [
     ["保密", "medium"],
@@ -626,7 +626,7 @@ function analyzeContractLevelRisks(clauses) {
       issue: `未识别到独立的${type}条款。`,
       consequence: "关键风险分配缺失，可能影响履约、争议解决或资产归属判断。",
       suggestion: `补充完整的${type}条款，并与合同类型、我方角色和交易背景匹配。`,
-      proposedClauseText: buildFallbackSuggestedClauseText(type),
+      proposedClauseText: buildFallbackSuggestedClauseText(type, request),
       negotiationBottomLine: `至少补充可执行的${type}机制，避免仅作原则性表述。`,
       acceptableFallback: `可先补充简版${type}条款，并在附件或订单中细化执行细节。`,
       linkedClauseIds: [],
@@ -669,7 +669,7 @@ function scoreSuggestionQuality({ proposedRevision, fallbackText, negotiationPos
   return Math.min(score, 100);
 }
 
-function buildFallbackSuggestedClauseText(type) {
+function buildFallbackSuggestedClauseText(type, request = {}) {
   const templates = {
     保密: "双方应对在合作过程中获知的商业秘密、技术资料、客户信息及其他非公开信息承担保密义务，未经披露方书面同意不得向第三方披露或用于本合同目的之外的用途。",
     知识产权: "双方既有知识产权仍归原权利人所有；因履行本合同形成的成果、软件、模型、数据处理成果及文档的权属、许可范围和终止后处理方式应以本合同或附件明确约定为准。",
