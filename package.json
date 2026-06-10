@@ -45,6 +45,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
+    "dotenv": "^17.4.2",
     "electron": "^35.0.0",
     "electron-builder": "^26.0.0"
   },
@@ -77,11 +78,15 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         },
         {
           "target": "portable",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "electron/assets/icon.png",
@@ -91,7 +96,10 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         }
       ],
       "icon": "electron/assets/icon.png"

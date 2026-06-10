@@ -1,3 +1,5 @@
+try { require("dotenv").config(); } catch (e) {}
+
 const http = require("http");
 const { handleStatic } = require("./routes/static");
 const { handleApi } = require("./routes/api");

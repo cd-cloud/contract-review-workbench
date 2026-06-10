@@ -3,6 +3,8 @@
  * Handles backend lifecycle, window management, tray, and auto-backup.
  */
 
+try { require("dotenv").config(); } catch (e) {}
+
 const { app, BrowserWindow, Tray, Menu, dialog, ipcMain, nativeImage, shell } = require("electron");
 const { spawn, execFile } = require("child_process");
 const path = require("path");
