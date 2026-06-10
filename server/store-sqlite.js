@@ -1441,12 +1441,47 @@ async function runAutoBackup() {
       dbFile: "workbench.sqlite",
       included: ["contracts", "files"],
     }));
-    // Keep last 20 backups
-    const files = fs.readdirSync(backupDir)
+    // Prune old backups by count and total size
+    const MAX_BACKUP_COUNT = Number(process.env.LEGAL_WORKBENCH_MAX_BACKUPS || 20);
+    const MAX_BACKUP_SIZE_BYTES = Number(process.env.LEGAL_WORKBENCH_MAX_BACKUP_SIZE || 50 * 1024 * 1024 * 1024);
+
+    function getDirectorySize(dir) {
+      let size = 0;
+      try {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          const entryPath = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            size += getDirectorySize(entryPath);
+          } else {
+            try { size += fs.statSync(entryPath).size; } catch (e) {}
+          }
+        }
+      } catch (e) {}
+      return size;
+    }
+
+    let backups = fs.readdirSync(backupDir)
       .filter(f => f.startsWith("auto-"))
-      .map(f => ({ name: f, time: fs.statSync(path.join(backupDir, f)).mtime.getTime() }))
+      .map(f => {
+        const p = path.join(backupDir, f);
+        return { name: f, path: p, time: fs.statSync(p).mtime.getTime(), size: getDirectorySize(p) };
+      })
       .sort((a, b) => b.time - a.time);
-    files.slice(20).forEach(f => fs.rmSync(path.join(backupDir, f.name), { recursive: true, force: true }));
+
+    // Prune by count
+    backups.slice(MAX_BACKUP_COUNT).forEach(b => {
+      try { fs.rmSync(b.path, { recursive: true, force: true }); } catch (e) {}
+    });
+    backups = backups.slice(0, MAX_BACKUP_COUNT);
+
+    // Prune by total size (oldest first)
+    let totalSize = backups.reduce((sum, b) => sum + b.size, 0);
+    while (totalSize > MAX_BACKUP_SIZE_BYTES && backups.length > 1) {
+      const oldest = backups.pop();
+      try { fs.rmSync(oldest.path, { recursive: true, force: true }); } catch (e) {}
+      totalSize -= oldest.size;
+    }
+
     return backupPath;
   } catch (err) {
     console.error("[store-sqlite] Backup failed:", err.message);
