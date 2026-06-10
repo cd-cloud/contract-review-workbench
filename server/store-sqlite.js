@@ -70,257 +70,267 @@ function setMigrationVersion(version) {
   db.prepare(`PRAGMA user_version = ${version}`).run();
 }
 
+const MIGRATIONS = [
+  // v0 → v1: initial schema
+  function migrate_v1() {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS app_state (
+        key TEXT PRIMARY KEY,
+        value TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS contracts (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        type TEXT,
+        purpose TEXT,
+        business_background TEXT,
+        status TEXT,
+        our_role TEXT,
+        counterparty_id TEXT,
+        counterparty_name TEXT,
+        amount TEXT,
+        term TEXT,
+        payment TEXT,
+        governing_law TEXT,
+        dispute TEXT,
+        text TEXT,
+        clean_text TEXT,
+        redline_text TEXT,
+        comments_text TEXT,
+        clause_source TEXT,
+        risk_level TEXT,
+        ai_tags TEXT,
+        created_at TEXT,
+        updated_at TEXT,
+        folder_path TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS contract_versions (
+        id TEXT PRIMARY KEY,
+        contract_id TEXT NOT NULL,
+        version_number INTEGER,
+        type TEXT,
+        note TEXT,
+        material_kind TEXT,
+        text TEXT,
+        clean_text TEXT,
+        redline_text TEXT,
+        comments_text TEXT,
+        accepted_text TEXT,
+        file_path TEXT,
+        created_at TEXT,
+        feedback_deadline TEXT,
+        status TEXT,
+        FOREIGN KEY (contract_id) REFERENCES contracts(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS clauses (
+        id TEXT PRIMARY KEY,
+        contract_id TEXT,
+        version_id TEXT,
+        stable_id TEXT,
+        number TEXT,
+        title TEXT,
+        clause_type TEXT,
+        text TEXT,
+        hierarchy_level TEXT,
+        chapter_title TEXT,
+        created_at TEXT,
+        FOREIGN KEY (contract_id) REFERENCES contracts(id) ON DELETE CASCADE,
+        FOREIGN KEY (version_id) REFERENCES contract_versions(id) ON DELETE SET NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS findings (
+        id TEXT PRIMARY KEY,
+        contract_id TEXT NOT NULL,
+        clause_id TEXT,
+        severity TEXT,
+        action_type TEXT,
+        title TEXT,
+        issue TEXT,
+        consequence TEXT,
+        proposed_revision TEXT,
+        target_text TEXT,
+        replacement_text TEXT,
+        comment_text TEXT,
+        negotiation_position TEXT,
+        fallback_text TEXT,
+        business_decision TEXT,
+        adoption_note TEXT,
+        negotiation_bottom_line TEXT,
+        acceptable_fallback TEXT,
+        linked_clause_ids TEXT,
+        quality_score INTEGER,
+        status TEXT,
+        created_at TEXT,
+        FOREIGN KEY (contract_id) REFERENCES contracts(id) ON DELETE CASCADE,
+        FOREIGN KEY (clause_id) REFERENCES clauses(id) ON DELETE SET NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS clause_actions (
+        id TEXT PRIMARY KEY,
+        source_key TEXT NOT NULL,
+        clause_id TEXT NOT NULL,
+        action_type TEXT,
+        text TEXT,
+        comment TEXT,
+        created_at TEXT,
+        FOREIGN KEY (clause_id) REFERENCES clauses(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS counterparties (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        type TEXT,
+        industry TEXT,
+        importance TEXT,
+        risk_level TEXT,
+        notes TEXT,
+        contact TEXT,
+        email TEXT,
+        phone TEXT,
+        risk_profile TEXT,
+        created_at TEXT,
+        updated_at TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS negotiations (
+        id TEXT PRIMARY KEY,
+        contract_id TEXT,
+        counterparty_id TEXT,
+        clause_id TEXT,
+        round INTEGER,
+        counterparty_position TEXT,
+        our_response TEXT,
+        final_result TEXT,
+        concession TEXT,
+        reason TEXT,
+        decision_maker TEXT,
+        captured INTEGER,
+        created_at TEXT,
+        FOREIGN KEY (contract_id) REFERENCES contracts(id) ON DELETE CASCADE,
+        FOREIGN KEY (counterparty_id) REFERENCES counterparties(id) ON DELETE SET NULL,
+        FOREIGN KEY (clause_id) REFERENCES clauses(id) ON DELETE SET NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS playbooks (
+        id TEXT PRIMARY KEY,
+        clause_type TEXT NOT NULL,
+        contract_types TEXT,
+        our_role TEXT,
+        standard TEXT,
+        fallback TEXT,
+        forbidden TEXT,
+        negotiation TEXT,
+        keywords TEXT,
+        confidence_score INTEGER,
+        source_occurrences TEXT,
+        variants TEXT,
+        knowledge_signals TEXT,
+        usage_count INTEGER DEFAULT 0,
+        created_at TEXT,
+        updated_at TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS risk_rules (
+        id TEXT PRIMARY KEY,
+        rule_type TEXT,
+        title TEXT,
+        severity TEXT,
+        action_type TEXT,
+        pattern TEXT,
+        missing_pattern TEXT,
+        issue TEXT,
+        suggestion TEXT,
+        status TEXT,
+        source TEXT,
+        created_at TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS audit_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        action TEXT NOT NULL,
+        contract_id TEXT,
+        contract_name TEXT,
+        clause_id TEXT,
+        user_id TEXT,
+        details TEXT,
+        created_at TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS analysis_jobs (
+        id TEXT PRIMARY KEY,
+        status TEXT NOT NULL,
+        phase TEXT,
+        request_json TEXT,
+        result_json TEXT,
+        error TEXT,
+        cost_meta_json TEXT,
+        created_at TEXT,
+        updated_at TEXT,
+        completed_at TEXT,
+        position_in_queue INTEGER
+      );
+
+      CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        name TEXT,
+        role TEXT,
+        permissions TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS files (
+        id TEXT PRIMARY KEY,
+        contract_id TEXT,
+        version_id TEXT,
+        name TEXT NOT NULL,
+        original_name TEXT,
+        mime_type TEXT,
+        file_path TEXT NOT NULL,
+        size INTEGER,
+        file_type TEXT,
+        created_at TEXT,
+        FOREIGN KEY (contract_id) REFERENCES contracts(id) ON DELETE CASCADE,
+        FOREIGN KEY (version_id) REFERENCES contract_versions(id) ON DELETE SET NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_contract_versions_contract_id ON contract_versions(contract_id);
+      CREATE INDEX IF NOT EXISTS idx_clauses_contract_id ON clauses(contract_id);
+      CREATE INDEX IF NOT EXISTS idx_findings_contract_id ON findings(contract_id);
+      CREATE INDEX IF NOT EXISTS idx_clause_actions_source_key ON clause_actions(source_key);
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);
+      CREATE INDEX IF NOT EXISTS idx_files_contract_id ON files(contract_id);
+      CREATE INDEX IF NOT EXISTS idx_analysis_jobs_status ON analysis_jobs(status);
+
+      CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(
+        content,
+        title,
+        entity_type UNINDEXED,
+        entity_id UNINDEXED,
+        contract_id UNINDEXED,
+        extra UNINDEXED,
+        tokenize = 'unicode61'
+      );
+    `);
+  },
+];
+
 function migrate() {
   const currentVersion = getMigrationVersion();
-  let targetVersion = currentVersion;
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS app_state (
-      key TEXT PRIMARY KEY,
-      value TEXT
-    );
+  const targetVersion = MIGRATIONS.length;
 
-    CREATE TABLE IF NOT EXISTS contracts (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      type TEXT,
-      purpose TEXT,
-      business_background TEXT,
-      status TEXT,
-      our_role TEXT,
-      counterparty_id TEXT,
-      counterparty_name TEXT,
-      amount TEXT,
-      term TEXT,
-      payment TEXT,
-      governing_law TEXT,
-      dispute TEXT,
-      text TEXT,
-      clean_text TEXT,
-      redline_text TEXT,
-      comments_text TEXT,
-      clause_source TEXT,
-      risk_level TEXT,
-      ai_tags TEXT,
-      created_at TEXT,
-      updated_at TEXT,
-      folder_path TEXT
-    );
+  if (targetVersion <= currentVersion) return;
 
-    CREATE TABLE IF NOT EXISTS contract_versions (
-      id TEXT PRIMARY KEY,
-      contract_id TEXT NOT NULL,
-      version_number INTEGER,
-      type TEXT,
-      note TEXT,
-      material_kind TEXT,
-      text TEXT,
-      clean_text TEXT,
-      redline_text TEXT,
-      comments_text TEXT,
-      accepted_text TEXT,
-      file_path TEXT,
-      created_at TEXT,
-      feedback_deadline TEXT,
-      status TEXT,
-      FOREIGN KEY (contract_id) REFERENCES contracts(id) ON DELETE CASCADE
-    );
-
-    CREATE TABLE IF NOT EXISTS clauses (
-      id TEXT PRIMARY KEY,
-      contract_id TEXT,
-      version_id TEXT,
-      stable_id TEXT,
-      number TEXT,
-      title TEXT,
-      clause_type TEXT,
-      text TEXT,
-      hierarchy_level TEXT,
-      chapter_title TEXT,
-      created_at TEXT,
-      FOREIGN KEY (contract_id) REFERENCES contracts(id) ON DELETE CASCADE,
-      FOREIGN KEY (version_id) REFERENCES contract_versions(id) ON DELETE SET NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS findings (
-      id TEXT PRIMARY KEY,
-      contract_id TEXT NOT NULL,
-      clause_id TEXT,
-      severity TEXT,
-      action_type TEXT,
-      title TEXT,
-      issue TEXT,
-      consequence TEXT,
-      proposed_revision TEXT,
-      target_text TEXT,
-      replacement_text TEXT,
-      comment_text TEXT,
-      negotiation_position TEXT,
-      fallback_text TEXT,
-      business_decision TEXT,
-      adoption_note TEXT,
-      negotiation_bottom_line TEXT,
-      acceptable_fallback TEXT,
-      linked_clause_ids TEXT,
-      quality_score INTEGER,
-      status TEXT,
-      created_at TEXT,
-      FOREIGN KEY (contract_id) REFERENCES contracts(id) ON DELETE CASCADE,
-      FOREIGN KEY (clause_id) REFERENCES clauses(id) ON DELETE SET NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS clause_actions (
-      id TEXT PRIMARY KEY,
-      source_key TEXT NOT NULL,
-      clause_id TEXT NOT NULL,
-      action_type TEXT,
-      text TEXT,
-      comment TEXT,
-      created_at TEXT,
-      FOREIGN KEY (clause_id) REFERENCES clauses(id) ON DELETE CASCADE
-    );
-
-    CREATE TABLE IF NOT EXISTS counterparties (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      type TEXT,
-      industry TEXT,
-      importance TEXT,
-      risk_level TEXT,
-      notes TEXT,
-      contact TEXT,
-      email TEXT,
-      phone TEXT,
-      risk_profile TEXT,
-      created_at TEXT,
-      updated_at TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS negotiations (
-      id TEXT PRIMARY KEY,
-      contract_id TEXT,
-      counterparty_id TEXT,
-      clause_id TEXT,
-      round INTEGER,
-      counterparty_position TEXT,
-      our_response TEXT,
-      final_result TEXT,
-      concession TEXT,
-      reason TEXT,
-      decision_maker TEXT,
-      captured INTEGER,
-      created_at TEXT,
-      FOREIGN KEY (contract_id) REFERENCES contracts(id) ON DELETE CASCADE,
-      FOREIGN KEY (counterparty_id) REFERENCES counterparties(id) ON DELETE SET NULL,
-      FOREIGN KEY (clause_id) REFERENCES clauses(id) ON DELETE SET NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS playbooks (
-      id TEXT PRIMARY KEY,
-      clause_type TEXT NOT NULL,
-      contract_types TEXT,
-      our_role TEXT,
-      standard TEXT,
-      fallback TEXT,
-      forbidden TEXT,
-      negotiation TEXT,
-      keywords TEXT,
-      confidence_score INTEGER,
-      source_occurrences TEXT,
-      variants TEXT,
-      knowledge_signals TEXT,
-      usage_count INTEGER DEFAULT 0,
-      created_at TEXT,
-      updated_at TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS risk_rules (
-      id TEXT PRIMARY KEY,
-      rule_type TEXT,
-      title TEXT,
-      severity TEXT,
-      action_type TEXT,
-      pattern TEXT,
-      missing_pattern TEXT,
-      issue TEXT,
-      suggestion TEXT,
-      status TEXT,
-      source TEXT,
-      created_at TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS audit_logs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      action TEXT NOT NULL,
-      contract_id TEXT,
-      contract_name TEXT,
-      clause_id TEXT,
-      user_id TEXT,
-      details TEXT,
-      created_at TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS analysis_jobs (
-      id TEXT PRIMARY KEY,
-      status TEXT NOT NULL,
-      phase TEXT,
-      request_json TEXT,
-      result_json TEXT,
-      error TEXT,
-      cost_meta_json TEXT,
-      created_at TEXT,
-      updated_at TEXT,
-      completed_at TEXT,
-      position_in_queue INTEGER
-    );
-
-    CREATE TABLE IF NOT EXISTS users (
-      id TEXT PRIMARY KEY,
-      name TEXT,
-      role TEXT,
-      permissions TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS files (
-      id TEXT PRIMARY KEY,
-      contract_id TEXT,
-      version_id TEXT,
-      name TEXT NOT NULL,
-      original_name TEXT,
-      mime_type TEXT,
-      file_path TEXT NOT NULL,
-      size INTEGER,
-      file_type TEXT,
-      created_at TEXT,
-      FOREIGN KEY (contract_id) REFERENCES contracts(id) ON DELETE CASCADE,
-      FOREIGN KEY (version_id) REFERENCES contract_versions(id) ON DELETE SET NULL
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_contract_versions_contract_id ON contract_versions(contract_id);
-    CREATE INDEX IF NOT EXISTS idx_clauses_contract_id ON clauses(contract_id);
-    CREATE INDEX IF NOT EXISTS idx_findings_contract_id ON findings(contract_id);
-    CREATE INDEX IF NOT EXISTS idx_clause_actions_source_key ON clause_actions(source_key);
-    CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);
-    CREATE INDEX IF NOT EXISTS idx_files_contract_id ON files(contract_id);
-    CREATE INDEX IF NOT EXISTS idx_analysis_jobs_status ON analysis_jobs(status);
-
-    -- Full-text search index (FTS5 with unicode61; CJK chars are space-separated on insert)
-    -- Note: if you need to change tokenizer, delete workbench.sqlite and let it recreate
-    CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(
-      content,
-      title,
-      entity_type UNINDEXED,
-      entity_id UNINDEXED,
-      contract_id UNINDEXED,
-      extra UNINDEXED,
-      tokenize = 'unicode61'
-    );
-  `);
-
-  targetVersion = 1;
-
-  if (targetVersion > currentVersion) {
-    setMigrationVersion(targetVersion);
-    console.log(`[store] Migrated database from version ${currentVersion} to ${targetVersion}`);
+  for (let v = currentVersion; v < targetVersion; v++) {
+    try {
+      MIGRATIONS[v]();
+      setMigrationVersion(v + 1);
+      console.log(`[store] Migrated database from version ${v} to ${v + 1}`);
+    } catch (err) {
+      console.error(`[store] Migration to version ${v + 1} failed:`, err.message);
+      throw err;
+    }
   }
 }
 migrate();
