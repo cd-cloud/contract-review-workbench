@@ -252,7 +252,7 @@ function mergeChunkedResults(request, clauses, chunkResults) {
 
   const clauseAnalyses = dedupeBy(
     chunkResults.flatMap((result) => result?.response?.clauseAnalyses || []),
-    (item) => [item.clauseId, item.issue, item.proposedRevision, item.targetText].map((part) => String(part || "")).join("||")
+    (item) => [item.clauseId, item.issue, item.proposedRevision, item.targetText, item.severity].map((part) => String(part || "")).join("||")
   );
   const contractLevelRisks = dedupeBy(
     chunkResults.flatMap((result) => result?.response?.contractLevelRisks || []),
@@ -306,8 +306,7 @@ async function analyzeLegalReviewInChunks(request, options = {}, runnerConfig = 
   let cursor = 0;
   async function worker() {
     while (cursor < requests.length) {
-      const index = cursor;
-      cursor += 1;
+      const index = cursor++;
       const chunkRequest = requests[index];
       if (options.signal?.aborted) throw new Error("AI analysis was cancelled");
       try {

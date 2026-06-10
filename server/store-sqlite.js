@@ -879,11 +879,6 @@ function replaceDb(snapshot) {
           r.issue, r.suggestion, r.status, r.source, r.createdAt
         );
       }
-      const fkViolations = db.pragma("foreign_key_check");
-      if (Array.isArray(fkViolations) && fkViolations.length > 0) {
-        throw new Error(`Foreign key violations detected: ${JSON.stringify(fkViolations)}`);
-      }
-
       // 12. Insert audit logs
       const insertAudit = db.prepare(`
         INSERT INTO audit_logs (action, contract_id, contract_name, clause_id, user_id, details, created_at)
@@ -902,6 +897,11 @@ function replaceDb(snapshot) {
       `);
       for (const u of normalizedSnapshot.users || emptyDb.users) {
         insertUser.run(u.id, u.name, u.role, safeJson(u.permissions));
+      }
+
+      const fkViolations = db.pragma("foreign_key_check", { simple: false });
+      if (fkViolations && fkViolations.length > 0) {
+        throw new Error(`Foreign key violations detected: ${JSON.stringify(fkViolations)}`);
       }
     });
 

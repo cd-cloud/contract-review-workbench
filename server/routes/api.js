@@ -242,6 +242,7 @@ async function handleApi(req, res, url) {
         "Content-Length": stat.size,
         ...require("../http-utils").getCorsHeaders(req),
       });
+      const stream = fs.createReadStream(file.path);
       if (typeof res.setTimeout === "function") {
         res.setTimeout(30000, () => {
           stream.destroy();
@@ -252,7 +253,6 @@ async function handleApi(req, res, url) {
           }
         });
       }
-      const stream = fs.createReadStream(file.path);
       stream.on("error", (err) => {
         try {
           if (!res.headersSent) {
@@ -262,6 +262,9 @@ async function handleApi(req, res, url) {
           }
         } catch (error) {}
       });
+      if (typeof req.on === "function") {
+        req.on("close", () => { stream.destroy(); });
+      }
       stream.pipe(res, { end: true });
     } catch (error) {
       sendJson(res, error.statusCode || 500, serverErrorPayload(error, "Failed to download archived file"), req);
