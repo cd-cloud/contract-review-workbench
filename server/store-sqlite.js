@@ -1425,7 +1425,7 @@ async function runAutoBackup() {
   const tempContractsSnapshot = path.join(backupDir, `.snapshot-contracts-${timestamp}`);
   const tempFilesSnapshot = path.join(backupDir, `.snapshot-files-${timestamp}`);
   try {
-    runWalCheckpoint("PASSIVE");
+    runWalCheckpoint("FULL");
     fs.mkdirSync(backupDir, { recursive: true });
     fs.mkdirSync(backupPath, { recursive: true });
     snapshotDirectoryIfExists(path.join(WORKBENCH_ROOT, "contracts"), tempContractsSnapshot);
