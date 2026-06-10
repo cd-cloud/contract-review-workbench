@@ -2,6 +2,8 @@ const http = require("http");
 const { handleStatic } = require("./routes/static");
 const { handleApi } = require("./routes/api");
 const { sendJson, getCorsHeaders, serverErrorPayload } = require("./http-utils");
+const { cancelAllJobs } = require("./jobs");
+const { closeDb } = require("./store-sqlite");
 
 const PORT = Number(process.env.LEGAL_WORKBENCH_PORT || 8787);
 
@@ -29,6 +31,23 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+server.on("error", (err) => {
+  console.error("[server]", err.message);
+  process.exit(1);
+});
+
 server.listen(PORT, "127.0.0.1", () => {
   console.log(`Legal workbench local skill bridge listening on http://127.0.0.1:${PORT}`);
 });
+
+function gracefulShutdown(signal) {
+  console.log(`[server] Received ${signal}, shutting down gracefully...`);
+  cancelAllJobs();
+  server.close(() => {
+    closeDb();
+    process.exit(0);
+  });
+}
+
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));

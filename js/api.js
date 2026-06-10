@@ -2,7 +2,7 @@ const POLL_TIMEOUT_MS = 8 * 60 * 1000;
 const POLL_INTERVAL_MS = 2500;
 const VISUAL_QA_DELAY_MS = 30 * 1000;
 const VISUAL_QA_COOLDOWN_MS = 10 * 60 * 1000;
-const BACKEND_SYNC_DELAY_MS = 700;
+const BACKEND_SYNC_DELAY_MS = 2500;
 
 async function readBackendError(response, fallbackMessage = "请求失败") {
   let message = fallbackMessage;

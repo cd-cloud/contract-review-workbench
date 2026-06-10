@@ -31,12 +31,17 @@ function publicJobError(error) {
     : "AI 审阅暂不可用，请稍后重试";
 }
 
-function withTimeout(promise, timeoutMs, message) {
+function withTimeout(promise, timeoutMs, message, onTimeout) {
   let timer = null;
   return Promise.race([
     promise,
     new Promise((_, reject) => {
-      timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+      timer = setTimeout(() => {
+        if (typeof onTimeout === "function") {
+          try { onTimeout(); } catch (e) {}
+        }
+        reject(new Error(message));
+      }, timeoutMs);
     }),
   ]).finally(() => clearTimeout(timer));
 }
@@ -86,6 +91,8 @@ function cleanupAnalysisJobs() {
   for (const [id, job] of analysisJobs.entries()) {
     const updatedAt = Date.parse(job.updatedAt || job.createdAt || "1970-01-01T00:00:00Z") || 0;
     if ((job.status === "queued" || job.status === "running") && now - updatedAt > ANALYSIS_JOB_TIMEOUT_MS) {
+      try { job.__controller?.abort(); } catch (e) {}
+      terminateJobChild(job);
       Object.assign(job, {
         status: "failed",
         phase: JOB_PHASES.timedOut,
@@ -136,9 +143,11 @@ async function runWithRetry(fn, job, signal) {
     } catch (error) {
       lastError = error;
       if (signal?.aborted || job?.__aborted) throw error;
-      if (attempt < MAX_RETRIES) {
+      if (attempt < MAX_RETRIES && isRetryableError(error)) {
         const delay = RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
         await new Promise((resolve) => setTimeout(resolve, delay));
+      } else {
+        throw error;
       }
     }
   }
@@ -196,14 +205,16 @@ async function executeAnalysisJob(job, request) {
         current.__controller.signal
       ),
       ANALYSIS_JOB_TIMEOUT_MS,
-      "AI legal review job timed out"
+      "AI legal review job timed out",
+      () => { try { current.__controller.abort(); } catch (e) {} }
     );
     if (current.status === "cancelled" || current.__aborted) return;
 
     if (diffResult) {
+      diffResult = diffResult.slice(0, 200);
       result.diffReview = {
         changed: true,
-        parts: diffResult.slice(0, 200),
+        parts: diffResult,
         summary: `检测到文本差异，共 ${diffResult.length} 个差异片段`,
       };
     }
@@ -354,4 +365,12 @@ function restoreJobsFromDb() {
 
 restoreJobsFromDb();
 
-module.exports = { createAnalysisJob, cancelJob, summarizeJob, getJob, _clearAllJobsForTesting, restoreJobsFromDb };
+function cancelAllJobs() {
+  for (const [id, job] of analysisJobs.entries()) {
+    if (job.status === "queued" || job.status === "running") {
+      cancelJob(id);
+    }
+  }
+}
+
+module.exports = { createAnalysisJob, cancelJob, summarizeJob, getJob, cancelAllJobs, _clearAllJobsForTesting, restoreJobsFromDb };

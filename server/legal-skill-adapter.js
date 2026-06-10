@@ -406,6 +406,7 @@ function runConfiguredSkillCommand(request, options = {}, runnerConfig = getRunn
       });
     }
 
+    if (child.stdin && typeof child.stdin.on === "function") child.stdin.on("error", () => {});
     child.stdin.write(JSON.stringify(payload, null, 2));
     child.stdin.end();
   });

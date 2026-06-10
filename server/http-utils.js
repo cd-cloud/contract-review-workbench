@@ -89,6 +89,7 @@ function safeJsonStringify(value) {
 }
 
 function sendJson(res, status, payload, req = null) {
+  if (res.headersSent || res.writableEnded) return;
   const body = safeJsonStringify(payload);
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
@@ -98,22 +99,42 @@ function sendJson(res, status, payload, req = null) {
 }
 
 function sendStaticFile(res, filePath, extraHeaders = {}) {
+  if (res.headersSent || res.writableEnded) return;
   const resolved = path.resolve(path.normalize(filePath));
   if (!isPathInsideRoot(ROOT_DIR, resolved)) {
     sendJson(res, 403, { ok: false, error: "Forbidden" });
     return;
   }
-  fs.readFile(resolved, (error, content) => {
-    if (error) {
+  // Fallback to buffer mode for non-stream responses (e.g., test mocks)
+  if (typeof res.write !== "function") {
+    fs.readFile(resolved, (error, content) => {
+      if (error) {
+        sendJson(res, error.code === "ENOENT" ? 404 : 500, { ok: false, error: error.message || String(error) });
+        return;
+      }
+      res.writeHead(200, {
+        "Content-Type": STATIC_TYPES[path.extname(resolved).toLowerCase()] || "application/octet-stream",
+        "Cache-Control": "no-store",
+        ...extraHeaders,
+      });
+      res.end(content);
+    });
+    return;
+  }
+  const stream = fs.createReadStream(resolved);
+  stream.on("error", (error) => {
+    if (!res.headersSent) {
       sendJson(res, error.code === "ENOENT" ? 404 : 500, { ok: false, error: error.message || String(error) });
-      return;
     }
+    stream.destroy();
+  });
+  stream.on("open", () => {
     res.writeHead(200, {
       "Content-Type": STATIC_TYPES[path.extname(resolved).toLowerCase()] || "application/octet-stream",
       "Cache-Control": "no-store",
       ...extraHeaders,
     });
-    res.end(content);
+    stream.pipe(res);
   });
 }
 
@@ -144,6 +165,7 @@ function readJson(req) {
       }
     });
     req.on("error", reject);
+    req.on("close", () => reject(new Error("Client disconnected")));
   });
 }
 

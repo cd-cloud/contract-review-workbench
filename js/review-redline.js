@@ -21,9 +21,21 @@ function renderClauseBodyWithTrace(clause, action = {}, mode = state.reviewMode 
   return `${original}${comment}`;
 }
 
+const _redlineDraftCache = new Map();
+const MAX_REDLINE_CACHE = 5;
+
 function buildRedlineDraft(sourceKey, clauses) {
   const actions = getClauseActions(sourceKey);
-  return clauses
+  const clausesKey = clauses.map((c) => `${c.id}:${c.text?.length || 0}`).join("|");
+  const actionKey = Object.keys(actions).sort().map((id) => {
+    const a = actions[id];
+    return `${id}:${a.deleted ? 1 : 0}:${a.editedText?.length || 0}:${a.comment?.length || 0}`;
+  }).join("|");
+  const cacheKey = `${sourceKey}::${clausesKey}::${actionKey}`;
+  const cached = _redlineDraftCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+
+  const result = clauses
     .map((clause) => {
       const action = actions[clause.id] || {};
       const original = clause.text;
@@ -37,6 +49,12 @@ function buildRedlineDraft(sourceKey, clauses) {
       return original;
     })
     .join("\n\n");
+  if (_redlineDraftCache.size >= MAX_REDLINE_CACHE) {
+    const first = _redlineDraftCache.keys().next().value;
+    _redlineDraftCache.delete(first);
+  }
+  _redlineDraftCache.set(cacheKey, result);
+  return result;
 }
 
 function acceptRedlineText(text) {

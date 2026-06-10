@@ -66,81 +66,81 @@ function scriptPath(relativePath) {
   return path.join(appRoot(), relativePath);
 }
 
-function assignRunner(key, relativePath) {
-  if (!process.env[key]) process.env[key] = scriptPath(relativePath);
+function assignRunner(key, relativePath, targetEnv = process.env) {
+  if (!targetEnv[key]) targetEnv[key] = scriptPath(relativePath);
 }
 
-function applyRuntimeSelection(selection) {
-  process.env.LEGAL_WORKBENCH_RUNTIME_PROFILE = selection.profile;
-  process.env.LEGAL_WORKBENCH_RUNTIME_MODE = selection.mode;
-  process.env.LEGAL_WORKBENCH_RUNTIME_REASON = selection.reason;
-  process.env.LEGAL_WORKBENCH_EFFECTIVE_PROVIDER = selection.provider;
+function applyRuntimeSelection(selection, targetEnv = process.env) {
+  targetEnv.LEGAL_WORKBENCH_RUNTIME_PROFILE = selection.profile;
+  targetEnv.LEGAL_WORKBENCH_RUNTIME_MODE = selection.mode;
+  targetEnv.LEGAL_WORKBENCH_RUNTIME_REASON = selection.reason;
+  targetEnv.LEGAL_WORKBENCH_EFFECTIVE_PROVIDER = selection.provider;
 }
 
 function resolveAutomaticAiProfile() {
   return resolveAutomaticProviderSelection();
 }
 
-function configureRunnerProfile(profile = "ai") {
+function configureRunnerProfile(profile = "ai", targetEnv = process.env) {
   const normalized = String(profile || "ai").toLowerCase();
 
   if (normalized === "basic" || normalized === "server") {
-    applyRuntimeSelection({ profile: normalized, mode: "basic", provider: "none", reason: "Basic server profile selected." });
+    applyRuntimeSelection({ profile: normalized, mode: "basic", provider: "none", reason: "Basic server profile selected." }, targetEnv);
     return normalized;
   }
 
   if (normalized === "skill") {
-    assignRunner("LEGAL_SKILL_RUNNER_SCRIPT", "scripts/legal-skill-runner.js");
-    applyRuntimeSelection({ profile: normalized, mode: "local-skill", provider: "local-skill", reason: "Local skill profile selected." });
+    assignRunner("LEGAL_SKILL_RUNNER_SCRIPT", "scripts/legal-skill-runner.js", targetEnv);
+    applyRuntimeSelection({ profile: normalized, mode: "local-skill", provider: "local-skill", reason: "Local skill profile selected." }, targetEnv);
     return normalized;
   }
 
   if (normalized === "codex") {
-    process.env.LEGAL_AI_PROVIDER = "codex-cli";
-    assignRunner("LEGAL_SKILL_RUNNER_SCRIPT", "scripts/codex-skill-runner.js");
-    assignRunner("SUGGESTION_ACTION_RUNNER_SCRIPT", "scripts/codex-suggestion-runner.js");
-    assignRunner("CONTRACT_INTAKE_RUNNER_SCRIPT", "scripts/codex-intake-runner.js");
-    assignRunner("VISUAL_QA_RUNNER_SCRIPT", "scripts/ai-visual-qa-runner.js");
-    applyRuntimeSelection({ profile: normalized, mode: "codex-cli", provider: "codex-cli", reason: "Codex profile selected explicitly." });
+    targetEnv.LEGAL_AI_PROVIDER = "codex-cli";
+    assignRunner("LEGAL_SKILL_RUNNER_SCRIPT", "scripts/codex-skill-runner.js", targetEnv);
+    assignRunner("SUGGESTION_ACTION_RUNNER_SCRIPT", "scripts/codex-suggestion-runner.js", targetEnv);
+    assignRunner("CONTRACT_INTAKE_RUNNER_SCRIPT", "scripts/codex-intake-runner.js", targetEnv);
+    assignRunner("VISUAL_QA_RUNNER_SCRIPT", "scripts/ai-visual-qa-runner.js", targetEnv);
+    applyRuntimeSelection({ profile: normalized, mode: "codex-cli", provider: "codex-cli", reason: "Codex profile selected explicitly." }, targetEnv);
     return normalized;
   }
 
   if (normalized === "kimi") {
-    process.env.LEGAL_AI_PROVIDER = "kimi";
-    assignRunner("LEGAL_SKILL_RUNNER_SCRIPT", "scripts/ai-skill-runner.js");
-    assignRunner("SUGGESTION_ACTION_RUNNER_SCRIPT", "scripts/ai-suggestion-runner.js");
-    assignRunner("CONTRACT_INTAKE_RUNNER_SCRIPT", "scripts/ai-intake-runner.js");
-    assignRunner("VISUAL_QA_RUNNER_SCRIPT", "scripts/ai-visual-qa-runner.js");
-    applyRuntimeSelection({ profile: normalized, mode: "openai-compatible", provider: "kimi", reason: "Kimi profile selected explicitly." });
+    targetEnv.LEGAL_AI_PROVIDER = "kimi";
+    assignRunner("LEGAL_SKILL_RUNNER_SCRIPT", "scripts/ai-skill-runner.js", targetEnv);
+    assignRunner("SUGGESTION_ACTION_RUNNER_SCRIPT", "scripts/ai-suggestion-runner.js", targetEnv);
+    assignRunner("CONTRACT_INTAKE_RUNNER_SCRIPT", "scripts/ai-intake-runner.js", targetEnv);
+    assignRunner("VISUAL_QA_RUNNER_SCRIPT", "scripts/ai-visual-qa-runner.js", targetEnv);
+    applyRuntimeSelection({ profile: normalized, mode: "openai-compatible", provider: "kimi", reason: "Kimi profile selected explicitly." }, targetEnv);
     return normalized;
   }
 
   const selection = resolveAutomaticAiProfile();
-  applyRuntimeSelection(selection);
+  applyRuntimeSelection(selection, targetEnv);
 
   if (selection.mode === "codex-cli") {
-    process.env.LEGAL_AI_PROVIDER = selection.provider;
-    assignRunner("LEGAL_SKILL_RUNNER_SCRIPT", "scripts/codex-skill-runner.js");
-    assignRunner("SUGGESTION_ACTION_RUNNER_SCRIPT", "scripts/codex-suggestion-runner.js");
-    assignRunner("CONTRACT_INTAKE_RUNNER_SCRIPT", "scripts/codex-intake-runner.js");
-    assignRunner("VISUAL_QA_RUNNER_SCRIPT", "scripts/ai-visual-qa-runner.js");
+    targetEnv.LEGAL_AI_PROVIDER = selection.provider;
+    assignRunner("LEGAL_SKILL_RUNNER_SCRIPT", "scripts/codex-skill-runner.js", targetEnv);
+    assignRunner("SUGGESTION_ACTION_RUNNER_SCRIPT", "scripts/codex-suggestion-runner.js", targetEnv);
+    assignRunner("CONTRACT_INTAKE_RUNNER_SCRIPT", "scripts/codex-intake-runner.js", targetEnv);
+    assignRunner("VISUAL_QA_RUNNER_SCRIPT", "scripts/ai-visual-qa-runner.js", targetEnv);
     return "codex";
   }
 
   if (selection.mode === "openai-compatible") {
-    process.env.LEGAL_AI_PROVIDER = selection.provider;
-    assignRunner("LEGAL_SKILL_RUNNER_SCRIPT", "scripts/ai-skill-runner.js");
-    assignRunner("SUGGESTION_ACTION_RUNNER_SCRIPT", "scripts/ai-suggestion-runner.js");
-    assignRunner("CONTRACT_INTAKE_RUNNER_SCRIPT", "scripts/ai-intake-runner.js");
-    assignRunner("VISUAL_QA_RUNNER_SCRIPT", "scripts/ai-visual-qa-runner.js");
+    targetEnv.LEGAL_AI_PROVIDER = selection.provider;
+    assignRunner("LEGAL_SKILL_RUNNER_SCRIPT", "scripts/ai-skill-runner.js", targetEnv);
+    assignRunner("SUGGESTION_ACTION_RUNNER_SCRIPT", "scripts/ai-suggestion-runner.js", targetEnv);
+    assignRunner("CONTRACT_INTAKE_RUNNER_SCRIPT", "scripts/ai-intake-runner.js", targetEnv);
+    assignRunner("VISUAL_QA_RUNNER_SCRIPT", "scripts/ai-visual-qa-runner.js", targetEnv);
     return selection.profile === "kimi" ? "kimi" : "ai";
   }
 
-  if (!process.env.LEGAL_SKILL_ALLOW_FALLBACK) process.env.LEGAL_SKILL_ALLOW_FALLBACK = "1";
-  if (!process.env.SUGGESTION_ACTION_ALLOW_FALLBACK) process.env.SUGGESTION_ACTION_ALLOW_FALLBACK = "1";
-  if (!process.env.CONTRACT_INTAKE_ALLOW_FALLBACK) process.env.CONTRACT_INTAKE_ALLOW_FALLBACK = "1";
-  if (!process.env.VISUAL_QA_ALLOW_FALLBACK) process.env.VISUAL_QA_ALLOW_FALLBACK = "1";
-  assignRunner("VISUAL_QA_RUNNER_SCRIPT", "scripts/ai-visual-qa-runner.js");
+  if (!targetEnv.LEGAL_SKILL_ALLOW_FALLBACK) targetEnv.LEGAL_SKILL_ALLOW_FALLBACK = "1";
+  if (!targetEnv.SUGGESTION_ACTION_ALLOW_FALLBACK) targetEnv.SUGGESTION_ACTION_ALLOW_FALLBACK = "1";
+  if (!targetEnv.CONTRACT_INTAKE_ALLOW_FALLBACK) targetEnv.CONTRACT_INTAKE_ALLOW_FALLBACK = "1";
+  if (!targetEnv.VISUAL_QA_ALLOW_FALLBACK) targetEnv.VISUAL_QA_ALLOW_FALLBACK = "1";
+  assignRunner("VISUAL_QA_RUNNER_SCRIPT", "scripts/ai-visual-qa-runner.js", targetEnv);
   return "fallback";
 }
 

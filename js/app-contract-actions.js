@@ -118,6 +118,7 @@ async function runAutomaticCodexReview(contractId, expectedSourceKey, reason = "
   try {
     setAnalysisStatus(contract.id, "queued", "AI 姝ｅ湪鑷姩杩愯 Legal Skill 瀹￠槄鍒嗘瀽...");
     const result = await runLegalSkillAnalysis(contract, material.text);
+    if (state.activeContractId !== contract.id) return;
     if (getWorkbenchMaterial(contract).sourceKey !== jobKey) {
       Store.mutate("supersede-auto-review", (draft) => {
         draft.autoReviewJobs = draft.autoReviewJobs || {};
@@ -201,6 +202,7 @@ async function runAutomaticCodexReview(contractId, expectedSourceKey, reason = "
   try {
     setAnalysisStatus(contract.id, "queued", "AI 正在自动运行 Legal Skill 审阅分析...");
     const result = await runLegalSkillAnalysis(contract, material.text);
+    if (state.activeContractId !== contract.id) return;
     if (getWorkbenchMaterial(contract).sourceKey !== jobKey) {
       state.autoReviewJobs[jobKey] = {
         status: "superseded",

@@ -102,6 +102,7 @@ function runConfiguredContractIntake(request, runnerConfig = getRunnerConfig()) 
         reject(parseError);
       }
     });
+    if (child.stdin && typeof child.stdin.on === "function") child.stdin.on("error", () => {});
     child.stdin.write(JSON.stringify(request || {}, null, 2));
     child.stdin.end();
   });

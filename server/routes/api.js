@@ -113,6 +113,8 @@ function validateUploadedPayload(payload = {}, allowedFileTypes = ["attachment"]
   return { buffer, mimeType, originalName, fileType };
 }
 
+let isBackingUp = false;
+
 async function handleApi(req, res, url) {
   if (req.method === "OPTIONS") {
     sendJson(res, 204, {}, req);
@@ -271,6 +273,11 @@ async function handleApi(req, res, url) {
   }
 
   if (req.method === "POST" && url.pathname === "/api/backup") {
+    if (isBackingUp) {
+      sendJson(res, 409, { ok: false, error: "Backup already in progress" }, req);
+      return true;
+    }
+    isBackingUp = true;
     try {
       const backupPath = await runAutoBackup();
       appendAuditLog({
@@ -280,6 +287,8 @@ async function handleApi(req, res, url) {
       sendJson(res, 200, { ok: true, backupPath }, req);
     } catch (error) {
       sendJson(res, error.statusCode || 500, serverErrorPayload(error, "Failed to create backup"), req);
+    } finally {
+      isBackingUp = false;
     }
     return true;
   }

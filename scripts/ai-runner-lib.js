@@ -146,7 +146,13 @@ function inspectCodexCommand(command) {
   return { command, exists: true, runnable: false, detail, diagnosis: "machine", confidence: "high" };
 }
 
+let _codexCommandStatusCache = null;
+let _codexCommandStatusCacheAt = 0;
+
 function resolveCodexCommandStatus() {
+  if (_codexCommandStatusCache && Date.now() - _codexCommandStatusCacheAt < 30000) {
+    return _codexCommandStatusCache;
+  }
   const preferred = getPreferredCodexCommand();
   const localAppData = process.env.LOCALAPPDATA || "";
   const desktopCodex = localAppData ? path.join(localAppData, "OpenAI", "Codex", "bin", "codex.exe") : "";
@@ -159,7 +165,10 @@ function resolveCodexCommandStatus() {
     if (status.runnable) return status;
     if (!firstExisting && status.exists) firstExisting = status;
   }
-  return firstExisting || { command: fallbackCommand, exists: false, runnable: false, detail: "Codex CLI not found in PATH or configured location.", diagnosis: "machine", confidence: "high" };
+  const result = firstExisting || { command: fallbackCommand, exists: false, runnable: false, detail: "Codex CLI not found in PATH or configured location.", diagnosis: "machine", confidence: "high" };
+  _codexCommandStatusCache = result;
+  _codexCommandStatusCacheAt = Date.now();
+  return result;
 }
 
 function getCodexCommand() {

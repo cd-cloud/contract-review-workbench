@@ -19,6 +19,11 @@ function renderReview() {
   resetClauseRiskFindingCache();
   const contract = state.contracts.find((item) => item.id === state.activeContractId);
   if (!contract) {
+    if (reviewAdviceSyncCleanup) { reviewAdviceSyncCleanup(); reviewAdviceSyncCleanup = null; }
+    views.review.innerHTML = `<div class="empty">请先新建或打开一份合同。</div>`;
+    return;
+  }
+  if (!contract) {
     if (reviewAdviceSyncCleanup) {
       reviewAdviceSyncCleanup();
       reviewAdviceSyncCleanup = null;
@@ -1215,8 +1220,8 @@ function setupReviewAdviceScrollSync() {
     window.addEventListener("resize", realign);
     reviewAdviceSyncTimers = [80, 240, 520].map((delay) => setTimeout(realign, delay));
     reviewAdviceSyncCleanup = () => {
-      window.removeEventListener("scroll", handleScroll);
-      document.removeEventListener("scroll", handleScroll, { capture: true });
+      window.removeEventListener("scroll", handleScroll, { passive: true });
+      document.removeEventListener("scroll", handleScroll, { passive: true, capture: true });
       window.removeEventListener("resize", realign);
       reviewAdviceSyncTimers.forEach((timerId) => clearTimeout(timerId));
       reviewAdviceSyncTimers = [];

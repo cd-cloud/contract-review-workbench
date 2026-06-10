@@ -104,46 +104,26 @@ const MAX_BACKEND_RESTARTS = 5;
 const BACKEND_API_TOKEN = process.env.LEGAL_WORKBENCH_TOKEN || crypto.randomBytes(32).toString("hex");
 
 function applySelectedRuntimeProfile(env, backendRuntime, options = {}) {
-  const previousEnv = {
-    LEGAL_AI_PROVIDER: process.env.LEGAL_AI_PROVIDER,
-    LEGAL_SKILL_RUNNER_SCRIPT: process.env.LEGAL_SKILL_RUNNER_SCRIPT,
-    SUGGESTION_ACTION_RUNNER_SCRIPT: process.env.SUGGESTION_ACTION_RUNNER_SCRIPT,
-    CONTRACT_INTAKE_RUNNER_SCRIPT: process.env.CONTRACT_INTAKE_RUNNER_SCRIPT,
-    VISUAL_QA_RUNNER_SCRIPT: process.env.VISUAL_QA_RUNNER_SCRIPT,
-    LEGAL_SKILL_ALLOW_FALLBACK: process.env.LEGAL_SKILL_ALLOW_FALLBACK,
-    SUGGESTION_ACTION_ALLOW_FALLBACK: process.env.SUGGESTION_ACTION_ALLOW_FALLBACK,
-    CONTRACT_INTAKE_ALLOW_FALLBACK: process.env.CONTRACT_INTAKE_ALLOW_FALLBACK,
-    VISUAL_QA_ALLOW_FALLBACK: process.env.VISUAL_QA_ALLOW_FALLBACK,
-    LEGAL_WORKBENCH_RUNTIME_PROFILE: process.env.LEGAL_WORKBENCH_RUNTIME_PROFILE,
-    LEGAL_WORKBENCH_RUNTIME_MODE: process.env.LEGAL_WORKBENCH_RUNTIME_MODE,
-    LEGAL_WORKBENCH_RUNTIME_REASON: process.env.LEGAL_WORKBENCH_RUNTIME_REASON,
-    LEGAL_WORKBENCH_EFFECTIVE_PROVIDER: process.env.LEGAL_WORKBENCH_EFFECTIVE_PROVIDER,
-    CODEX_CLI_COMMAND: process.env.CODEX_CLI_COMMAND,
-  };
-  Object.assign(process.env, env);
+  const tmpEnv = { ...process.env, ...env };
   if (options.deterministicSmoke) {
-    if (!process.env.LEGAL_AI_PROVIDER) process.env.LEGAL_AI_PROVIDER = "codex-cli";
-    if (!process.env.CODEX_CLI_COMMAND) process.env.CODEX_CLI_COMMAND = backendRuntime;
+    if (!tmpEnv.LEGAL_AI_PROVIDER) tmpEnv.LEGAL_AI_PROVIDER = "codex-cli";
+    if (!tmpEnv.CODEX_CLI_COMMAND) tmpEnv.CODEX_CLI_COMMAND = backendRuntime;
   }
-  const selectedProfile = configureRunnerProfile("ai");
-  env.LEGAL_AI_PROVIDER = process.env.LEGAL_AI_PROVIDER;
-  env.LEGAL_SKILL_RUNNER_SCRIPT = process.env.LEGAL_SKILL_RUNNER_SCRIPT;
-  env.SUGGESTION_ACTION_RUNNER_SCRIPT = process.env.SUGGESTION_ACTION_RUNNER_SCRIPT;
-  env.CONTRACT_INTAKE_RUNNER_SCRIPT = process.env.CONTRACT_INTAKE_RUNNER_SCRIPT;
-  env.VISUAL_QA_RUNNER_SCRIPT = process.env.VISUAL_QA_RUNNER_SCRIPT;
-  env.LEGAL_SKILL_ALLOW_FALLBACK = process.env.LEGAL_SKILL_ALLOW_FALLBACK;
-  env.SUGGESTION_ACTION_ALLOW_FALLBACK = process.env.SUGGESTION_ACTION_ALLOW_FALLBACK;
-  env.CONTRACT_INTAKE_ALLOW_FALLBACK = process.env.CONTRACT_INTAKE_ALLOW_FALLBACK;
-  env.VISUAL_QA_ALLOW_FALLBACK = process.env.VISUAL_QA_ALLOW_FALLBACK;
-  env.LEGAL_WORKBENCH_RUNTIME_PROFILE = process.env.LEGAL_WORKBENCH_RUNTIME_PROFILE;
-  env.LEGAL_WORKBENCH_RUNTIME_MODE = process.env.LEGAL_WORKBENCH_RUNTIME_MODE;
-  env.LEGAL_WORKBENCH_RUNTIME_REASON = process.env.LEGAL_WORKBENCH_RUNTIME_REASON;
-  env.LEGAL_WORKBENCH_EFFECTIVE_PROVIDER = process.env.LEGAL_WORKBENCH_EFFECTIVE_PROVIDER;
-  env.CODEX_CLI_COMMAND = process.env.CODEX_CLI_COMMAND;
-  Object.entries(previousEnv).forEach(([key, value]) => {
-    if (value === undefined) delete process.env[key];
-    else process.env[key] = value;
-  });
+  const selectedProfile = configureRunnerProfile("ai", tmpEnv);
+  env.LEGAL_AI_PROVIDER = tmpEnv.LEGAL_AI_PROVIDER;
+  env.LEGAL_SKILL_RUNNER_SCRIPT = tmpEnv.LEGAL_SKILL_RUNNER_SCRIPT;
+  env.SUGGESTION_ACTION_RUNNER_SCRIPT = tmpEnv.SUGGESTION_ACTION_RUNNER_SCRIPT;
+  env.CONTRACT_INTAKE_RUNNER_SCRIPT = tmpEnv.CONTRACT_INTAKE_RUNNER_SCRIPT;
+  env.VISUAL_QA_RUNNER_SCRIPT = tmpEnv.VISUAL_QA_RUNNER_SCRIPT;
+  env.LEGAL_SKILL_ALLOW_FALLBACK = tmpEnv.LEGAL_SKILL_ALLOW_FALLBACK;
+  env.SUGGESTION_ACTION_ALLOW_FALLBACK = tmpEnv.SUGGESTION_ACTION_ALLOW_FALLBACK;
+  env.CONTRACT_INTAKE_ALLOW_FALLBACK = tmpEnv.CONTRACT_INTAKE_ALLOW_FALLBACK;
+  env.VISUAL_QA_ALLOW_FALLBACK = tmpEnv.VISUAL_QA_ALLOW_FALLBACK;
+  env.LEGAL_WORKBENCH_RUNTIME_PROFILE = tmpEnv.LEGAL_WORKBENCH_RUNTIME_PROFILE;
+  env.LEGAL_WORKBENCH_RUNTIME_MODE = tmpEnv.LEGAL_WORKBENCH_RUNTIME_MODE;
+  env.LEGAL_WORKBENCH_RUNTIME_REASON = tmpEnv.LEGAL_WORKBENCH_RUNTIME_REASON;
+  env.LEGAL_WORKBENCH_EFFECTIVE_PROVIDER = tmpEnv.LEGAL_WORKBENCH_EFFECTIVE_PROVIDER;
+  env.CODEX_CLI_COMMAND = tmpEnv.CODEX_CLI_COMMAND;
   return selectedProfile;
 }
 
@@ -189,6 +169,7 @@ function startBackend() {
     if (text) smokeLog(`[Backend] ${text}`);
     if (text.includes(`listening on http://127.0.0.1:${BACKEND_PORT}`)) {
       backendReady = true;
+      backendRestartCount = 0;
       if (mainWindow) loadWorkbench();
     }
   });
@@ -230,47 +211,63 @@ function tryRestartBackend() {
 }
 
 function stopBackend() {
-  if (!backendProcess) return;
-  console.log("[Electron] Stopping backend...");
-  backendProcess.removeAllListeners("close");
+  return new Promise((resolve) => {
+    if (!backendProcess) { resolve(); return; }
+    console.log("[Electron] Stopping backend...");
+    backendProcess.removeAllListeners("close");
 
-  // Windows reliable termination: try SIGTERM then SIGKILL, and fallback to taskkill
-  const pid = backendProcess.pid;
-  try {
-    backendProcess.kill("SIGTERM");
-  } catch (e) {}
+    const pid = backendProcess.pid;
+    try {
+      backendProcess.kill("SIGTERM");
+    } catch (e) {}
 
-  const killTimeout = setTimeout(() => {
-    if (backendProcess && !backendProcess.killed) {
-      try {
-        backendProcess.kill("SIGKILL");
-      } catch (e) {}
-    }
-  }, 5000);
-
-  // Windows fallback: taskkill /F /T to ensure no orphan Node processes
-  if (process.platform === "win32" && pid) {
-    setTimeout(() => {
-      try {
-        execFile("taskkill", ["/F", "/T", "/PID", String(pid)], { windowsHide: true }, (err) => {
-          if (err) console.error("[Electron] taskkill fallback error:", err.message);
-        });
-      } catch (e) {
-        console.error("[Electron] taskkill fallback error:", e.message);
+    const killTimeout = setTimeout(() => {
+      if (backendProcess && !backendProcess.killed) {
+        try {
+          backendProcess.kill("SIGKILL");
+        } catch (e) {}
       }
-    }, 6000);
-  }
+    }, 5000);
 
-  setTimeout(() => {
-    clearTimeout(killTimeout);
-    backendProcess = null;
-    backendReady = false;
-  }, 7000);
+    if (process.platform === "win32" && pid) {
+      setTimeout(() => {
+        try {
+          execFile("taskkill", ["/F", "/T", "/PID", String(pid)], { windowsHide: true }, (err) => {
+            if (err) console.error("[Electron] taskkill fallback error:", err.message);
+          });
+        } catch (e) {
+          console.error("[Electron] taskkill fallback error:", e.message);
+        }
+      }, 6000);
+    }
+
+    const checkInterval = setInterval(() => {
+      try { process.kill(pid, 0); } catch (e) {
+        clearInterval(checkInterval);
+        clearTimeout(killTimeout);
+        backendProcess = null;
+        backendReady = false;
+        resolve();
+      }
+    }, 200);
+
+    setTimeout(() => {
+      clearInterval(checkInterval);
+      clearTimeout(killTimeout);
+      backendProcess = null;
+      backendReady = false;
+      resolve();
+    }, 8000);
+  });
 }
 
 /* ─────────────── Window lifecycle ─────────────── */
 function createWindow() {
   smokeLog("createWindow begin");
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.show();
+    return;
+  }
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -300,12 +297,16 @@ function createWindow() {
     mainWindow.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
       smokeLog(`renderer did-fail-load code=${errorCode} main=${isMainFrame} url=${validatedURL} error=${errorDescription}`);
     });
-    mainWindow.webContents.on("render-process-gone", (_event, details) => {
-      smokeLog(`renderer render-process-gone reason=${details?.reason || "unknown"} exitCode=${details?.exitCode ?? "n/a"}`);
-    });
     mainWindow.webContents.on("unresponsive", () => smokeLog("renderer unresponsive"));
     mainWindow.webContents.on("responsive", () => smokeLog("renderer responsive"));
   }
+
+  mainWindow.webContents.on("render-process-gone", (_event, details) => {
+    smokeLog(`renderer render-process-gone reason=${details?.reason || "unknown"} exitCode=${details?.exitCode ?? "n/a"}`);
+    if (!isTest) {
+      dialog.showErrorBox("页面崩溃", `合同审阅工作台页面渲染进程异常终止（原因: ${details?.reason || "unknown"}）。请重启应用。`);
+    }
+  });
 
   mainWindow.once("ready-to-show", () => {
     smokeLog("window ready-to-show");
@@ -466,11 +467,15 @@ ipcMain.handle("app:show-open-dialog", async (_, options) => {
 /* ─────────────── App lifecycle ─────────────── */
 async function autoBackupOnQuit() {
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
     const token = await getApiToken();
     const res = await fetch(`${BACKEND_URL()}/api/backup`, {
       method: "POST",
       headers: { "X-Legal-Workbench-Token": token, "Content-Type": "application/json" },
+      signal: controller.signal,
     });
+    clearTimeout(timeout);
     const data = await res.json();
     if (data.ok) {
       console.log("[Electron] Auto-backup completed:", data.backupPath);
@@ -489,7 +494,7 @@ async function quitApp() {
     tray = null;
   }
   await autoBackupOnQuit();
-  stopBackend();
+  await stopBackend();
   app.quit();
 }
 
@@ -514,23 +519,21 @@ app.whenReady().then(async () => {
 });
 
 app.on("window-all-closed", () => {
-  // Keep backend running in tray on Windows/Linux
   if (process.platform === "darwin") {
-    autoBackupOnQuit().finally(() => {
-      stopBackend();
-      app.quit();
-    });
+    quitApp();
   }
 });
 
-app.on("before-quit", () => {
-  isQuitting = true;
-  stopBackend();
+app.on("before-quit", (event) => {
+  if (!isQuitting) {
+    event.preventDefault();
+    quitApp();
+  }
 });
 
 // macOS: close window doesn't quit app
 app.on("will-quit", () => {
-  stopBackend();
+  isQuitting = true;
 });
 
 // Prevent multiple instances

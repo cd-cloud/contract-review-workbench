@@ -497,7 +497,13 @@ function wordCommentsXmlToText(xml) {
     .join("\n");
 }
 
+const MAX_UPLOADED_FILE_CACHE = 20;
+
 function cacheUploadedFileResult(target, result) {
+  if (uploadedFileCache.size >= MAX_UPLOADED_FILE_CACHE) {
+    const first = uploadedFileCache.keys().next().value;
+    uploadedFileCache.delete(first);
+  }
   const cacheId = uid("file");
   uploadedFileCache.set(cacheId, result);
   target.dataset.uploadCacheId = cacheId;

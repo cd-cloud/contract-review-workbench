@@ -264,7 +264,7 @@ function saveState(nextState = state, options = {}) {
   }
   writeLocalState(nextState);
   if (!options.localOnly) {
-    scheduleBackendSync(clone(nextState));
+    scheduleBackendSync(nextState);
   }
 }
 
@@ -310,7 +310,12 @@ function normalizeWorkbenchState(candidate) {
 function replaceWorkbenchState(nextState, options = {}) {
   const normalized = normalizeWorkbenchState(nextState);
   if (!normalized) return false;
-  state = normalized;
+  const previousKeys = new Set(Object.keys(state));
+  Object.keys(normalized).forEach((key) => {
+    state[key] = normalized[key];
+    previousKeys.delete(key);
+  });
+  previousKeys.forEach((key) => delete state[key]);
   state.storageMeta = {
     ...(state.storageMeta || {}),
     source: options.source || "backend",

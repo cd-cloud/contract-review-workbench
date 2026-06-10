@@ -21,7 +21,7 @@ const MAX_WAL_SIZE_BYTES = Number(process.env.LEGAL_WORKBENCH_MAX_WAL_BYTES || 1
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(FILE_DIR, { recursive: true });
 
-const db = new Database(DB_PATH);
+const db = new Database(DB_PATH, { timeout: 5000 });
 db.pragma("journal_mode = WAL");
 db.pragma("foreign_keys = ON");
 
@@ -648,23 +648,6 @@ function pruneOrphanedFiles(validContractIds, validVersionIds, validFileIds = ne
   }
 }
 
-function removeArchivedFilesForSnapshot(validContractIds, validVersionIds, validFileIds = new Set()) {
-  const rows = db.prepare("SELECT id, contract_id, version_id, file_path FROM files").all();
-  const remove = db.prepare("DELETE FROM files WHERE id = ?");
-  for (const row of rows) {
-    if (validFileIds.has(row.id)) continue;
-    const invalidContract = !row.contract_id || !validContractIds.has(row.contract_id);
-    const invalidVersion = row.version_id && !validVersionIds.has(row.version_id);
-    if (!invalidContract && !invalidVersion) continue;
-    if (row.file_path && fs.existsSync(row.file_path)) {
-      try {
-        fs.unlinkSync(row.file_path);
-      } catch (error) {}
-    }
-    remove.run(row.id);
-  }
-}
-
 function getContractFolder(contractId) {
   const row = db.prepare("SELECT folder_path FROM contracts WHERE id = ?").get(contractId);
   if (row?.folder_path && fs.existsSync(row.folder_path)) return row.folder_path;
@@ -700,7 +683,7 @@ function replaceDb(snapshot) {
   const validVersionIds = new Set((normalizedSnapshot.updates || normalizedSnapshot.contractVersions || []).map((version) => version.id));
   const validFileIds = new Set((normalizedSnapshot.files || []).map((file) => file.id).filter(Boolean));
 
-  removeArchivedFilesForSnapshot(validContractIds, validVersionIds, validFileIds);
+  pruneOrphanedFiles(validContractIds, validVersionIds, validFileIds);
 
   const tx = db.transaction(() => {
     // 1. Persist non-authoritative frontend state separately from structured data.
@@ -1563,8 +1546,13 @@ function searchGlobal(query, limit = 50) {
 }
 
 /* ─────────────── Exports ─────────────── */
+function closeDb() {
+  try { db.close(); } catch (e) {}
+}
+
 module.exports = {
   readDb,
+  closeDb,
   writeDb,
   replaceDb,
   upsertContract,
