@@ -1423,6 +1423,9 @@ async function runAutoBackup() {
 function restoreBackupToDirectory(backupPath, targetRoot) {
   const resolvedBackup = path.resolve(backupPath);
   const resolvedTarget = path.resolve(targetRoot);
+  if (resolvedTarget === path.resolve(WORKBENCH_ROOT)) {
+    throw new Error("Refusing to restore backup over the active workbench root");
+  }
   const manifest = readBackupManifest(resolvedBackup);
   const backupDbPath = path.join(resolvedBackup, manifest?.dbFile || "workbench.sqlite");
   if (!fs.existsSync(backupDbPath)) {
@@ -1432,13 +1435,17 @@ function restoreBackupToDirectory(backupPath, targetRoot) {
   const targetDataDir = path.join(resolvedTarget, "data");
   const targetContractsDir = path.join(resolvedTarget, "contracts");
   const targetFilesDir = path.join(resolvedTarget, "files");
+  const targetDbPath = path.join(targetDataDir, "workbench.sqlite");
+  if (path.resolve(targetDbPath) === path.resolve(DB_PATH)) {
+    throw new Error("Refusing to overwrite the active sqlite database");
+  }
   fs.mkdirSync(targetDataDir, { recursive: true });
-  fs.copyFileSync(backupDbPath, path.join(targetDataDir, "workbench.sqlite"));
+  fs.copyFileSync(backupDbPath, targetDbPath);
   copyDirectoryIfExists(path.join(resolvedBackup, "contracts"), targetContractsDir);
   copyDirectoryIfExists(path.join(resolvedBackup, "files"), targetFilesDir);
   return {
     targetRoot: resolvedTarget,
-    database: path.join(targetDataDir, "workbench.sqlite"),
+    database: targetDbPath,
     contractsDir: targetContractsDir,
     filesDir: targetFilesDir,
     manifest,
@@ -1458,47 +1465,39 @@ function tokenizeForFts(text) {
 
 function rebuildSearchIndex(snapshot) {
   try {
-    db.prepare("DELETE FROM search_index").run();
-    const insert = db.prepare(`
-      INSERT INTO search_index (content, title, entity_type, entity_id, contract_id, extra)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `);
+    const tx = db.transaction(() => {
+      db.prepare("DELETE FROM search_index").run();
+      const insert = db.prepare(`
+        INSERT INTO search_index (content, title, entity_type, entity_id, contract_id, extra)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `);
 
-    // Index contracts
-    for (const c of snapshot.contracts || []) {
-      const content = tokenizeForFts([c.name, c.type, c.purpose, c.businessBackground, c.counterpartyName, c.text, c.cleanText].filter(Boolean).join("\n"));
-      insert.run(content, c.name, "contract", c.id, c.id, safeJson({ status: c.status, riskLevel: c.riskLevel, counterpartyName: c.counterpartyName }));
-    }
-
-    // Index clauses
-    for (const cl of snapshot.clauses || []) {
-      const content = tokenizeForFts([cl.title, cl.text, cl.type].filter(Boolean).join("\n"));
-      insert.run(content, cl.title || cl.type || "", "clause", cl.id, cl.contractId || "", safeJson({ type: cl.type, hierarchyLevel: cl.hierarchyLevel }));
-    }
-
-    // Index findings
-    for (const f of snapshot.findings || []) {
-      const content = tokenizeForFts([f.title, f.issue, f.consequence, f.proposedRevision, f.commentText, f.negotiationPosition].filter(Boolean).join("\n"));
-      insert.run(content, f.title || f.issue || "", "finding", f.id, f.contractId || "", safeJson({ severity: f.severity, actionType: f.actionType }));
-    }
-
-    // Index playbooks
-    for (const pb of snapshot.playbooks || []) {
-      const content = tokenizeForFts([pb.type, pb.standard, pb.fallback, pb.forbidden, pb.negotiation, pb.keywords?.join(" ")].filter(Boolean).join("\n"));
-      insert.run(content, pb.type || "", "playbook", pb.id, "", safeJson({ ourRole: pb.ourRole, usageCount: pb.usageCount }));
-    }
-
-    // Index counterparties
-    for (const cp of snapshot.counterparties || []) {
-      const content = tokenizeForFts([cp.name, cp.type, cp.industry, cp.notes, cp.contact, cp.email].filter(Boolean).join("\n"));
-      insert.run(content, cp.name || "", "counterparty", cp.id, "", safeJson({ riskLevel: cp.riskLevel, importance: cp.importance }));
-    }
-
-    // Index risk rules
-    for (const r of snapshot.riskRules || []) {
-      const content = tokenizeForFts([r.title, r.issue, r.suggestion, r.pattern].filter(Boolean).join("\n"));
-      insert.run(content, r.title || r.type || "", "risk_rule", r.id, "", safeJson({ severity: r.severity, status: r.status }));
-    }
+      for (const c of snapshot.contracts || []) {
+        const content = tokenizeForFts([c.name, c.type, c.purpose, c.businessBackground, c.counterpartyName, c.text, c.cleanText].filter(Boolean).join("\n"));
+        insert.run(content, c.name, "contract", c.id, c.id, safeJson({ status: c.status, riskLevel: c.riskLevel, counterpartyName: c.counterpartyName }));
+      }
+      for (const cl of snapshot.clauses || []) {
+        const content = tokenizeForFts([cl.title, cl.text, cl.type].filter(Boolean).join("\n"));
+        insert.run(content, cl.title || cl.type || "", "clause", cl.id, cl.contractId || "", safeJson({ type: cl.type, hierarchyLevel: cl.hierarchyLevel }));
+      }
+      for (const f of snapshot.findings || []) {
+        const content = tokenizeForFts([f.title, f.issue, f.consequence, f.proposedRevision, f.commentText, f.negotiationPosition].filter(Boolean).join("\n"));
+        insert.run(content, f.title || f.issue || "", "finding", f.id, f.contractId || "", safeJson({ severity: f.severity, actionType: f.actionType }));
+      }
+      for (const pb of snapshot.playbooks || []) {
+        const content = tokenizeForFts([pb.type, pb.standard, pb.fallback, pb.forbidden, pb.negotiation, pb.keywords?.join(" ")].filter(Boolean).join("\n"));
+        insert.run(content, pb.type || "", "playbook", pb.id, "", safeJson({ ourRole: pb.ourRole, usageCount: pb.usageCount }));
+      }
+      for (const cp of snapshot.counterparties || []) {
+        const content = tokenizeForFts([cp.name, cp.type, cp.industry, cp.notes, cp.contact, cp.email].filter(Boolean).join("\n"));
+        insert.run(content, cp.name || "", "counterparty", cp.id, "", safeJson({ riskLevel: cp.riskLevel, importance: cp.importance }));
+      }
+      for (const r of snapshot.riskRules || []) {
+        const content = tokenizeForFts([r.title, r.issue, r.suggestion, r.pattern].filter(Boolean).join("\n"));
+        insert.run(content, r.title || r.type || "", "risk_rule", r.id, "", safeJson({ severity: r.severity, status: r.status }));
+      }
+    });
+    tx();
   } catch (err) {
     console.error("[store-sqlite] rebuildSearchIndex failed:", err.message);
   }
@@ -1517,6 +1516,10 @@ function search(query, options = {}) {
   const safeQuery = terms.join(" ");
   if (!safeQuery) return [];
   const safeLimit = Math.max(1, Math.min(Number(limit) || 50, 200));
+  const searchIndexCount = db.prepare("SELECT COUNT(*) as c FROM search_index").get().c;
+  if (searchIndexCount === 0) {
+    rebuildSearchIndex(assembleStructuredSnapshot());
+  }
 
   let sql = `SELECT * FROM search_index WHERE search_index MATCH ?`;
   const params = [safeQuery];

@@ -10,6 +10,7 @@ const CHUNK_ANALYSIS_MAX_TEXT = Number(process.env.LEGAL_WORKBENCH_CHUNK_ANALYSI
 const CHUNK_ANALYSIS_MAX_CLAUSES = Number(process.env.LEGAL_WORKBENCH_CHUNK_ANALYSIS_MAX_CLAUSES || 80);
 const CHUNK_MAX_RETRIES = Number(process.env.LEGAL_WORKBENCH_CHUNK_MAX_RETRIES || 2);
 const CHUNK_RETRY_BASE_MS = Number(process.env.LEGAL_WORKBENCH_CHUNK_RETRY_BASE_MS || 1500);
+const MAX_CHUNK_CONCURRENCY = Number(process.env.LEGAL_WORKBENCH_CHUNK_CONCURRENCY || 3);
 
 function getSkillPath() {
   return process.env.LEGAL_WORK_ORCHESTRATOR_SKILL || path.join(process.env.USERPROFILE || "", ".codex", "skills", "legal-work-orchestrator", "SKILL.md");
@@ -301,23 +302,30 @@ async function analyzeLegalReviewInChunks(request, options = {}, runnerConfig = 
   }
   const chunkResults = [];
   const failedChunks = [];
-  for (let index = 0; index < requests.length; index += 1) {
-    const chunkRequest = requests[index];
-    if (options.signal?.aborted) throw new Error("AI analysis was cancelled");
-    try {
-      chunkResults.push(await runChunkWithRetry(
-        () => runConfiguredSkillCommand(chunkRequest, options, runnerConfig),
-        { signal: options.signal }
-      ));
-    } catch (error) {
-      failedChunks.push({
-        chunkIndex: index + 1,
-        totalChunks: requests.length,
-        clauseIds: chunkRequest.analysis_chunk_meta?.clauseIds || [],
-        error: error.message || String(error),
-      });
+  let cursor = 0;
+  async function worker() {
+    while (cursor < requests.length) {
+      const index = cursor;
+      cursor += 1;
+      const chunkRequest = requests[index];
+      if (options.signal?.aborted) throw new Error("AI analysis was cancelled");
+      try {
+        chunkResults.push(await runChunkWithRetry(
+          () => runConfiguredSkillCommand(chunkRequest, options, runnerConfig),
+          { signal: options.signal }
+        ));
+      } catch (error) {
+        failedChunks.push({
+          chunkIndex: index + 1,
+          totalChunks: requests.length,
+          clauseIds: chunkRequest.analysis_chunk_meta?.clauseIds || [],
+          error: error.message || String(error),
+        });
+      }
     }
   }
+  const workerCount = Math.max(1, Math.min(MAX_CHUNK_CONCURRENCY, requests.length));
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
   if (!chunkResults.length) {
     const aggregateError = failedChunks[0]?.error || "All chunk analyses failed";
     throw new Error(aggregateError);

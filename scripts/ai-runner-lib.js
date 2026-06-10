@@ -400,6 +400,27 @@ function runCodexJsonTask({ prompt, schemaPath, outputPrefix, signal }) {
     let stdout = "";
     let stderr = "";
     let aborted = false;
+    let settled = false;
+
+    function cleanupOutputFile() {
+      try {
+        if (fs.existsSync(outputFile)) fs.unlinkSync(outputFile);
+      } catch (error) {}
+    }
+
+    function settleReject(error) {
+      if (settled) return;
+      settled = true;
+      cleanupOutputFile();
+      reject(error);
+    }
+
+    function settleResolve(value) {
+      if (settled) return;
+      settled = true;
+      cleanupOutputFile();
+      resolve(value);
+    }
 
     function onAbort() {
       aborted = true;
@@ -407,7 +428,7 @@ function runCodexJsonTask({ prompt, schemaPath, outputPrefix, signal }) {
       setTimeout(() => {
         try { if (!child.killed) child.kill("SIGKILL"); } catch (e) {}
       }, 3000);
-      reject(new Error("AI analysis was cancelled"));
+      settleReject(new Error("AI analysis was cancelled"));
     }
 
     if (signal) {
@@ -426,20 +447,23 @@ function runCodexJsonTask({ prompt, schemaPath, outputPrefix, signal }) {
     });
     child.on("error", (err) => {
       if (signal) signal.removeEventListener("abort", onAbort);
-      reject(err);
+      settleReject(err);
     });
     child.on("close", (code) => {
       if (signal) signal.removeEventListener("abort", onAbort);
-      if (aborted) return;
+      if (aborted) {
+        cleanupOutputFile();
+        return;
+      }
       if (code !== 0) {
-        reject(new Error(`codex exec failed with code ${code}\n${stderr || stdout}`.trim()));
+        settleReject(new Error(`codex exec failed with code ${code}\n${stderr || stdout}`.trim()));
         return;
       }
       const finalText = fs.existsSync(outputFile) ? fs.readFileSync(outputFile, "utf8") : stdout;
       try {
-        resolve(parseJsonOutput(finalText));
+        settleResolve(parseJsonOutput(finalText));
       } catch (error) {
-        reject(error);
+        settleReject(error);
       }
     });
     child.stdin.write(prompt);
