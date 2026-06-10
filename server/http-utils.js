@@ -1,10 +1,31 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const os = require("os");
 
 const ROOT_DIR = path.resolve(__dirname, "..");
 const PORT = Number(process.env.LEGAL_WORKBENCH_PORT || 8787);
-const API_TOKEN = process.env.LEGAL_WORKBENCH_TOKEN || crypto.randomBytes(32).toString("hex");
+
+function loadOrCreateApiToken() {
+  if (process.env.LEGAL_WORKBENCH_TOKEN) return process.env.LEGAL_WORKBENCH_TOKEN;
+  const workbenchRoot = process.env.LEGAL_WORKBENCH_DATA_DIR || path.join(os.homedir(), "LegalWorkbench");
+  const tokenPath = path.join(workbenchRoot, ".api_token");
+  try {
+    if (fs.existsSync(tokenPath)) return fs.readFileSync(tokenPath, "utf8").trim();
+  } catch (error) {
+    // fall through to generate new token
+  }
+  const token = crypto.randomBytes(32).toString("hex");
+  try {
+    fs.mkdirSync(workbenchRoot, { recursive: true });
+    fs.writeFileSync(tokenPath, token, "utf8");
+  } catch (error) {
+    console.error("[http-utils] Failed to persist API token:", error.message);
+  }
+  return token;
+}
+
+const API_TOKEN = loadOrCreateApiToken();
 const SESSION_COOKIE_NAME = "legal_workbench_session";
 const BROWSER_SESSION_ID = crypto.randomBytes(24).toString("hex");
 

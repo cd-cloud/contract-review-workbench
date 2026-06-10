@@ -545,10 +545,22 @@ function parseJsonOutput(text) {
     return JSON.parse(raw);
   } catch (error) {
     const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
-    if (fenced) return JSON.parse(fenced[1]);
+    if (fenced) {
+      try {
+        return JSON.parse(fenced[1]);
+      } catch (inner) {
+        throw new Error(`AI runner returned fenced block that is not valid JSON: ${inner.message}`);
+      }
+    }
     const first = raw.indexOf("{");
     const last = raw.lastIndexOf("}");
-    if (first >= 0 && last > first) return JSON.parse(raw.slice(first, last + 1));
+    if (first >= 0 && last > first) {
+      try {
+        return JSON.parse(raw.slice(first, last + 1));
+      } catch (inner) {
+        throw new Error(`AI runner returned output with braces that is not valid JSON: ${inner.message}`);
+      }
+    }
     throw error;
   }
 }

@@ -381,13 +381,14 @@ function createTray() {
   // Update tooltip when backend status changes
   // Simple polling approach
   let lastTrayStatus = "";
-  setInterval(() => {
+  const trayInterval = setInterval(() => {
     const status = backendReady ? (isQuitting ? "正在关闭..." : "后端运行中") : (isQuitting ? "已关闭" : "后端启动中");
     if (status !== lastTrayStatus) {
       lastTrayStatus = status;
       updateTrayTooltip(status);
     }
   }, 5000);
+  app.once("before-quit", () => clearInterval(trayInterval));
   updateTrayMenu();
 
   tray.on("click", () => {

@@ -238,21 +238,21 @@ async function handleApi(req, res, url) {
       const stat = fs.statSync(file.path);
       res.writeHead(200, {
         "Content-Type": file.mimeType || "application/octet-stream",
-        "Content-Disposition": `attachment; filename="${encodeURIComponent(file.name)}"`,
+        "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(file.name)}`,
         "Content-Length": stat.size,
         ...require("../http-utils").getCorsHeaders(req),
       });
       const stream = fs.createReadStream(file.path);
-      stream.on("error", () => {
+      stream.on("error", (err) => {
         try {
           if (!res.headersSent) {
             sendJson(res, 500, { ok: false, error: "Failed to stream archived file" }, req);
           } else {
-            res.destroy();
+            res.destroy(err);
           }
         } catch (error) {}
       });
-      stream.pipe(res);
+      stream.pipe(res, { end: true });
     } catch (error) {
       sendJson(res, error.statusCode || 500, serverErrorPayload(error, "Failed to download archived file"), req);
     }
