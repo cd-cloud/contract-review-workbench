@@ -1,7 +1,7 @@
 const path = require("path");
 const fs = require("fs");
 const { sendJson, readJson, isAuthorizedApiRequest, serverErrorPayload, isPathInsideRoot } = require("../http-utils");
-const { readDb, replaceDb, upsertContract, upsertContractVersion, replaceClauseActions, appendInsertedClause, patchAuxState, appendAuditLog, deleteContractCascade, deleteContractVersionCascade, saveFile, DB_PATH, WAL_PATH, FILE_DIR, WORKBENCH_ROOT, saveContractFile, getContractFiles, getFileById, deleteFile, getContractFolder, listAllContractsWithPaths, runAutoBackup, runWalCheckpoint, search, searchContracts, searchClauses, searchGlobal } = require("../store");
+const { readDb, replaceDb, upsertContract, upsertContractWithAudit, upsertContractVersion, upsertContractVersionWithAudit, replaceClauseActions, appendInsertedClause, patchAuxState, appendAuditLog, deleteContractCascade, deleteContractVersionCascade, saveFile, DB_PATH, WAL_PATH, FILE_DIR, WORKBENCH_ROOT, saveContractFile, getContractFiles, getFileById, deleteFile, getContractFolder, listAllContractsWithPaths, runAutoBackup, runWalCheckpoint, search, searchContracts, searchClauses, searchGlobal } = require("../store");
 const { analyzeLegalReview, getRunnerStatus } = require("../legal-skill-adapter");
 const { runSuggestionAction, getRunnerStatus: getSuggestionRunnerStatus } = require("../suggestion-action-adapter");
 const { runContractIntake, getRunnerStatus: getIntakeRunnerStatus } = require("../contract-intake-adapter");
@@ -350,12 +350,9 @@ async function handleApi(req, res, url) {
   if (req.method === "POST" && url.pathname === "/api/contracts") {
     try {
       const payload = await readJson(req);
-      const contract = upsertContract(payload.contract || payload);
-      appendAuditLog({
+      const contract = upsertContractWithAudit(payload.contract || payload, {
         action: "create-contract-review",
-        contractId: contract.id,
-        contractName: contract.name,
-        details: { contractName: contract.name },
+        details: {},
       });
       sendJson(res, 200, { ok: true, contract }, req);
     } catch (error) {
@@ -367,11 +364,9 @@ async function handleApi(req, res, url) {
   if (req.method === "POST" && url.pathname === "/api/contract-versions") {
     try {
       const payload = await readJson(req);
-      const version = upsertContractVersion(payload.version || payload);
-      appendAuditLog({
+      const version = upsertContractVersionWithAudit(payload.version || payload, {
         action: "append-progress-update",
-        contractId: version.contractId,
-        details: { note: version.type || version.note || "" },
+        details: {},
       });
       sendJson(res, 200, { ok: true, version }, req);
     } catch (error) {

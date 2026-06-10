@@ -40,8 +40,9 @@ server.on("error", (err) => {
   }
   if (err.code === "EMFILE" || err.code === "ENFILE") {
     logger.error("[server] Too many open files. Increase ulimit or restart the application.");
-    console.error("[server] EMFILE/ENFILE: system file descriptor limit reached. Exiting to allow recovery.");
-    process.exit(1);
+    console.error("[server] EMFILE/ENFILE: system file descriptor limit reached. Initiating graceful shutdown.");
+    gracefulShutdown("EMFILE/ENFILE");
+    return;
   }
   console.error("[server] Non-fatal server error, continuing:", err.code || err.message);
 });

@@ -524,9 +524,9 @@ function buildFallbackSkillResult(request) {
   const clauseAnalyses = clauses.flatMap((clause) => analyzeClause(clause, request));
   const contractLevelRisks = analyzeContractLevelRisks(clauses, request);
   const allRisks = [...contractLevelRisks, ...clauseAnalyses];
-  const riskLevel = allRisks.some((item) => normalizeSeverity(item.severity) === "high")
+  const riskLevel = allRisks.some((item) => normalizeSeverity(item?.severity) === "high")
     ? "high"
-    : allRisks.some((item) => normalizeSeverity(item.severity) === "medium")
+    : allRisks.some((item) => normalizeSeverity(item?.severity) === "medium")
       ? "medium"
       : "low";
 

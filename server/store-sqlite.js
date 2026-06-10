@@ -1021,6 +1021,24 @@ function upsertContract(contract = {}) {
   };
 }
 
+function upsertContractWithAudit(contract, auditEntry) {
+  const tx = db.transaction(() => {
+    const result = upsertContract(contract);
+    appendAuditLog({ ...auditEntry, contractId: result.id, contractName: result.name });
+    return result;
+  });
+  return tx();
+}
+
+function upsertContractVersionWithAudit(version, auditEntry) {
+  const tx = db.transaction(() => {
+    const result = upsertContractVersion(version);
+    appendAuditLog({ ...auditEntry, contractId: result.contractId, details: { note: result.type || result.note || "" } });
+    return result;
+  });
+  return tx();
+}
+
 function upsertContractVersion(version = {}) {
   if (!version?.id || !version?.contractId) throw new Error("Version id and contractId are required");
   db.prepare(`
@@ -1407,7 +1425,7 @@ async function runAutoBackup() {
   const tempContractsSnapshot = path.join(backupDir, `.snapshot-contracts-${timestamp}`);
   const tempFilesSnapshot = path.join(backupDir, `.snapshot-files-${timestamp}`);
   try {
-    runWalCheckpoint("FULL");
+    runWalCheckpoint("PASSIVE");
     fs.mkdirSync(backupDir, { recursive: true });
     fs.mkdirSync(backupPath, { recursive: true });
     snapshotDirectoryIfExists(path.join(WORKBENCH_ROOT, "contracts"), tempContractsSnapshot);
@@ -1599,7 +1617,9 @@ module.exports = {
   writeDb,
   replaceDb,
   upsertContract,
+  upsertContractWithAudit,
   upsertContractVersion,
+  upsertContractVersionWithAudit,
   replaceContractClauses,
   replaceContractFindings,
   replaceClauseActions,
