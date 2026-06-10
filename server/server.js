@@ -75,3 +75,12 @@ function gracefulShutdown(signal) {
 
 process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("uncaughtException", (err) => {
+  logger.error(`[server] Uncaught exception: ${err.message}`);
+  console.error("[server] Uncaught exception:", err);
+  gracefulShutdown("uncaughtException");
+});
+process.on("unhandledRejection", (reason, promise) => {
+  logger.error(`[server] Unhandled rejection at ${promise}: ${reason}`);
+  console.error("[server] Unhandled rejection:", reason);
+});

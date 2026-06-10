@@ -15,7 +15,7 @@
     "server:ai": "node scripts/start-ai-server.js --profile ai",
     "server:kimi": "node scripts/start-ai-server.js --profile kimi",
     "electron": "electron .",
-    "electron:dev": "set NODE_ENV=development&& electron .",
+    "electron:dev": "electron .",
     "electron:smoke": "npm rebuild better-sqlite3 && node scripts/electron-smoke.js",
     "setup:windows": "powershell -ExecutionPolicy Bypass -File scripts/setup-windows.ps1",
     "desktop:launch": "powershell -ExecutionPolicy Bypass -File scripts/setup-windows.ps1 -SkipInstall -SkipBuild -SkipSmoke -Launch",

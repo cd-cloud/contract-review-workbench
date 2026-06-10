@@ -676,7 +676,7 @@ async function flushBackendSync() {
     // Debug: backend autosync failed; local browser cache remains available.
   } finally {
     backendSyncInFlight = false;
-    if (backendSyncDirty) scheduleBackendSync(state);
+    if (backendSyncDirty) scheduleBackendSync();
   }
 }
 

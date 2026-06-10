@@ -510,7 +510,7 @@ ipcMain.handle("app:show-open-dialog", async (_, options) => {
 async function autoBackupOnQuit() {
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
+    const timeout = setTimeout(() => controller.abort(), 5000);
     const token = await getApiToken();
     const res = await fetch(`${BACKEND_URL()}/api/backup`, {
       method: "POST",
