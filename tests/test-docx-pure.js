@@ -8,6 +8,7 @@ const { loadScript, test, testAsync, summary, assert } = require("./test-helper"
 
 loadScript("js/utils.js");
 loadScript("js/review-redline.js");
+loadScript("lib/docx-shared.js");
 global.getAnalysisFindings = () => [];
 loadScript("js/word-docx.js");
 

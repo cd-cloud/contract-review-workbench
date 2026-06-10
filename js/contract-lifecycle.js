@@ -2,21 +2,23 @@ function deleteContract(contractId) {
   const contract = state.contracts.find((item) => item.id === contractId);
   if (!contract) return false;
   const sourcePrefix = `${contractId}:`;
-  state.contracts = state.contracts.filter((item) => item.id !== contractId);
-  state.updates = (state.updates || []).filter((item) => item.contractId !== contractId);
-  state.clauses = (state.clauses || []).filter((item) => item.contractId !== contractId);
-  state.findings = (state.findings || []).filter((item) => item.contractId !== contractId);
-  state.negotiations = (state.negotiations || []).filter((item) => item.contractId !== contractId);
-  cleanSourceScopedState((key) => key.startsWith(sourcePrefix));
-  state.subclauseMoves = (state.subclauseMoves || []).filter((move) => !String(move.fromParentId || "").startsWith(sourcePrefix) && !String(move.toParentId || "").startsWith(sourcePrefix));
-  if (state.legalSkillResults) delete state.legalSkillResults[contractId];
-  if (state.analysisJobs) delete state.analysisJobs[contractId];
-  if (state.activeContractId === contractId) {
-    state.activeContractId = state.contracts[0]?.id || null;
-    state.activeUpdateId = null;
-    state.activeWorkbenchClauseId = null;
-    state.activeSubclauseId = null;
-  }
+  Store.mutate("delete-contract-local-state", (draft) => {
+    draft.contracts = draft.contracts.filter((item) => item.id !== contractId);
+    draft.updates = (draft.updates || []).filter((item) => item.contractId !== contractId);
+    draft.clauses = (draft.clauses || []).filter((item) => item.contractId !== contractId);
+    draft.findings = (draft.findings || []).filter((item) => item.contractId !== contractId);
+    draft.negotiations = (draft.negotiations || []).filter((item) => item.contractId !== contractId);
+    cleanSourceScopedState((key) => key.startsWith(sourcePrefix));
+    draft.subclauseMoves = (draft.subclauseMoves || []).filter((move) => !String(move.fromParentId || "").startsWith(sourcePrefix) && !String(move.toParentId || "").startsWith(sourcePrefix));
+    if (draft.legalSkillResults) delete draft.legalSkillResults[contractId];
+    if (draft.analysisJobs) delete draft.analysisJobs[contractId];
+    if (draft.activeContractId === contractId) {
+      draft.activeContractId = draft.contracts[0]?.id || null;
+      draft.activeUpdateId = null;
+      draft.activeWorkbenchClauseId = null;
+      draft.activeSubclauseId = null;
+    }
+  }, { save: false });
   recordAudit("删除合同", { contractName: contract.name });
   saveState();
   return true;
@@ -27,14 +29,16 @@ function deleteContractVersion(updateId) {
   if (!update) return false;
   const contract = state.contracts.find((item) => item.id === update.contractId);
   const sourceKey = `${update.contractId}:${update.id}`;
-  state.updates = (state.updates || []).filter((item) => item.id !== updateId);
-  cleanSourceScopedState((key) => key === sourceKey || key.startsWith(`${sourceKey}:`));
-  state.subclauseMoves = (state.subclauseMoves || []).filter((move) => !String(move.fromParentId || "").startsWith(sourceKey) && !String(move.toParentId || "").startsWith(sourceKey));
-  if (state.activeUpdateId === updateId) {
-    state.activeUpdateId = getContractUpdates(update.contractId).at(-1)?.id || null;
-    state.activeWorkbenchClauseId = null;
-    state.activeSubclauseId = null;
-  }
+  Store.mutate("delete-contract-version-local-state", (draft) => {
+    draft.updates = (draft.updates || []).filter((item) => item.id !== updateId);
+    cleanSourceScopedState((key) => key === sourceKey || key.startsWith(`${sourceKey}:`));
+    draft.subclauseMoves = (draft.subclauseMoves || []).filter((move) => !String(move.fromParentId || "").startsWith(sourceKey) && !String(move.toParentId || "").startsWith(sourceKey));
+    if (draft.activeUpdateId === updateId) {
+      draft.activeUpdateId = getContractUpdates(update.contractId).at(-1)?.id || null;
+      draft.activeWorkbenchClauseId = null;
+      draft.activeSubclauseId = null;
+    }
+  }, { save: false });
   if (contract && state.activeUpdateId) {
     const active = (state.updates || []).find((item) => item.id === state.activeUpdateId);
     const text = active?.acceptedText || active?.versionText || contract.cleanText || contract.text || "";

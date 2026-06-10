@@ -1,3 +1,24 @@
+const docxShared = globalThis.DocxShared || {};
+const decodeXml = docxShared.decodeXml || ((text) => String(text || "")
+  .replace(/&lt;/g, "<")
+  .replace(/&gt;/g, ">")
+  .replace(/&amp;/g, "&")
+  .replace(/&quot;/g, "\"")
+  .replace(/&apos;/g, "'"));
+const decodeWordSymbol = docxShared.decodeWordSymbol || function fallbackDecodeWordSymbol(font, charCode) {
+  const code = parseInt(String(charCode || "").replace(/^0x/i, ""), 16);
+  if (!Number.isFinite(code)) return "";
+  return code ? String.fromCodePoint(code) : "";
+};
+const normalizeDocxTextArtifacts = docxShared.normalizeDocxTextArtifacts || ((text) => String(text || ""));
+const hasDocxRevisionMarkers = docxShared.hasDocxRevisionMarkers || ((acceptedText, rejectedText, revisionText) => {
+  const safeAccepted = String(acceptedText || "");
+  const safeRejected = String(rejectedText || "");
+  const safeRevision = String(revisionText || "");
+  return safeAccepted !== safeRejected || safeRevision.includes("[-") || safeRevision.includes("{+");
+});
+const formatDocxNumber = docxShared.formatNumber || ((value) => String(value));
+
 function detectMaterialKind(text) {
   if (!text.trim()) return "empty";
   if (/发件人|收件人|主题|From:|To:|Subject:|请确认|请法务|修改建议|反馈|回复|邮件|客户要求|业务可接受/i.test(text)) {
@@ -145,7 +166,7 @@ async function parseDocxBuffer(buffer) {
     revisionParagraphs: revisionParagraphs.map(normalizeDocxTextArtifacts),
     rejectedParagraphs: rejectedParagraphs.map(normalizeDocxTextArtifacts),
     headerFooterParagraphs: normalizedHeaderFooterParagraphs,
-    hasRevisions: acceptedText !== rejectedText || revisionText.includes("[-") || revisionText.includes("{+"),
+    hasRevisions: hasDocxRevisionMarkers(acceptedText, rejectedText, revisionText),
   };
 }
 
@@ -288,7 +309,7 @@ function wordParagraphToText(paragraph, mode, numberingContext = null) {
   return `${prefix}${output}`;
 }
 
-function decodeWordSymbol(font, charCode) {
+function legacyDecodeWordSymbol(font, charCode) {
   const code = parseInt(String(charCode || "").replace(/^0x/i, ""), 16);
   if (!Number.isFinite(code)) return "";
   const fontName = String(font || "").toLowerCase();
@@ -318,7 +339,7 @@ function decodeWordSymbol(font, charCode) {
   return code ? String.fromCodePoint(code) : "";
 }
 
-function normalizeDocxTextArtifacts(text) {
+function legacyNormalizeDocxTextArtifacts(text) {
   return String(text || "")
     .replace(/（([0-9一二三四五六七八九十]+)[�）]+/g, "（$1）")
     .replace(/\(([0-9a-zA-Z]+)[�)]+/g, "($1)")
@@ -430,21 +451,15 @@ function nextBrowserNumberingPrefix(paragraph, context) {
     const fmt = levels.get(String(index))?.numFmt || level.numFmt;
     return formatBrowserNumber(value, fmt);
   });
-  prefix = prefix.replace(/\s+/g, "");
+  prefix = decodeXml(prefix).replace(/\s+/g, "");
   return prefix ? `${prefix} ` : "";
 }
 
 function formatBrowserNumber(value, format) {
-  if (format === "upperLetter") return String.fromCharCode(64 + value);
-  if (format === "lowerLetter") return String.fromCharCode(96 + value);
-  if (format === "upperRoman") return toBrowserRoman(value);
-  if (format === "lowerRoman") return toBrowserRoman(value).toLowerCase();
-  if (/chinese|ideograph/i.test(format)) return toChineseNumber(value);
-  if (/decimalFullWidth/i.test(format)) return toFullWidthNumber(value);
-  return String(value);
+  return formatDocxNumber(value, format);
 }
 
-function toChineseNumber(value) {
+function legacyToChineseNumber(value) {
   const digits = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九"];
   const number = Number(value);
   if (!Number.isFinite(number) || number <= 0) return String(value);
@@ -454,11 +469,11 @@ function toChineseNumber(value) {
   return String(value);
 }
 
-function toFullWidthNumber(value) {
+function legacyToFullWidthNumber(value) {
   return String(value).replace(/[0-9]/g, (digit) => String.fromCharCode(0xff10 + Number(digit)));
 }
 
-function toBrowserRoman(value) {
+function legacyToBrowserRoman(value) {
   const pairs = [[1000, "M"], [900, "CM"], [500, "D"], [400, "CD"], [100, "C"], [90, "XC"], [50, "L"], [40, "XL"], [10, "X"], [9, "IX"], [5, "V"], [4, "IV"], [1, "I"]];
   let number = value;
   let output = "";

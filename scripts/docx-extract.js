@@ -1,5 +1,12 @@
 const fs = require("fs");
 const zlib = require("zlib");
+const {
+  decodeXml,
+  decodeWordSymbol,
+  normalizeDocxTextArtifacts,
+  hasDocxRevisionMarkers,
+  formatNumber,
+} = require("../lib/docx-shared");
 
 function readZipEntries(buffer) {
   let eocd = -1;
@@ -40,15 +47,6 @@ function readZipTextEntry(buffer, entry) {
   if (entry.method === 0) return compressed.toString("utf8");
   if (entry.method === 8) return zlib.inflateRawSync(compressed).toString("utf8");
   throw new Error(`暂不支持 zip 压缩方法：${entry.method}`);
-}
-
-function decodeXml(text) {
-  return String(text || "")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, "\"")
-    .replace(/&apos;/g, "'");
 }
 
 function paragraphText(xml, mode = "accept", numberingContext = null) {
@@ -94,7 +92,7 @@ function paragraphText(xml, mode = "accept", numberingContext = null) {
   return parts;
 }
 
-function decodeWordSymbol(font, charCode) {
+function legacyDecodeWordSymbol(font, charCode) {
   const code = parseInt(String(charCode || "").replace(/^0x/i, ""), 16);
   if (!Number.isFinite(code)) return "";
   const fontName = String(font || "").toLowerCase();
@@ -124,7 +122,7 @@ function decodeWordSymbol(font, charCode) {
   return code ? String.fromCodePoint(code) : "";
 }
 
-function normalizeWordTextArtifacts(text) {
+function legacyNormalizeWordTextArtifacts(text) {
   return String(text || "")
     .replace(/（([0-9一二三四五六七八九十]+)[�）]+/g, "（$1）")
     .replace(/\(([0-9a-zA-Z]+)[�)]+/g, "($1)")
@@ -241,7 +239,7 @@ function nextNumberingPrefix(paragraph, context) {
   return prefix ? `${prefix} ` : "";
 }
 
-function formatNumber(value, format) {
+function legacyFormatNumber(value, format) {
   if (format === "upperLetter") return String.fromCharCode(64 + value);
   if (format === "lowerLetter") return String.fromCharCode(96 + value);
   if (format === "upperRoman") return toRoman(value);
@@ -251,7 +249,7 @@ function formatNumber(value, format) {
   return String(value);
 }
 
-function toChineseNumber(value) {
+function legacyToChineseNumber(value) {
   const digits = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九"];
   const number = Number(value);
   if (!Number.isFinite(number) || number <= 0) return String(value);
@@ -261,11 +259,11 @@ function toChineseNumber(value) {
   return String(value);
 }
 
-function toFullWidthNumber(value) {
+function legacyToFullWidthNumber(value) {
   return String(value).replace(/[0-9]/g, (digit) => String.fromCharCode(0xff10 + Number(digit)));
 }
 
-function toRoman(value) {
+function legacyToRoman(value) {
   const pairs = [
     [1000, "M"],
     [900, "CM"],
@@ -322,9 +320,9 @@ function extractDocxPackage(buffer) {
   const rejectedParagraphs = xmls.flatMap((xml) => paragraphText(xml, "reject", createNumberingContext(numberingXml, stylesXml)));
   const revisionParagraphs = xmls.flatMap((xml) => paragraphText(xml, "markup", createNumberingContext(numberingXml, stylesXml)));
   const commentsXml = readZipTextEntry(buffer, entries.get("word/comments.xml"));
-  const normalizedAcceptedParagraphs = acceptedParagraphs.map(normalizeWordTextArtifacts);
-  const normalizedRejectedParagraphs = rejectedParagraphs.map(normalizeWordTextArtifacts);
-  const normalizedRevisionParagraphs = revisionParagraphs.map(normalizeWordTextArtifacts);
+  const normalizedAcceptedParagraphs = acceptedParagraphs.map(normalizeDocxTextArtifacts);
+  const normalizedRejectedParagraphs = rejectedParagraphs.map(normalizeDocxTextArtifacts);
+  const normalizedRevisionParagraphs = revisionParagraphs.map(normalizeDocxTextArtifacts);
   const acceptedText = normalizedAcceptedParagraphs.filter(Boolean).join("\n\n");
   const rejectedText = normalizedRejectedParagraphs.filter(Boolean).join("\n\n");
   const revisionText = normalizedRevisionParagraphs.filter(Boolean).join("\n\n");
@@ -333,11 +331,11 @@ function extractDocxPackage(buffer) {
     acceptedText,
     rejectedText,
     revisionText,
-    commentsText: normalizeWordTextArtifacts(commentsText(commentsXml)),
+    commentsText: normalizeDocxTextArtifacts(commentsText(commentsXml)),
     paragraphs: normalizedAcceptedParagraphs,
     revisionParagraphs: normalizedRevisionParagraphs,
     rejectedParagraphs: normalizedRejectedParagraphs,
-    hasRevisions: acceptedText !== rejectedText || revisionText.includes("[-") || revisionText.includes("{+"),
+    hasRevisions: hasDocxRevisionMarkers(acceptedText, rejectedText, revisionText),
   };
 }
 

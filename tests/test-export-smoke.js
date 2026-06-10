@@ -65,6 +65,8 @@ global.getStoredSkillResult = (contractId) => global.state.legalSkillResults?.[c
 loadScript("js/utils.js");
 loadScript("lib/normalize.js");
 loadScript("lib/contract-parsing.js");
+loadScript("lib/docx-shared.js");
+loadScript("js/store.js");
 loadScript("js/contract-parser.js");
 loadScript("js/diff-engine.js");
 loadScript("js/review-redline.js");

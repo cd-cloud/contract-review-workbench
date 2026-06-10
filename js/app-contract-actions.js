@@ -1,8 +1,10 @@
 function setActiveContract(contractId) {
-  state.activeContractId = contractId;
-  state.activeClauseId = state.clauses.find((clause) => clause.contractId === contractId)?.id || null;
-  const updates = getContractUpdates(contractId);
-  state.activeUpdateId = updates.at(-1)?.id || null;
+  Store.mutate("set-active-contract", (draft) => {
+    draft.activeContractId = contractId;
+    draft.activeClauseId = draft.clauses.find((clause) => clause.contractId === contractId)?.id || null;
+    const updates = getContractUpdates(contractId);
+    draft.activeUpdateId = updates.at(-1)?.id || null;
+  });
   if (typeof persistBackendAuxState === "function") {
     persistBackendAuxState({
       activeContractId: state.activeContractId,
@@ -45,9 +47,25 @@ function scheduleAutomaticCodexReview(contractId, reason = "auto") {
   const material = getWorkbenchMaterial(contract);
   if (!material?.text?.trim()) return;
   const jobKey = material.sourceKey || contract.id;
-  state.autoReviewJobs = state.autoReviewJobs || {};
-  const existing = state.autoReviewJobs[jobKey];
+  const existing = (state.autoReviewJobs || {})[jobKey];
   if (["queued", "running"].includes(existing?.status) && !isStaleCodexJob(existing, STALE_JOB_TIMEOUT_MS)) return;
+  Store.mutate("queue-auto-review", (draft) => {
+    draft.autoReviewJobs = draft.autoReviewJobs || {};
+    draft.autoReviewJobs[jobKey] = {
+      status: "queued",
+      reason,
+      message: "AI 自动审阅已排队",
+      queuedAt: new Date().toISOString(),
+    };
+  });
+  if (typeof persistBackendAuxState === "function") {
+    persistBackendAuxState({
+      autoReviewJobs: state.autoReviewJobs,
+    }).catch(() => {});
+  }
+  saveState();
+  setTimeout(() => runAutomaticCodexReview(contractId, jobKey, reason), 0);
+  return;
   state.autoReviewJobs[jobKey] = {
     status: "queued",
     reason,
@@ -78,6 +96,91 @@ async function runAutomaticCodexReview(contractId, expectedSourceKey, reason = "
   const material = getWorkbenchMaterial(contract);
   const jobKey = material.sourceKey || contract.id;
   if (expectedSourceKey && jobKey !== expectedSourceKey) return;
+  Store.mutate("start-auto-review", (draft) => {
+    draft.autoReviewJobs = draft.autoReviewJobs || {};
+    draft.autoReviewJobs[jobKey] = {
+      ...(draft.autoReviewJobs[jobKey] || {}),
+      status: "running",
+      reason,
+      message: "AI 正在自动进行条款切分与审阅分析",
+      startedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+  }, { save: false });
+  if (typeof persistBackendAuxState === "function") {
+    persistBackendAuxState({
+      autoReviewJobs: state.autoReviewJobs,
+    }).catch(() => {});
+  }
+  setAnalysisStatus(contract.id, "queued", "AI 宸茶嚜鍔ㄥ紑濮嬪悎鍚屽闃呭垎鏋愶紝骞朵細鍚屾椂杩斿洖鏉℃鍒囧垎...");
+  saveState();
+  renderReview();
+  try {
+    setAnalysisStatus(contract.id, "queued", "AI 姝ｅ湪鑷姩杩愯 Legal Skill 瀹￠槄鍒嗘瀽...");
+    const result = await runLegalSkillAnalysis(contract, material.text);
+    if (getWorkbenchMaterial(contract).sourceKey !== jobKey) {
+      Store.mutate("supersede-auto-review", (draft) => {
+        draft.autoReviewJobs = draft.autoReviewJobs || {};
+        draft.autoReviewJobs[jobKey] = {
+          status: "superseded",
+          reason,
+          message: "当前版本已切换，本次自动审阅结果未写入",
+          completedAt: new Date().toISOString(),
+        };
+      });
+      if (typeof persistBackendAuxState === "function") {
+        persistBackendAuxState({
+          autoReviewJobs: state.autoReviewJobs,
+        }).catch(() => {});
+      }
+      saveState();
+      return;
+    }
+    applyLegalSkillResult(contract, result, splitVersionClauses(material.text, material.sourceKey));
+    const prepared = await ensureAnalysisHasCodexSegmentation(contract);
+    const clauses = splitVersionClauses(prepared.text, prepared.sourceKey);
+    Store.mutate("complete-auto-review", (draft) => {
+      draft.findings = (draft.findings || []).filter((finding) => finding.contractId !== contract.id);
+      draft.findings.push(...getStoredSkillFindings(contract, clauses));
+      draft.autoReviewJobs = draft.autoReviewJobs || {};
+      draft.autoReviewJobs[jobKey] = {
+        status: "completed",
+        reason,
+        message: "AI 自动审阅分析已完成",
+        completedAt: new Date().toISOString(),
+      };
+    }, { save: false });
+    if (typeof persistBackendAuxState === "function") {
+      persistBackendAuxState({
+        autoReviewJobs: state.autoReviewJobs,
+        findings: state.findings,
+      }).catch(() => {});
+    }
+    recordAudit("鑷姩杩愯 AI Legal Skill 鍒嗘瀽", { contractName: contract.name, note: reason });
+    saveState();
+    renderReview();
+    showToast("AI 宸茶嚜鍔ㄥ畬鎴愬闃呭垎鏋愩€?");
+  } catch (error) {
+    Store.mutate("fail-auto-review", (draft) => {
+      draft.autoReviewJobs = draft.autoReviewJobs || {};
+      draft.autoReviewJobs[jobKey] = {
+        status: "failed",
+        reason,
+        message: error.message || String(error),
+        failedAt: new Date().toISOString(),
+      };
+    }, { save: false });
+    if (typeof persistBackendAuxState === "function") {
+      persistBackendAuxState({
+        autoReviewJobs: state.autoReviewJobs,
+      }).catch(() => {});
+    }
+    setAnalysisStatus(contract.id, "failed", error.message || String(error));
+    saveState();
+    renderReview();
+    showToast(`AI 鑷姩瀹￠槄澶辫触锛?{error.message || String(error)}`, "error");
+  }
+  return;
   state.autoReviewJobs = state.autoReviewJobs || {};
   state.autoReviewJobs[jobKey] = {
     ...(state.autoReviewJobs[jobKey] || {}),

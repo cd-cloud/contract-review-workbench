@@ -11,6 +11,7 @@ function uid(prefix) {
 global.uid = uid;
 global.today = () => "2026-05-29";
 global.getContractUpdates = () => [];
+global.saveState = () => {};
 
 // Mock state for setActiveContract
 global.state = {
@@ -25,8 +26,10 @@ global.state = {
 // Load contract-parser for classifyContract dependency
 loadScript("lib/contract-parsing.js");
 loadScript("js/contract-parser.js");
+loadScript("js/store.js");
 // Load the module under test
 loadScript("js/app-contract-actions.js");
+loadScript("js/app-contract-actions-overrides.js");
 
 console.log("\n=== test-app-contract-actions.js ===\n");
 
