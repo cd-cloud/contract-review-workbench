@@ -1,6 +1,6 @@
 const path = require("path");
 const fs = require("fs");
-const { sendJson, readJson, isAuthorizedApiRequest, serverErrorPayload } = require("../http-utils");
+const { sendJson, readJson, isAuthorizedApiRequest, serverErrorPayload, isPathInsideRoot } = require("../http-utils");
 const { readDb, replaceDb, upsertContract, upsertContractVersion, replaceClauseActions, appendInsertedClause, patchAuxState, appendAuditLog, deleteContractCascade, deleteContractVersionCascade, saveFile, DB_PATH, WAL_PATH, FILE_DIR, WORKBENCH_ROOT, saveContractFile, getContractFiles, getFileById, deleteFile, getContractFolder, listAllContractsWithPaths, runAutoBackup, runWalCheckpoint, search, searchContracts, searchClauses, searchGlobal } = require("../store");
 const { analyzeLegalReview, getRunnerStatus } = require("../legal-skill-adapter");
 const { runSuggestionAction, getRunnerStatus: getSuggestionRunnerStatus } = require("../suggestion-action-adapter");
@@ -230,6 +230,10 @@ async function handleApi(req, res, url) {
         sendJson(res, 404, { ok: false, error: "File missing on disk" }, req);
         return true;
       }
+      if (!isPathInsideRoot(WORKBENCH_ROOT, file.path)) {
+        sendJson(res, 403, { ok: false, error: "File path escaped workbench root" }, req);
+        return true;
+      }
       const stat = fs.statSync(file.path);
       res.writeHead(200, {
         "Content-Type": file.mimeType || "application/octet-stream",
@@ -237,7 +241,17 @@ async function handleApi(req, res, url) {
         "Content-Length": stat.size,
         ...require("../http-utils").getCorsHeaders(req),
       });
-      fs.createReadStream(file.path).pipe(res);
+      const stream = fs.createReadStream(file.path);
+      stream.on("error", () => {
+        try {
+          if (!res.headersSent) {
+            sendJson(res, 500, { ok: false, error: "Failed to stream archived file" }, req);
+          } else {
+            res.destroy();
+          }
+        } catch (error) {}
+      });
+      stream.pipe(res);
     } catch (error) {
       sendJson(res, error.statusCode || 500, serverErrorPayload(error, "Failed to download archived file"), req);
     }
@@ -506,7 +520,7 @@ async function handleApi(req, res, url) {
       const query = url.searchParams.get("q") || "";
       const types = (url.searchParams.get("types") || "").split(",").filter(Boolean);
       const contractId = url.searchParams.get("contractId") || null;
-      const limit = Math.min(Number(url.searchParams.get("limit") || 50), 200);
+      const limit = Math.max(1, Math.min(Number(url.searchParams.get("limit") || 50), 200));
       const results = search(query, { types, limit, contractId });
       sendJson(res, 200, { ok: true, query, results }, req);
     } catch (error) {
@@ -518,7 +532,7 @@ async function handleApi(req, res, url) {
   if (req.method === "GET" && url.pathname === "/api/search/contracts") {
     try {
       const query = url.searchParams.get("q") || "";
-      const limit = Math.min(Number(url.searchParams.get("limit") || 20), 100);
+      const limit = Math.max(1, Math.min(Number(url.searchParams.get("limit") || 20), 100));
       const results = searchContracts(query, limit);
       sendJson(res, 200, { ok: true, query, results }, req);
     } catch (error) {
@@ -531,7 +545,7 @@ async function handleApi(req, res, url) {
     try {
       const query = url.searchParams.get("q") || "";
       const contractId = url.searchParams.get("contractId") || null;
-      const limit = Math.min(Number(url.searchParams.get("limit") || 20), 100);
+      const limit = Math.max(1, Math.min(Number(url.searchParams.get("limit") || 20), 100));
       const results = searchClauses(query, contractId, limit);
       sendJson(res, 200, { ok: true, query, contractId, results }, req);
     } catch (error) {

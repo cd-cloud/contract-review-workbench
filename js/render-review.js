@@ -911,15 +911,15 @@ function renderInlineClauseCard(contract, material, clause, clauses, active) {
   const titleFallbackText = hasClauseTitle ? "" : getTitlelessClausePreview(text, subclauses);
   const showTitleFallback = !hasClauseTitle && titleFallbackText && (!expanded || (active && !hasNested));
   return `
-    <article class="inline-clause-card ${active ? "active" : ""} ${action.deleted ? "deleted-clause" : ""}" draggable="true" data-clause-card="${clause.id}" data-clause-stable-id="${clause.stableId}">
+    <article class="inline-clause-card ${active ? "active" : ""} ${action.deleted ? "deleted-clause" : ""}" draggable="true" data-clause-card="${escapeHtml(clause.id)}" data-clause-stable-id="${escapeHtml(clause.stableId)}">
       <div class="tree-card-header">
         ${
           hasNested
-            ? `<button class="tree-toggle-button" type="button" data-toggle-tree-node="${clause.id}" aria-expanded="${expanded}">${expanded ? "收起" : "展开"}</button>`
+            ? `<button class="tree-toggle-button" type="button" data-toggle-tree-node="${escapeHtml(clause.id)}" aria-expanded="${expanded}">${expanded ? "收起" : "展开"}</button>`
             : `<span class="tree-toggle-spacer"></span>`
         }
         <div class="tree-card-main">
-          <button class="inline-clause-button" type="button" data-workbench-clause="${clause.id}">
+          <button class="inline-clause-button" type="button" data-workbench-clause="${escapeHtml(clause.id)}">
             <div class="chips">
               <span class="tag">${escapeHtml(clause.type)}</span>
               ${clause.chapterTitle ? `<span class="status-pill">${escapeHtml(clause.chapterTitle)}</span>` : ""}
@@ -1010,15 +1010,15 @@ function renderSubclauseCard(contract, material, parentClause, subclause, subcla
   const hasNested = childNodes.length > 0;
   const expanded = !hasNested || isTreeNodeExpanded(subclause.id);
   return `
-    <article class="subclause-card ${active ? "active" : ""} ${action.deleted ? "deleted-clause" : ""}" draggable="true" data-subclause-card="${subclause.id}" data-parent-clause="${parentClause.id}">
+    <article class="subclause-card ${active ? "active" : ""} ${action.deleted ? "deleted-clause" : ""}" draggable="true" data-subclause-card="${escapeHtml(subclause.id)}" data-parent-clause="${escapeHtml(parentClause.id)}">
       <div class="tree-card-header">
         ${
           hasNested
-            ? `<button class="tree-toggle-button" type="button" data-toggle-tree-node="${subclause.id}" aria-expanded="${expanded}">${expanded ? "收起" : "展开"}</button>`
+            ? `<button class="tree-toggle-button" type="button" data-toggle-tree-node="${escapeHtml(subclause.id)}" aria-expanded="${expanded}">${expanded ? "收起" : "展开"}</button>`
             : `<span class="tree-toggle-spacer"></span>`
         }
         <div class="tree-card-main">
-          <button class="subclause-button" type="button" data-workbench-subclause="${subclause.id}" data-parent-clause="${parentClause.id}">
+          <button class="subclause-button" type="button" data-workbench-subclause="${escapeHtml(subclause.id)}" data-parent-clause="${escapeHtml(parentClause.id)}">
             <div class="chips">
               <span class="tag">小条款</span>
               <span class="risk ${escapeHtml(clauseRisk.severity)}">风险${riskLabel(clauseRisk.severity)}</span>

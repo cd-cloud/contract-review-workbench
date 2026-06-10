@@ -27,6 +27,17 @@ class AnalysisCache {
       counterparty: request.counterparty || "",
       background: request.business_background || "",
       extraRequirements: request.drafting_requirements || request.extraRequirements || "",
+      previousText: request.previous_text || "",
+      clauses: Array.isArray(request.clauses)
+        ? request.clauses.map((clause) => ({
+          id: clause?.id || "",
+          stableId: clause?.stableId || "",
+          number: clause?.number || "",
+          title: clause?.title || "",
+          type: clause?.type || "",
+          text: clause?.text || "",
+        }))
+        : [],
       provider: request.provider || request.model_provider || "",
       model: request.model || request.model_name || "",
       promptVersion: request.prompt_version || request.promptVersion || "",

@@ -41,6 +41,18 @@ function withTimeout(promise, timeoutMs, message) {
   ]).finally(() => clearTimeout(timer));
 }
 
+function terminateJobChild(job) {
+  if (!job?.__child) return;
+  try {
+    job.__child.kill("SIGTERM");
+    setTimeout(() => {
+      try {
+        if (job.__child && !job.__child.killed) job.__child.kill("SIGKILL");
+      } catch (error) {}
+    }, 3000);
+  } catch (error) {}
+}
+
 function countActiveAnalysisJobs() {
   cleanupAnalysisJobs();
   return [...analysisJobs.values()].filter((job) => job.status === "running").length;
@@ -173,7 +185,16 @@ async function executeAnalysisJob(job, request) {
   try {
     const { analyzeLegalReview } = require("./legal-skill-adapter");
     const result = await withTimeout(
-      runWithRetry(() => analyzeLegalReview(request, { signal: current.__controller.signal }), current, current.__controller.signal),
+      runWithRetry(
+        () => analyzeLegalReview(request, {
+          signal: current.__controller.signal,
+          onChild: (child) => {
+            current.__child = child;
+          },
+        }),
+        current,
+        current.__controller.signal
+      ),
       ANALYSIS_JOB_TIMEOUT_MS,
       "AI legal review job timed out"
     );
@@ -202,6 +223,10 @@ async function executeAnalysisJob(job, request) {
     });
     saveAnalysisJob(current);
   } catch (error) {
+    if (/timed out|timeout/i.test(String(error?.message || error || ""))) {
+      try { current.__controller.abort(); } catch (abortError) {}
+      terminateJobChild(current);
+    }
     if (current.status === "cancelled" || current.__aborted) return;
     Object.assign(current, {
       status: "failed",
@@ -211,6 +236,7 @@ async function executeAnalysisJob(job, request) {
     });
     saveAnalysisJob(current);
   } finally {
+    current.__child = null;
     processAnalysisQueue();
   }
 }
@@ -262,14 +288,7 @@ function cancelJob(id) {
   if (job.__controller) {
     try { job.__controller.abort(); } catch (e) {}
   }
-  if (job.__child) {
-    try {
-      job.__child.kill("SIGTERM");
-      setTimeout(() => {
-        try { if (!job.__child.killed) job.__child.kill("SIGKILL"); } catch (e) {}
-      }, 3000);
-    } catch (e) {}
-  }
+  terminateJobChild(job);
 
   Object.assign(job, {
     status: "cancelled",

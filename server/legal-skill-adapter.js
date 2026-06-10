@@ -375,6 +375,9 @@ function runConfiguredSkillCommand(request, options = {}, runnerConfig = getRunn
         reject(new Error(`Skill command did not return JSON: ${parseError.message}`));
       }
     });
+    if (typeof options.onChild === "function") {
+      try { options.onChild(child); } catch (error) {}
+    }
 
     // Support cancellation via AbortController
     if (options.signal) {
@@ -671,7 +674,9 @@ function buildFallbackSuggestedClauseText(type) {
     保密: "双方应对在合作过程中获知的商业秘密、技术资料、客户信息及其他非公开信息承担保密义务，未经披露方书面同意不得向第三方披露或用于本合同目的之外的用途。",
     知识产权: "双方既有知识产权仍归原权利人所有；因履行本合同形成的成果、软件、模型、数据处理成果及文档的权属、许可范围和终止后处理方式应以本合同或附件明确约定为准。",
     责任限制: "除保密、知识产权侵权、数据安全、个人信息保护、故意或重大过失及依法不得限制责任的情形外，任一方累计赔偿责任以本合同项下过去十二个月已支付或应支付费用为上限。",
-    争议解决: "因本合同产生的争议，双方应先友好协商；协商不成的，任一方可向有管辖权的人民法院提起诉讼。本合同适用中华人民共和国法律。",
+    争议解决: request.governing_law || request.jurisdiction
+      ? `因本合同产生的争议，双方应先友好协商；协商不成的，按${request.governing_law || request.jurisdiction}及约定管辖规则处理。`
+      : "因本合同产生的争议，双方应先友好协商；协商不成的，按合同约定的适用法律和争议解决机制处理。",
   };
   return templates[type] || `请补充${type}条款，明确义务主体、适用范围、触发条件、例外事项、违约后果和终止后处理。`;
 }

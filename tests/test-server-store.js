@@ -344,6 +344,41 @@ test("replaceDb prunes orphaned archived files when contracts disappear", () => 
   assert.strictEqual(fs.existsSync(saved.path), false);
 });
 
+test("replaceDb preserves file rows included in snapshot", () => {
+  const seeded = store.replaceDb({
+    contracts: [{ id: "c-files-keep", name: "Keep Files", counterpartyName: "Acme", createdAt: "2026-06-10" }],
+    updates: [{ id: "u-files-keep", contractId: "c-files-keep", createdAt: "2026-06-10" }],
+    clauses: [],
+    findings: [],
+    counterparties: [],
+    negotiations: [],
+    playbooks: [],
+    riskRules: [],
+    auditLogs: [],
+    users: [],
+  });
+  const archived = store.saveContractFile("c-files-keep", "u-files-keep", Buffer.from("keep-me"), "keep.docx", "application/octet-stream", "version");
+  assert.ok(archived?.id);
+  const persisted = store.getFileById(archived.id);
+  const resynced = store.replaceDb({
+    ...seeded,
+    files: [{
+      id: persisted.id,
+      contractId: persisted.contractId,
+      versionId: persisted.versionId,
+      name: persisted.name,
+      originalName: persisted.originalName,
+      mimeType: persisted.mimeType,
+      path: persisted.path,
+      size: persisted.size,
+      fileType: persisted.fileType,
+      createdAt: persisted.createdAt,
+    }],
+  });
+  assert.ok((resynced.files || []).some((file) => file.id === archived.id));
+  assert.ok(store.getFileById(archived.id));
+});
+
 async function runAsyncTests() {
   await testAsync("backup sqlite can be reopened independently for restore inspection", async () => {
     store.replaceDb({

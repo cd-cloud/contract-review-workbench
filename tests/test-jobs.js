@@ -183,6 +183,23 @@ test("cancelJob aborts the AbortController", () => {
   assert.strictEqual(job.__controller.signal.aborted, true);
 });
 
+test("cancelJob terminates attached child process", () => {
+  _clearAllJobsForTesting();
+  globalCache.clear();
+  let killed = [];
+  const job = createAnalysisJob({ contract_text: "child-kill-test" });
+  job.status = "running";
+  job.__child = {
+    killed: false,
+    kill(signal) {
+      killed.push(signal);
+      if (signal === "SIGKILL") this.killed = true;
+    },
+  };
+  cancelJob(job.id);
+  assert.ok(killed.includes("SIGTERM"));
+});
+
 (async function runAsyncTests() {
   await testAsync("createAnalysisJob hits cache for identical request", async () => {
     _clearAllJobsForTesting();

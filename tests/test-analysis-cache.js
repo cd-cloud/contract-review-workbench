@@ -187,4 +187,18 @@ test("different prompt version produces different cache keys", () => {
   assert.strictEqual(miss, null);
 });
 
+test("different previous_text produces different cache keys", () => {
+  const cache = new AnalysisCache();
+  cache.set({ contract_text: "same", previous_text: "old-a" }, { data: "a" });
+  const miss = cache.get({ contract_text: "same", previous_text: "old-b" });
+  assert.strictEqual(miss, null);
+});
+
+test("different clauses payload produces different cache keys", () => {
+  const cache = new AnalysisCache();
+  cache.set({ contract_text: "same", clauses: [{ id: "c1", text: "A" }] }, { data: "a" });
+  const miss = cache.get({ contract_text: "same", clauses: [{ id: "c1", text: "B" }] });
+  assert.strictEqual(miss, null);
+});
+
 summary();

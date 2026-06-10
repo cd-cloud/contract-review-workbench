@@ -8,6 +8,7 @@ const Database = require("better-sqlite3");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
+const { isPathInsideRoot } = require("./http-utils");
 
 const WORKBENCH_ROOT = process.env.LEGAL_WORKBENCH_DATA_DIR
   || path.join(os.homedir(), "LegalWorkbench");
@@ -320,6 +321,7 @@ const AUTHORITATIVE_STATE_KEYS = new Set([
   "findings",
   "reviewRecords",
   "clauseActions",
+  "files",
   "counterparties",
   "negotiations",
   "playbooks",
@@ -334,6 +336,7 @@ const emptyDb = {
   contractVersions: [],
   clauses: [],
   clauseActions: [],
+  files: [],
   counterparties: [],
   playbooks: [],
   reviewRecords: [],
@@ -344,10 +347,14 @@ const emptyDb = {
 /* ─────────────── Contract archive helpers ─────────────── */
 function ensureContractFolder(contract) {
   const year = (contract.createdAt || nowIso()).slice(0, 4);
+  const safeId = String(contract.id || "contract").replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 80) || "contract";
   const safeCounterparty = String(contract.counterpartyName || "unknown").replace(/[\\/:*?"<>|]/g, "_").slice(0, 40);
   const safeName = String(contract.name || "untitled").replace(/[\\/:*?"<>|]/g, "_").slice(0, 60);
-  const folderName = `${contract.id}-${safeCounterparty}-${safeName}`;
+  const folderName = `${safeId}-${safeCounterparty}-${safeName}`;
   const folderPath = path.join(WORKBENCH_ROOT, "contracts", year, folderName);
+  if (!isPathInsideRoot(WORKBENCH_ROOT, folderPath)) {
+    throw new Error("Resolved contract folder path escaped workbench root");
+  }
   fs.mkdirSync(folderPath, { recursive: true });
   fs.mkdirSync(path.join(folderPath, "versions"), { recursive: true });
   fs.mkdirSync(path.join(folderPath, "exports"), { recursive: true });
@@ -383,6 +390,7 @@ function buildDbResponse(snapshot, savedAt = nowIso()) {
     contractVersions: snapshotCopy.updates || snapshotCopy.contractVersions || [],
     clauses: snapshotCopy.clauses || [],
     clauseActions: flattenClauseActions(snapshotCopy.clauseActions || {}),
+    files: snapshotCopy.files || [],
     counterparties: snapshotCopy.counterparties || [],
     playbooks: snapshotCopy.playbooks || [],
     reviewRecords: snapshotCopy.findings || snapshotCopy.reviewRecords || [],
@@ -492,6 +500,19 @@ function assembleStructuredSnapshot() {
     details: parseJson(row.details, {}), createdAt: row.created_at,
   }));
 
+  const files = db.prepare("SELECT * FROM files ORDER BY created_at DESC").all().map(row => ({
+    id: row.id,
+    contractId: row.contract_id,
+    versionId: row.version_id,
+    name: row.name,
+    originalName: row.original_name,
+    mimeType: row.mime_type,
+    path: row.file_path,
+    size: row.size,
+    fileType: row.file_type,
+    createdAt: row.created_at,
+  }));
+
   const users = db.prepare("SELECT * FROM users").all().map(row => ({
     id: row.id, name: row.name, role: row.role,
     permissions: parseJson(row.permissions, []),
@@ -510,6 +531,7 @@ function assembleStructuredSnapshot() {
     playbooks,
     riskRules,
     auditLogs,
+    files,
     users,
   };
 }
@@ -523,6 +545,7 @@ function mergeSnapshots(structuredSnapshot, auxState = {}) {
   merged.findings = structuredSnapshot.findings || structuredSnapshot.reviewRecords || [];
   merged.reviewRecords = merged.findings;
   merged.clauseActions = structuredSnapshot.clauseActions || {};
+  merged.files = structuredSnapshot.files || [];
   merged.counterparties = structuredSnapshot.counterparties || [];
   merged.negotiations = structuredSnapshot.negotiations || [];
   merged.playbooks = structuredSnapshot.playbooks || [];
@@ -587,6 +610,13 @@ function normalizeSnapshotRelations(snapshot = {}) {
         : null,
     }));
 
+  const files = (normalized.files || [])
+    .filter((file) => file?.id && contractIds.has(file.contractId))
+    .map((file) => ({
+      ...file,
+      versionId: file.versionId && versionIds.has(file.versionId) ? file.versionId : null,
+    }));
+
   normalized.contracts = contracts;
   normalized.updates = updates;
   normalized.contractVersions = updates;
@@ -595,34 +625,41 @@ function normalizeSnapshotRelations(snapshot = {}) {
   normalized.findings = findings;
   normalized.reviewRecords = findings;
   normalized.clauseActions = clauseActions;
+  normalized.files = files;
   normalized.negotiations = negotiations;
   normalized.users = normalized.users?.length ? normalized.users.filter((user) => user?.id) : emptyDb.users;
   return normalized;
 }
 
-function pruneOrphanedFiles(validContractIds, validVersionIds) {
+function pruneOrphanedFiles(validContractIds, validVersionIds, validFileIds = new Set()) {
   const rows = db.prepare("SELECT id, contract_id, version_id, file_path FROM files").all();
   const remove = db.prepare("DELETE FROM files WHERE id = ?");
   for (const row of rows) {
+    if (validFileIds.has(row.id)) continue;
     const invalidContract = !row.contract_id || !validContractIds.has(row.contract_id);
     const invalidVersion = row.version_id && !validVersionIds.has(row.version_id);
     if (!invalidContract && !invalidVersion) continue;
     if (row.file_path && fs.existsSync(row.file_path)) {
-      fs.unlinkSync(row.file_path);
+      try {
+        fs.unlinkSync(row.file_path);
+      } catch (error) {}
     }
     remove.run(row.id);
   }
 }
 
-function removeArchivedFilesForSnapshot(validContractIds, validVersionIds) {
+function removeArchivedFilesForSnapshot(validContractIds, validVersionIds, validFileIds = new Set()) {
   const rows = db.prepare("SELECT id, contract_id, version_id, file_path FROM files").all();
   const remove = db.prepare("DELETE FROM files WHERE id = ?");
   for (const row of rows) {
+    if (validFileIds.has(row.id)) continue;
     const invalidContract = !row.contract_id || !validContractIds.has(row.contract_id);
     const invalidVersion = row.version_id && !validVersionIds.has(row.version_id);
     if (!invalidContract && !invalidVersion) continue;
     if (row.file_path && fs.existsSync(row.file_path)) {
-      fs.unlinkSync(row.file_path);
+      try {
+        fs.unlinkSync(row.file_path);
+      } catch (error) {}
     }
     remove.run(row.id);
   }
@@ -661,8 +698,9 @@ function replaceDb(snapshot) {
   const auxState = extractAuxState(normalizedSnapshot);
   const validContractIds = new Set((normalizedSnapshot.contracts || []).map((contract) => contract.id));
   const validVersionIds = new Set((normalizedSnapshot.updates || normalizedSnapshot.contractVersions || []).map((version) => version.id));
+  const validFileIds = new Set((normalizedSnapshot.files || []).map((file) => file.id).filter(Boolean));
 
-  removeArchivedFilesForSnapshot(validContractIds, validVersionIds);
+  removeArchivedFilesForSnapshot(validContractIds, validVersionIds, validFileIds);
 
   const tx = db.transaction(() => {
     // 1. Persist non-authoritative frontend state separately from structured data.
@@ -670,6 +708,8 @@ function replaceDb(snapshot) {
     db.prepare("DELETE FROM app_state WHERE key = 'snapshot'").run();
 
     // 2. Clear structured tables
+    db.pragma("foreign_keys = OFF");
+    db.prepare("DELETE FROM files").run();
     db.prepare("DELETE FROM contract_versions").run();
     db.prepare("DELETE FROM clauses").run();
     db.prepare("DELETE FROM findings").run();
@@ -711,6 +751,19 @@ function replaceDb(snapshot) {
         v.id, v.contractId, v.versionNumber || 0, v.type, v.note, v.materialKind,
         v.versionText || v.text, v.cleanText, v.redlineText, v.commentsText, v.acceptedText,
         v.filePath || null, v.createdAt, v.feedbackDeadline, v.status
+      );
+    }
+
+    const insertFile = db.prepare(`
+      INSERT INTO files (id, contract_id, version_id, name, original_name, mime_type, file_path, size, file_type, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const file of normalizedSnapshot.files || []) {
+      insertFile.run(
+        file.id, file.contractId, file.versionId || null, file.name,
+        file.originalName || file.name, file.mimeType || "application/octet-stream",
+        file.path || file.filePath || "", Number(file.size || 0),
+        file.fileType || "attachment", file.createdAt || savedAt
       );
     }
 
@@ -815,6 +868,8 @@ function replaceDb(snapshot) {
         r.issue, r.suggestion, r.status, r.source, r.createdAt
       );
     }
+    db.pragma("foreign_keys = ON");
+    db.pragma("foreign_key_check");
 
     // 12. Insert audit logs
     const insertAudit = db.prepare(`
@@ -839,7 +894,7 @@ function replaceDb(snapshot) {
 
   tx();
   runWalCheckpoint("PASSIVE");
-  pruneOrphanedFiles(validContractIds, validVersionIds);
+  pruneOrphanedFiles(validContractIds, validVersionIds, validFileIds);
   const structuredSnapshot = assembleStructuredSnapshot();
   rebuildSearchIndex(structuredSnapshot);
   return buildDbResponse(mergeSnapshots(structuredSnapshot, auxState), savedAt);
@@ -1293,7 +1348,7 @@ function deleteContractCascade(contractId) {
   if (!contract) return null;
   deleteFilesForContract(contractId);
   db.prepare("DELETE FROM contracts WHERE id = ?").run(contractId);
-  if (contract.folder_path && fs.existsSync(contract.folder_path)) {
+  if (contract.folder_path && isPathInsideRoot(WORKBENCH_ROOT, contract.folder_path) && fs.existsSync(contract.folder_path)) {
     fs.rmSync(contract.folder_path, { recursive: true, force: true });
   }
   return {
@@ -1317,6 +1372,12 @@ function copyDirectoryIfExists(sourceDir, targetDir) {
   fs.cpSync(sourceDir, targetDir, { recursive: true });
 }
 
+function snapshotDirectoryIfExists(sourceDir, tempPath) {
+  if (!fs.existsSync(sourceDir)) return;
+  fs.rmSync(tempPath, { recursive: true, force: true });
+  fs.cpSync(sourceDir, tempPath, { recursive: true });
+}
+
 function readBackupManifest(backupPath) {
   const manifestPath = path.join(backupPath, "manifest.json");
   if (!fs.existsSync(manifestPath)) return null;
@@ -1331,10 +1392,16 @@ async function runAutoBackup() {
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
     const backupPath = path.join(backupDir, `auto-${timestamp}`);
     const backupDbPath = path.join(backupPath, "workbench.sqlite");
+    const tempContractsSnapshot = path.join(backupDir, `.snapshot-contracts-${timestamp}`);
+    const tempFilesSnapshot = path.join(backupDir, `.snapshot-files-${timestamp}`);
     fs.mkdirSync(backupPath, { recursive: true });
+    snapshotDirectoryIfExists(path.join(WORKBENCH_ROOT, "contracts"), tempContractsSnapshot);
+    snapshotDirectoryIfExists(FILE_DIR, tempFilesSnapshot);
     await db.backup(backupDbPath);
-    copyDirectoryIfExists(path.join(WORKBENCH_ROOT, "contracts"), path.join(backupPath, "contracts"));
-    copyDirectoryIfExists(FILE_DIR, path.join(backupPath, "files"));
+    copyDirectoryIfExists(tempContractsSnapshot, path.join(backupPath, "contracts"));
+    copyDirectoryIfExists(tempFilesSnapshot, path.join(backupPath, "files"));
+    fs.rmSync(tempContractsSnapshot, { recursive: true, force: true });
+    fs.rmSync(tempFilesSnapshot, { recursive: true, force: true });
     fs.writeFileSync(path.join(backupPath, "manifest.json"), safeJson({
       createdAt: nowIso(),
       dbFile: "workbench.sqlite",
@@ -1442,9 +1509,14 @@ function search(query, options = {}) {
   if (!query || String(query).trim().length < 1) return [];
 
   const q = String(query).trim();
-  // Tokenize CJK for matching, escape FTS5 special chars
-  const safeQuery = tokenizeForFts(q).replace(/["*]/g, "");
+  const terms = tokenizeForFts(q)
+    .split(/\s+/)
+    .map((term) => term.trim())
+    .filter(Boolean)
+    .map((term) => `"${term.replace(/"/g, "\"\"")}"`);
+  const safeQuery = terms.join(" ");
   if (!safeQuery) return [];
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 50, 200));
 
   let sql = `SELECT * FROM search_index WHERE search_index MATCH ?`;
   const params = [safeQuery];
@@ -1461,7 +1533,7 @@ function search(query, options = {}) {
   }
 
   sql += ` LIMIT ?`;
-  params.push(limit);
+  params.push(safeLimit);
 
   const rows = db.prepare(sql).all(...params);
   return rows.map((row, idx) => ({

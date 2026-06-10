@@ -292,6 +292,41 @@ function authedReq(method = "GET") {
     assert.strictEqual(downloadRes.headers["Content-Length"] > 0, true);
   });
 
+  await testAsync("handleApi rejects download when file path escapes workbench root", async () => {
+    const contractRes = mockRes();
+    const contractReq = mockReqWithBody({
+      contract: {
+        id: "contract-stream-escape",
+        name: "Path Escape Contract",
+        type: "测试合同",
+        counterpartyName: "Acme",
+        createdAt: "2026-06-09",
+        updatedAt: "2026-06-09",
+      },
+    });
+    await handleApi(contractReq, contractRes, makeUrl("/api/contracts"));
+
+    const createRes = mockRes();
+    const createReq = mockReqWithBody({
+      contentBase64: Buffer.from("hello stream").toString("base64"),
+      originalName: "escape-test.txt",
+      mimeType: "text/plain",
+      fileType: "attachment",
+    });
+    await handleApi(createReq, createRes, makeUrl("/api/contracts/contract-stream-escape/files"));
+    const created = JSON.parse(createRes.body);
+    const store = require("../server/store");
+    const file = store.getFileById(created.file.id);
+    const db = require("better-sqlite3")(store.DB_PATH);
+    db.prepare("UPDATE files SET file_path = ? WHERE id = ?").run(process.cwd(), file.id);
+    db.close();
+
+    const downloadRes = mockRes();
+    const handled = await handleApi(authedReq("GET"), downloadRes, makeUrl(`/api/files/${encodeURIComponent(file.id)}/download`));
+    assert.strictEqual(handled, true);
+    assert.strictEqual(downloadRes.status, 403);
+  });
+
   await testAsync("handleApi rejects disallowed upload extension", async () => {
     const res = mockRes();
     const req = mockReqWithBody({
@@ -380,6 +415,16 @@ function authedReq(method = "GET") {
     const handled = await handleApi(req, res, makeUrl("/api/legal-review/jobs/nonexistent/cancel"));
     assert.strictEqual(handled, true);
     assert.strictEqual(res.status, 404);
+  });
+
+  await testAsync("handleApi search normalizes malformed query and lower-bounds limit", async () => {
+    const res = mockRes();
+    const handled = await handleApi(authedReq("GET"), res, makeUrl("/api/search?q=foo%20(&limit=-1"));
+    assert.strictEqual(handled, true);
+    assert.strictEqual(res.status, 200);
+    const body = JSON.parse(res.body);
+    assert.strictEqual(body.ok, true);
+    assert.ok(Array.isArray(body.results));
   });
 
   summary();
