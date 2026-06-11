@@ -9,23 +9,33 @@ const Store = {
   },
 
   mutate(action, updater, options = {}) {
-    const prevStateRef = state;
-    const next = { ...state };
-    if (typeof updater === "function") updater(next);
-    // If updater reassigned the global state variable (e.g. reset), respect it
-    if (state !== prevStateRef) {
-      // state was replaced inside updater; do not overwrite with next
-    } else {
-      Object.assign(state, next);
+    const deepClone = typeof clone === "function" ? clone : (v) => JSON.parse(JSON.stringify(v));
+    const prevState = deepClone(state);
+    try {
+      const prevStateRef = state;
+      const next = { ...state };
+      if (typeof updater === "function") updater(next);
+      // If updater reassigned the global state variable (e.g. reset), respect it
+      if (state !== prevStateRef) {
+        // state was replaced inside updater; do not overwrite with next
+      } else {
+        Object.assign(state, next);
+      }
+      if (options.audit) {
+        const details = typeof options.auditDetails === "function"
+          ? options.auditDetails(state)
+          : (options.auditDetails || {});
+        Store.recordAudit(action || "state-update", details);
+      }
+      if (options.save !== false) saveState();
+      if (typeof options.after === "function") options.after(state);
+    } catch (error) {
+      // Rollback to pre-mutation snapshot on failure
+      Object.keys(prevState).forEach((key) => { state[key] = prevState[key]; });
+      Object.keys(state).forEach((key) => { if (!(key in prevState)) delete state[key]; });
+      console.error("[Store] Mutation failed, state rolled back:", action, error);
+      throw error;
     }
-    if (options.audit) {
-      const details = typeof options.auditDetails === "function"
-        ? options.auditDetails(state)
-        : (options.auditDetails || {});
-      Store.recordAudit(action || "state-update", details);
-    }
-    if (options.save !== false) saveState();
-    if (typeof options.after === "function") options.after(state);
     return state;
   },
 
@@ -70,6 +80,11 @@ const Store = {
   },
 
   setActiveContract(contractId) {
+    if (typeof TimerRegistry !== "undefined") TimerRegistry.clearAll();
+    if (typeof clauseEditAutosaveTimer !== "undefined" && clauseEditAutosaveTimer) {
+      clearTimeout(clauseEditAutosaveTimer);
+      clauseEditAutosaveTimer = null;
+    }
     state.activeContractId = contractId;
     state.activeClauseId = state.clauses.find((c) => c.contractId === contractId)?.id || null;
     const updates = (state.updates || []).filter((u) => u.contractId === contractId);

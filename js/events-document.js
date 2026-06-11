@@ -127,7 +127,7 @@ function handleDocumentDblclick(event) {
 function handleDocumentFocusout(event) {
   const clauseEdit = event.target.closest("[data-clause-edit], [data-clause-title-edit]");
   if (!clauseEdit) return;
-  clearTimeout(clauseEditAutosaveTimer);
+  TimerRegistry.clear("clause-edit-autosave");
   saveState();
   clauseEdit.classList.remove("autosaved");
 }
@@ -210,11 +210,12 @@ function handleClauseEditInput(event) {
       else draft.activeWorkbenchClauseId = clauseId;
     }, { save: false });
     clauseTitleEdit.classList.add("autosaved");
-    clearTimeout(clauseEditAutosaveTimer);
-    clauseEditAutosaveTimer = setTimeout(() => {
+    TimerRegistry.clear("clause-edit-autosave");
+    TimerRegistry.set("clause-edit-autosave", setTimeout(() => {
       saveState();
       clauseTitleEdit.classList.remove("autosaved");
-    }, 180);
+      TimerRegistry.clear("clause-edit-autosave");
+    }, 800));
     return;
   }
 
@@ -232,11 +233,12 @@ function handleClauseEditInput(event) {
       else draft.activeWorkbenchClauseId = clauseId;
     }, { save: false });
     clauseEdit.classList.add("autosaved");
-    clearTimeout(clauseEditAutosaveTimer);
-    clauseEditAutosaveTimer = setTimeout(() => {
+    TimerRegistry.clear("clause-edit-autosave");
+    TimerRegistry.set("clause-edit-autosave", setTimeout(() => {
       saveState();
       clauseEdit.classList.remove("autosaved");
-    }, 180);
+      TimerRegistry.clear("clause-edit-autosave");
+    }, 800));
     return;
   }
 

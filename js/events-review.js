@@ -1,4 +1,4 @@
-let clauseClickTimer = null;
+// clauseClickTimer managed by TimerRegistry
 
 function getClauseIdFromAdviceKey(adviceKey) {
   const parts = String(adviceKey || "").split("||");
@@ -233,23 +233,21 @@ function handleWorkbenchClick(event) {
     event.stopPropagation();
     const clauseId = workbenchClause.dataset.workbenchClause;
     if (event.detail >= 2) {
-      clearTimeout(clauseClickTimer);
-      clauseClickTimer = null;
+      TimerRegistry.clear("clause-click");
       const toggle = workbenchClause.closest("[data-clause-card]")?.querySelector(":scope > .tree-card-header [data-toggle-tree-node]");
       if (toggle) toggleTreeNodeExpansion(toggle.dataset.toggleTreeNode);
       return true;
     }
     if (workbenchClause.closest(".review-advice-sidebar")) {
-      clearTimeout(clauseClickTimer);
-      clauseClickTimer = null;
+      TimerRegistry.clear("clause-click");
       focusWorkbenchClause(clauseId);
       return true;
     }
-    clearTimeout(clauseClickTimer);
-    clauseClickTimer = setTimeout(() => {
+    TimerRegistry.clear("clause-click");
+    TimerRegistry.set("clause-click", setTimeout(() => {
       focusWorkbenchClause(clauseId);
-      clauseClickTimer = null;
-    }, 180);
+      TimerRegistry.clear("clause-click");
+    }, 180));
     return true;
   }
 
@@ -260,23 +258,21 @@ function handleWorkbenchClick(event) {
     const parentClauseId = workbenchSubclause.dataset.parentClause;
     const subclauseId = workbenchSubclause.dataset.workbenchSubclause;
     if (event.detail >= 2) {
-      clearTimeout(clauseClickTimer);
-      clauseClickTimer = null;
+      TimerRegistry.clear("clause-click");
       const toggle = workbenchSubclause.closest("[data-subclause-card]")?.querySelector(":scope > .tree-card-header [data-toggle-tree-node]");
       if (toggle) toggleTreeNodeExpansion(toggle.dataset.toggleTreeNode);
       return true;
     }
     if (workbenchSubclause.closest(".review-advice-sidebar")) {
-      clearTimeout(clauseClickTimer);
-      clauseClickTimer = null;
+      TimerRegistry.clear("clause-click");
       focusWorkbenchSubclause(parentClauseId, subclauseId);
       return true;
     }
-    clearTimeout(clauseClickTimer);
-    clauseClickTimer = setTimeout(() => {
+    TimerRegistry.clear("clause-click");
+    TimerRegistry.set("clause-click", setTimeout(() => {
       focusWorkbenchSubclause(parentClauseId, subclauseId);
-      clauseClickTimer = null;
-    }, 180);
+      TimerRegistry.clear("clause-click");
+    }, 180));
     return true;
   }
 

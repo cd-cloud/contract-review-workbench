@@ -156,9 +156,18 @@ function startBackend() {
   const serverScript = isDev
     ? path.join(__dirname, "..", "server", "server.js")
     : path.join(process.resourcesPath, "app", "server", "server.js");
-  const backendRuntime = isDev
-    ? (process.env.LEGAL_WORKBENCH_NODE_COMMAND || process.env.npm_node_execpath || "node")
-    : process.execPath;
+  if (!fs.existsSync(serverScript)) {
+    dialog.showErrorBox(
+      "启动失败",
+      `后端脚本不存在：\n${serverScript}\n\n请确认应用已正确打包，或尝试重新安装。`
+    );
+    app.quit();
+    return;
+  }
+  const systemNode = process.env.LEGAL_WORKBENCH_NODE_COMMAND || (isDev ? (process.env.npm_node_execpath || "node") : "");
+  const backendRuntime = (systemNode && !isDev)
+    ? systemNode
+    : (isDev ? systemNode : process.execPath);
 
   const env = {
     ...process.env,

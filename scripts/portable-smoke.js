@@ -93,6 +93,8 @@ async function main() {
     process.exit(1);
   }, TIMEOUT_MS);
 
+  let healthCheckPromise = null;
+
   child.stdout.on("data", async (chunk) => {
     stdout += chunk.toString();
     const text = chunk.toString();
@@ -100,25 +102,25 @@ async function main() {
       text.match(/url=http:\/\/127\.0\.0\.1:(\d+)\//);
     if (!match || selectedPort) return;
     selectedPort = Number(match[1]);
-    try {
-      const health = await waitForHealth(selectedPort);
+    healthCheckPromise = waitForHealth(selectedPort).then((health) => {
       clearTimeout(timeout);
       console.log(`portable smoke ok: ${selectedPort}`);
       console.log(`database: ${health.database}`);
       cleanup();
-    } catch (error) {
+      return { ok: true };
+    }).catch((error) => {
       clearTimeout(timeout);
       cleanup();
       console.error(error.message || String(error));
       process.exit(1);
-    }
+    });
   });
 
   child.stderr.on("data", (chunk) => {
     stderr += chunk.toString();
   });
 
-  child.on("exit", (code) => {
+  child.on("exit", async (code) => {
     if (selectedPort && code === null) return;
     if (selectedPort && code === 0) return;
     clearTimeout(timeout);
@@ -128,6 +130,7 @@ async function main() {
       console.error(stderr);
       process.exit(1);
     }
+    if (healthCheckPromise) await healthCheckPromise;
   });
 }
 

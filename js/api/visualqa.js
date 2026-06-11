@@ -194,7 +194,7 @@ function normalizeVisualQaResult(result = {}) {
   };
 }
 
-const visualQaTimers = {};
+// visualQaTimers managed by TimerRegistry (keys prefixed visual-qa:)
 const VISUAL_QA_INTERACTION_DELAY_MS = VISUAL_QA_DELAY_MS;
 const VISUAL_QA_AUTO_REASONS = new Set([
   "segmentation-applied",
@@ -243,7 +243,7 @@ function scheduleVisualQa(contractId = state.activeContractId, reason = "review-
     saveState();
     return;
   }
-  clearTimeout(visualQaTimers[sourceKey]);
+  TimerRegistry.clear(`visual-qa:${sourceKey}`);
   const delay = options.delay ?? (options.force ? 0 : VISUAL_QA_DELAY_MS);
   state.visualQaJobs[sourceKey] = {
     status: "queued",
@@ -260,7 +260,7 @@ function scheduleVisualQa(contractId = state.activeContractId, reason = "review-
     }).catch(() => {});
   }
   saveState();
-  visualQaTimers[sourceKey] = setTimeout(() => runVisualQaForMaterial(contract, material, reason), delay);
+  TimerRegistry.set(`visual-qa:${sourceKey}`, setTimeout(() => runVisualQaForMaterial(contract, material, reason), delay));
 }
 
 function shouldAutoRunVisualQa(reason = "") {
@@ -277,7 +277,7 @@ function isVisualQaInCooldown(sourceKey) {
 
 async function runVisualQaForMaterial(contract, material = getWorkbenchMaterial(contract), reason = "review-state") {
   const sourceKey = material.sourceKey;
-  clearTimeout(visualQaTimers[sourceKey]);
+  TimerRegistry.clear(`visual-qa:${sourceKey}`);
   state.visualQaJobs = state.visualQaJobs || {};
   state.visualQaJobs[sourceKey] = {
     status: "running",
@@ -383,14 +383,17 @@ function applyVisualQaAutoFixes(sourceKey, options = {}) {
     skipped += 1;
   });
   if (!applied) {
-    report.summary = `Agent B 提出了 ${safeFixes.length} 项安全修复，但未匹配到可执行的本地建议。请重新运行 Visual QA 或查看建议归属字段。`;
-    state.visualQaJobs = state.visualQaJobs || {};
-    state.visualQaJobs[sourceKey] = {
-      ...(state.visualQaJobs[sourceKey] || {}),
-      status: "completed",
-      message: report.summary,
-      completedAt: new Date().toISOString(),
-    };
+    Store.mutate("visual-qa-autofix-none", (draft) => {
+      const r = draft.visualQaReports?.[sourceKey];
+      if (r) r.summary = `Agent B 提出了 ${safeFixes.length} 项安全修复，但未匹配到可执行的本地建议。请重新运行 Visual QA 或查看建议归属字段。`;
+      draft.visualQaJobs = draft.visualQaJobs || {};
+      draft.visualQaJobs[sourceKey] = {
+        ...(draft.visualQaJobs[sourceKey] || {}),
+        status: "completed",
+        message: r?.summary,
+        completedAt: new Date().toISOString(),
+      };
+    }, { audit: true, auditDetails: { contractName: contract.name, sourceKey } });
     if (typeof persistBackendAuxState === "function") {
       persistBackendAuxState({
         visualQaJobs: state.visualQaJobs,
@@ -401,22 +404,28 @@ function applyVisualQaAutoFixes(sourceKey, options = {}) {
     if (state.activeContractId === contract.id) renderReview();
     return { applied, skipped, message: "Agent B 的修复项没有匹配到本地建议。" };
   }
-  state.visualQaAutoFixAudits = state.visualQaAutoFixAudits || {};
-  state.visualQaAutoFixAudits[sourceKey] = state.visualQaAutoFixAudits[sourceKey] || [];
-  state.visualQaAutoFixAudits[sourceKey].push({
-    id: uid("visual-fix-audit"),
-    applied,
-    skipped,
-    source: report.source || "",
-    createdAt: new Date().toISOString(),
-  });
-  stored.appliedAt = new Date().toISOString();
   const material = getWorkbenchMaterial(contract);
   const clauses = splitVersionClauses(material.text, material.sourceKey);
-  state.findings = (state.findings || []).filter((finding) => finding.contractId !== contract.id);
-  state.findings.push(...getStoredSkillFindings(contract, clauses));
-  report.autoFixes = (report.autoFixes || []).map((fix) => fix.safeToApply ? { ...fix, applied: true } : fix);
-  report.summary = `已执行 ${applied} 项 Agent B 安全修复。${report.summary || ""}`;
+  Store.mutate("visual-qa-autofix-apply", (draft) => {
+    draft.visualQaAutoFixAudits = draft.visualQaAutoFixAudits || {};
+    draft.visualQaAutoFixAudits[sourceKey] = draft.visualQaAutoFixAudits[sourceKey] || [];
+    draft.visualQaAutoFixAudits[sourceKey].push({
+      id: uid("visual-fix-audit"),
+      applied,
+      skipped,
+      source: report.source || "",
+      createdAt: new Date().toISOString(),
+    });
+    const s = draft.legalSkillResults?.[contractId];
+    if (s) s.appliedAt = new Date().toISOString();
+    draft.findings = (draft.findings || []).filter((finding) => finding.contractId !== contract.id);
+    draft.findings.push(...getStoredSkillFindings(contract, clauses));
+    const r = draft.visualQaReports?.[sourceKey];
+    if (r) {
+      r.autoFixes = (r.autoFixes || []).map((fix) => fix.safeToApply ? { ...fix, applied: true } : fix);
+      r.summary = `已执行 ${applied} 项 Agent B 安全修复。${r.summary || ""}`;
+    }
+  }, { audit: true, auditDetails: { contractName: contract.name, applied, skipped, sourceKey } });
   if (typeof persistBackendAuxState === "function") {
     persistBackendAuxState({
       visualQaReports: state.visualQaReports,

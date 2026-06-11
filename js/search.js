@@ -7,7 +7,7 @@
   const searchDropdown = document.querySelector("#global-search-dropdown");
   if (!searchInput || !searchDropdown) return;
 
-  let searchTimer = null;
+  // searchTimer managed by TimerRegistry
   let searchAbort = null;
   const SEARCH_DEBOUNCE_MS = 250;
   const MIN_QUERY_LEN = 1;
@@ -19,7 +19,7 @@
 
   function handleSearchInput() {
     const query = searchInput.value.trim();
-    clearTimeout(searchTimer);
+    TimerRegistry.clear("search");
     if (searchAbort) searchAbort.abort();
 
     if (query.length < MIN_QUERY_LEN) {
@@ -27,7 +27,7 @@
       return;
     }
 
-    searchTimer = setTimeout(() => runSearch(query), SEARCH_DEBOUNCE_MS);
+    TimerRegistry.set("search", setTimeout(() => runSearch(query), SEARCH_DEBOUNCE_MS));
   }
 
   function handleSearchFocus() {

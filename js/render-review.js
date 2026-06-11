@@ -51,10 +51,11 @@ function isRenderStateUnchanged(last) {
 }
 
 function renderReview() {
+  if (reviewAdviceSyncCleanup) { reviewAdviceSyncCleanup(); reviewAdviceSyncCleanup = null; }
+  if (reviewAdviceSyncFrame) { cancelAnimationFrame(reviewAdviceSyncFrame); reviewAdviceSyncFrame = null; }
   resetClauseRiskFindingCache();
   const contract = state.contracts.find((item) => item.id === state.activeContractId);
   if (!contract) {
-    if (reviewAdviceSyncCleanup) { reviewAdviceSyncCleanup(); reviewAdviceSyncCleanup = null; }
     views.review.innerHTML = `<div class="empty">请先新建或打开一份合同。</div>`;
     __lastRenderState = null;
     return;

@@ -97,7 +97,12 @@ function isAuthorizedApiRequest(req) {
   const headers = req?.headers || {};
   if (headers["x-legal-workbench-token"] === API_TOKEN) return true;
   const cookies = parseCookies(headers.cookie || "");
-  return cookies[SESSION_COOKIE_NAME] === BROWSER_SESSION_ID;
+  if (cookies[SESSION_COOKIE_NAME] !== BROWSER_SESSION_ID) return false;
+  // CSRF protection: require custom header for mutating requests.
+  // Cross-origin simple requests cannot set arbitrary headers.
+  const method = String(req?.method || "GET").toUpperCase();
+  if (["GET", "HEAD", "OPTIONS"].includes(method)) return true;
+  return headers["x-requested-with"] === "LegalWorkbench";
 }
 
 function getApiToken() {

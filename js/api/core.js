@@ -2,7 +2,7 @@ const POLL_TIMEOUT_MS = 8 * 60 * 1000;
 const POLL_INTERVAL_MS = 2500;
 const VISUAL_QA_DELAY_MS = 30 * 1000;
 const VISUAL_QA_COOLDOWN_MS = 10 * 60 * 1000;
-const BACKEND_SYNC_DELAY_MS = 800;
+const BACKEND_SYNC_DELAY_MS = 2500;
 
 async function readBackendError(response, fallbackMessage = "请求失败") {
   let message = fallbackMessage;
@@ -201,6 +201,8 @@ function isLikelyServerUnavailableError(error) {
 }
 
 async function pollLegalSkillJob(jobId, contractId, options = {}) {
+  const oldController = pollControllers.get(jobId);
+  if (oldController) oldController.abort();
   const controller = new AbortController();
   pollControllers.set(jobId, controller);
   try {
@@ -243,7 +245,7 @@ function setAnalysisStatus(contractId, status, message) {
       analysisJobs: state.analysisJobs,
     }).catch(() => {});
   }
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  saveState();
   if (state.activeContractId !== contractId) return;
   const active = document.activeElement;
   const isEditing = active && (active.isContentEditable || active.tagName === "INPUT" || active.tagName === "TEXTAREA");
@@ -262,7 +264,7 @@ function clearAnalysisStatus(contractId) {
       analysisJobs: state.analysisJobs,
     }).catch(() => {});
   }
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  saveState();
 }
 
 function setManualLegalSkillRunStatus(contract, material, status, message = "") {
@@ -392,7 +394,7 @@ async function ensureCodexSegmentation(contract, material) {
     startedAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  saveState();
   renderReview();
   try {
     const result = await runLegalSkillAnalysis(contract, material.text, buildSegmentationOnlyRequirements(), { omitClauses: true, silentStatus: true });
@@ -586,7 +588,7 @@ async function persistBackendAuxState(partialState = {}) {
   return data.db?.auxState || partialState;
 }
 
-let backendSyncTimer = null;
+// backendSyncTimer managed by TimerRegistry
 let backendSyncInFlight = false;
 let backendSyncDirty = false;
 
@@ -626,7 +628,7 @@ async function refreshRunnerStatus() {
     const data = await response.json();
     state.runnerStatus = data.runner;
     state.runnerStatuses = data.runners || {};
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    saveState();
     return data.runner;
   } catch (error) {
     state.runnerStatus = { configured: false, mode: "browser-fallback", error: error.message || String(error) };
@@ -713,8 +715,8 @@ function buildIncrementalPayload(current, last) {
 
 function scheduleBackendSync() {
   backendSyncDirty = true;
-  clearTimeout(backendSyncTimer);
-  backendSyncTimer = setTimeout(() => flushBackendSync(), BACKEND_SYNC_DELAY_MS);
+  TimerRegistry.clear("backend-sync");
+  TimerRegistry.set("backend-sync", setTimeout(() => flushBackendSync(), BACKEND_SYNC_DELAY_MS));
 }
 
 async function flushBackendSync() {

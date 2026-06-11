@@ -42,6 +42,7 @@
     "test:store": "node tests/test-server-store.js"
   },
   "dependencies": {
+    "ajv": "^6.15.0",
     "better-sqlite3": "^12.10.0",
     "playwright": "^1.60.0"
   },
@@ -50,12 +51,17 @@
     "c8": "^11.0.0",
     "dotenv": "^17.4.2",
     "electron": "^35.0.0",
-    "electron-builder": "^26.0.0"
+    "electron-builder": "^26.0.0",
+    "electron-rebuild": "^3.2.9"
   },
   "build": {
     "appId": "com.legalworkbench.app",
     "productName": "AI合同审阅工作台",
-    "asar": false,
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**/*.node",
+      "node_modules/better-sqlite3/**/*.dll"
+    ],
     "directories": {
       "output": "dist"
     },

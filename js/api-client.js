@@ -23,9 +23,13 @@ function legalWorkbenchApiUrl(input) {
 }
 
 function legalWorkbenchFetch(input, init = {}) {
+  const headers = new Headers(init.headers || {});
+  if (!headers.has("X-Requested-With")) {
+    headers.set("X-Requested-With", "LegalWorkbench");
+  }
   return fetch(legalWorkbenchApiUrl(input), {
     ...init,
     credentials: init.credentials || "include",
-    headers: new Headers(init.headers || {}),
+    headers,
   });
 }

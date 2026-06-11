@@ -43,6 +43,26 @@ function mimeTypeFromFileName(fileName) {
   return map[ext] || file.type || "application/octet-stream";
 }
 
+function runDocxParserWorker(buffer) {
+  if (typeof Worker === "undefined") {
+    // Node.js or test environment: fall back to main-thread parse
+    return parseDocxBuffer(buffer);
+  }
+  return new Promise((resolve, reject) => {
+    const worker = new Worker("./js/workers/docx-parser.worker.js", { type: "classic" });
+    worker.onmessage = (e) => {
+      worker.terminate();
+      if (e.data.error) reject(new Error(e.data.error));
+      else resolve(e.data.result);
+    };
+    worker.onerror = (err) => {
+      worker.terminate();
+      reject(new Error(`DOCX Worker error: ${err.message}`));
+    };
+    worker.postMessage({ buffer }, [buffer]);
+  });
+}
+
 async function readUploadedFile(file) {
   const fileBuffer = await file.arrayBuffer();
   const originalBufferBase64 = arrayBufferToBase64(fileBuffer);
@@ -70,9 +90,8 @@ async function readUploadedFile(file) {
       };
     }
     if (typeof showToast === "function") showToast("正在解析 Word 文档，大文件可能需要几秒...", "info");
-    // Yield to browser so the toast renders before the synchronous parse blocks the main thread
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    const parsed = await parseDocxBuffer(buffer);
+    // Offload parsing to a Web Worker to avoid blocking the main thread
+    const parsed = await runDocxParserWorker(buffer);
     if (typeof hideToast === "function") hideToast();
     const kind = parsed.hasRevisions ? "redline" : detectMaterialKind(parsed.acceptedText || parsed.plainText || "");
     return {
@@ -264,6 +283,7 @@ function wordDocumentXmlToParagraphs(xml, mode = "accept") {
 function wordDocumentXmlToBlocks(xml, mode = "accept", numberingContext = null) {
   if (!xml) return [];
   const doc = new DOMParser().parseFromString(xml, "application/xml");
+  if (doc.querySelector("parsererror")) throw new Error("DOCX 内部 XML 解析失败，文件可能已损坏。");
   const body = doc.getElementsByTagName("w:body")[0] || doc.documentElement;
   return [...body.childNodes]
     .flatMap((node) => wordBlockToText(node, mode, numberingContext))
@@ -507,6 +527,7 @@ function legacyToBrowserRoman(value) {
 
 function wordCommentsXmlToText(xml) {
   const doc = new DOMParser().parseFromString(xml, "application/xml");
+  if (doc.querySelector("parsererror")) return "";
   return [...doc.getElementsByTagName("w:comment")]
     .map((comment, index) => {
       const text = [...comment.getElementsByTagName("w:t")].map((node) => node.textContent || "").join("");

@@ -29,6 +29,8 @@ console.log("\n=== test-portable-runtime-pure.js ===\n");
 test("resolveAutomaticAiProfile prefers ready API provider", () => {
   withEnv({
     CODEX_CLI_COMMAND: "C:/definitely-missing/codex.exe",
+    LEGAL_WORKBENCH_DISABLE_KIMI_CLI: "1",
+    LEGAL_WORKBENCH_DISABLE_CODEX_CLI: "1",
     KIMI_API_KEY: "test-key",
     LEGAL_AI_PROVIDER: undefined,
     AI_PROVIDER: undefined,

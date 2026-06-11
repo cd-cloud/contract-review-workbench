@@ -4,6 +4,7 @@
  */
 
 const http = require("http");
+const path = require("path");
 const assert = require("assert");
 
 console.log("\n=== test-server-api.js ===\n");
@@ -81,33 +82,26 @@ test("Path traversal protection rejects outside-root paths", () => {
 });
 
 // --- Analysis job lifecycle (integration) ---
-testAsync("Server health endpoint responds", async () => {
-  // Start a test server on a different port
-  const testPort = 9876;
-  process.env.LEGAL_WORKBENCH_PORT = testPort;
-  process.env.LEGAL_SKILL_RUNNER_SCRIPT = "";
-  process.env.LEGAL_SKILL_COMMAND = "";
+const asyncTests = [];
 
-  delete require.cache[require.resolve("../server/server")];
-  // Note: server.js starts immediately on require, so we need to be careful
-  // For this test, we just verify the module loads without error
-  // and the server starts
-
+asyncTests.push(testAsync("Server health endpoint responds", async () => {
   // Actually, server.js starts listening immediately, which causes issues
   // in tests. Let's just verify syntax.
   require("child_process").execSync('node --check "server/server.js"', {
     cwd: path.resolve(__dirname, ".."),
     stdio: "pipe",
   });
-});
+}));
 
-// Summary
-const failed = totalTests - passedTests;
-process.stdout.write(`\n${passedTests}/${totalTests} passed${failed ? `, ${failed} failed` : ""}\n`);
-if (failed) {
-  process.stdout.write(`\nFailed tests:\n`);
-  failedTests.forEach(({ name, error }) => {
-    process.stdout.write(`  - ${name}: ${error.message}\n`);
-  });
-  process.exit(1);
-}
+// Summary — wait for async tests
+Promise.all(asyncTests).then(() => {
+  const failed = totalTests - passedTests;
+  process.stdout.write(`\n${passedTests}/${totalTests} passed${failed ? `, ${failed} failed` : ""}\n`);
+  if (failed) {
+    process.stdout.write(`\nFailed tests:\n`);
+    failedTests.forEach(({ name, error }) => {
+      process.stdout.write(`  - ${name}: ${error.message}\n`);
+    });
+    process.exit(1);
+  }
+});

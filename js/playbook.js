@@ -295,8 +295,8 @@ function renderPlaybookCards(items) {
   if (!items.length) return `<div class="empty">没有匹配的条款口径</div>`;
   return items
     .map((item) => {
-      item.knowledgeSignals = buildPlaybookKnowledgeSignals(item);
-      item.confidenceScore = inferPlaybookConfidence(item);
+      const knowledgeSignals = buildPlaybookKnowledgeSignals(item);
+      const confidenceScore = inferPlaybookConfidence(item);
       const occurrences = getCleanClauseOccurrences(item);
       return `
       <article class="playbook-card">
@@ -305,7 +305,7 @@ function renderPlaybookCards(items) {
           <span class="status-pill">${playbookStatusLabel(item.status)}</span>
           <span class="${item.reviewStatus === "disabled" ? "risk high" : item.reviewStatus === "pending_review" ? "risk medium" : "status-pill"}">${playbookReviewStatusLabel(item.reviewStatus)}</span>
           <span class="status-pill">使用 ${item.usageCount} 次</span>
-          <span class="status-pill">可信度 ${item.confidenceScore || 0}</span>
+          <span class="status-pill">可信度 ${confidenceScore || 0}</span>
         </div>
         <h4>${escapeHtml(item.type)}｜${escapeHtml(item.ourRole)}</h4>
         ${

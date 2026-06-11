@@ -137,10 +137,11 @@ function isDeadlineUrgent(deadline) {
 }
 
 function getDeadlineDeltaDays(deadline) {
-  if (!deadline) return Number.POSITIVE_INFINITY;
+  if (!deadline || !/^\d{4}-\d{2}-\d{2}$/.test(deadline)) return Number.POSITIVE_INFINITY;
   const todayDate = new Date();
   const todayOnly = new Date(todayDate.getFullYear(), todayDate.getMonth(), todayDate.getDate());
   const deadlineDate = new Date(`${deadline}T00:00:00`);
+  if (Number.isNaN(deadlineDate.getTime())) return Number.POSITIVE_INFINITY;
   return Math.ceil((deadlineDate - todayOnly) / 86400000);
 }
 
@@ -207,8 +208,16 @@ function getPreviousVersionText(contract) {
 const clauseSplitCache = new Map();
 const MAX_CLAUSE_SPLIT_CACHE = 16;
 
+function djb2Hash(str) {
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) + hash) + str.charCodeAt(i);
+  }
+  return (hash >>> 0).toString(36);
+}
+
 function splitVersionClauses(text, sourceKey) {
-  const cacheKey = `${sourceKey}||${String(text).slice(0, 200)}||${text.length}`;
+  const cacheKey = `${sourceKey}||${text.length}||${djb2Hash(String(text))}`;
   if (clauseSplitCache.has(cacheKey)) {
     const result = clauseSplitCache.get(cacheKey);
     clauseSplitCache.delete(cacheKey);

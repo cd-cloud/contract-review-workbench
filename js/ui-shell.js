@@ -42,8 +42,12 @@ function showToast(message, tone = "success") {
   toast.textContent = tone === "error" ? summarizeUserFacingError(message) : message;
   toast.dataset.tone = tone;
   toast.classList.add("visible");
-  clearTimeout(showToast.timer);
-  showToast.timer = setTimeout(() => toast.classList.remove("visible"), 3200);
+  TimerRegistry.clear("toast");
+  TimerRegistry.set("toast", setTimeout(() => {
+    toast.classList.remove("visible");
+    if (toast.parentNode) toast.parentNode.removeChild(toast);
+    TimerRegistry.clear("toast");
+  }, 3200));
 }
 
 function summarizeUserFacingError(message) {

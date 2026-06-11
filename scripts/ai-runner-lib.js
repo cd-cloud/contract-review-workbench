@@ -2,6 +2,8 @@ const { spawn, spawnSync } = require("child_process");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const Ajv = require("ajv");
+const ajv = new Ajv({ strict: false, allErrors: true });
 
 const appRoot = path.resolve(__dirname, "..");
 const CODEX_HOME = process.env.CODEX_HOME || path.join(process.env.USERPROFILE || process.env.HOME || "", ".codex");
@@ -215,6 +217,9 @@ let _codexCommandStatusCache = null;
 let _codexCommandStatusCacheAt = 0;
 
 function resolveCodexCommandStatus() {
+  if (process.env.LEGAL_WORKBENCH_DISABLE_CODEX_CLI === "1") {
+    return { command: "codex", exists: false, runnable: false, detail: "Disabled by LEGAL_WORKBENCH_DISABLE_CODEX_CLI." };
+  }
   if (_codexCommandStatusCache && Date.now() - _codexCommandStatusCacheAt < 30000) {
     return _codexCommandStatusCache;
   }
@@ -240,6 +245,9 @@ let _kimiCommandStatusCache = null;
 let _kimiCommandStatusCacheAt = 0;
 
 function resolveKimiCommandStatus() {
+  if (process.env.LEGAL_WORKBENCH_DISABLE_KIMI_CLI === "1") {
+    return { command: "kimi", exists: false, runnable: false, detail: "Disabled by LEGAL_WORKBENCH_DISABLE_KIMI_CLI." };
+  }
   if (_kimiCommandStatusCache && Date.now() - _kimiCommandStatusCacheAt < 30000) {
     return _kimiCommandStatusCache;
   }
@@ -450,8 +458,9 @@ function compact(value, maxLength = 120000) {
     });
   }
   if (text.length <= maxLength) return text;
-  const end = maxLength;
-  let safeSlice = text.slice(0, end);
+  const headLen = Math.floor(maxLength * 0.6);
+  const tailLen = maxLength - headLen;
+  let safeSlice = text.slice(0, headLen) + text.slice(-tailLen);
   // Avoid cutting in the middle of a Unicode escape sequence
   safeSlice = safeSlice.replace(/\\u[0-9a-fA-F]{0,3}$/, "");
   if (safeSlice.endsWith("\\")) safeSlice = safeSlice.slice(0, -1);
@@ -474,16 +483,18 @@ function compact(value, maxLength = 120000) {
 
 async function runJsonTask({ prompt, schemaPath, outputPrefix = "legal-ai", systemPrompt = "" }) {
   const provider = getProvider();
+  let result;
   if (provider === "codex" || provider === "codex-cli") {
-    return runCodexJsonTask({ prompt, schemaPath, outputPrefix });
+    result = await runCodexJsonTask({ prompt, schemaPath, outputPrefix });
+  } else if (provider === "kimi-cli") {
+    result = await runKimiCliJsonTask({ prompt, schemaPath, outputPrefix });
+  } else if (["openai", "openai-compatible", "kimi", "moonshot"].includes(provider)) {
+    result = await runOpenAiCompatibleJsonTask({ prompt, schemaPath, systemPrompt });
+  } else {
+    throw new Error(`Unsupported LEGAL_AI_PROVIDER: ${provider}`);
   }
-  if (provider === "kimi-cli") {
-    return runKimiCliJsonTask({ prompt, schemaPath, outputPrefix });
-  }
-  if (["openai", "openai-compatible", "kimi", "moonshot"].includes(provider)) {
-    return runOpenAiCompatibleJsonTask({ prompt, schemaPath, systemPrompt });
-  }
-  throw new Error(`Unsupported LEGAL_AI_PROVIDER: ${provider}`);
+  validateAgainstSchema(result, schemaPath);
+  return result;
 }
 
 function runCodexJsonTask({ prompt, schemaPath, outputPrefix, signal }) {
@@ -774,6 +785,24 @@ function printJson(value) {
   process.stdout.write(JSON.stringify(value, null, 2));
 }
 
+function validateAgainstSchema(value, schemaPath) {
+  if (!schemaPath || !fs.existsSync(schemaPath)) return;
+  let schema;
+  try {
+    schema = JSON.parse(fs.readFileSync(schemaPath, "utf8"));
+  } catch (error) {
+    console.error(`[ai-runner-lib] Failed to load schema ${schemaPath}:`, error.message);
+    return;
+  }
+  const validate = ajv.compile(schema);
+  const valid = validate(value);
+  if (!valid) {
+    const errors = validate.errors || [];
+    const summary = errors.slice(0, 5).map((e) => `${e.instancePath || "root"}: ${e.message}`).join("; ");
+    throw new Error(`AI output schema validation failed: ${summary}`);
+  }
+}
+
 module.exports = {
   appRoot,
   buildCodexLaunch,
@@ -791,4 +820,5 @@ module.exports = {
   readStdinJson,
   runJsonTask,
   printJson,
+  validateAgainstSchema,
 };

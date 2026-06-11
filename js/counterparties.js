@@ -149,22 +149,34 @@ function buildCounterpartyProfile(counterparty, contracts, negotiations) {
   };
 }
 
+let filterCounterpartiesTimer = null;
+const counterpartyProfileCache = new WeakMap();
+
 function filterCounterparties() {
-  const keyword = document.querySelector("#counterparty-search")?.value.trim() || "";
-  const type = document.querySelector("#counterparty-type-filter")?.value || "";
-  const risk = document.querySelector("#counterparty-risk-filter")?.value || "";
-  const items = state.counterparties.filter((item) => {
-    const contracts = state.contracts.filter((contract) => contract.counterpartyId === item.id);
-    const negotiations = state.negotiations.filter((record) => record.counterpartyId === item.id);
-    const profile = buildCounterpartyProfile(item, contracts, negotiations);
-    const haystack = `${item.name}${item.type}${item.industry}${item.importance}${item.notes}${profile.preference}${profile.disputedClauses}${profile.acceptablePositions}${profile.rejectedPositions}${profile.riskPreference}${profile.negotiationDuration}${profile.contractTimeline}${profile.nextMove}${negotiations
-      .map((record) => `${record.counterpartyPosition}${record.ourResponse}${record.finalResult}`)
-      .join("")}`;
-    const matchesKeyword = !keyword || haystack.includes(keyword);
-    const matchesType = !type || item.type === type;
-    const matchesRisk = !risk || item.riskLevel === risk;
-    return matchesKeyword && matchesType && matchesRisk;
-  });
-  const listNode = document.querySelector("#counterparty-list");
-  if (listNode) listNode.innerHTML = renderCounterpartyCards(items);
+  clearTimeout(filterCounterpartiesTimer);
+  filterCounterpartiesTimer = setTimeout(() => {
+    const keyword = document.querySelector("#counterparty-search")?.value.trim() || "";
+    const type = document.querySelector("#counterparty-type-filter")?.value || "";
+    const risk = document.querySelector("#counterparty-risk-filter")?.value || "";
+    const items = state.counterparties.filter((item) => {
+      const contracts = state.contracts.filter((contract) => contract.counterpartyId === item.id);
+      const negotiations = state.negotiations.filter((record) => record.counterpartyId === item.id);
+      let profile = counterpartyProfileCache.get(item);
+      if (!profile || profile._contractsLen !== contracts.length || profile._negotiationsLen !== negotiations.length) {
+        profile = buildCounterpartyProfile(item, contracts, negotiations);
+        profile._contractsLen = contracts.length;
+        profile._negotiationsLen = negotiations.length;
+        counterpartyProfileCache.set(item, profile);
+      }
+      const haystack = `${item.name}${item.type}${item.industry}${item.importance}${item.notes}${profile.preference}${profile.disputedClauses}${profile.acceptablePositions}${profile.rejectedPositions}${profile.riskPreference}${profile.negotiationDuration}${profile.contractTimeline}${profile.nextMove}${negotiations
+        .map((record) => `${record.counterpartyPosition}${record.ourResponse}${record.finalResult}`)
+        .join("")}`;
+      const matchesKeyword = !keyword || haystack.includes(keyword);
+      const matchesType = !type || item.type === type;
+      const matchesRisk = !risk || item.riskLevel === risk;
+      return matchesKeyword && matchesType && matchesRisk;
+    });
+    const listNode = document.querySelector("#counterparty-list");
+    if (listNode) listNode.innerHTML = renderCounterpartyCards(items);
+  }, 150);
 }

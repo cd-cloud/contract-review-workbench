@@ -61,8 +61,8 @@ function hideOfflineBanner() {
 }
 
 // Check backend health every 30 seconds
-const backendHealthInterval = setInterval(checkBackendHealth, 30000);
-window.addEventListener("beforeunload", () => clearInterval(backendHealthInterval));
+TimerRegistry.set("backend-health", setInterval(checkBackendHealth, 30000));
+window.addEventListener("beforeunload", () => TimerRegistry.clear("backend-health"));
 
 document.addEventListener("click", handleGlobalClick);
 document.addEventListener("dragstart", handleDragStart);

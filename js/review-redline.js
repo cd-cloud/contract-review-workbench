@@ -100,8 +100,8 @@ function stripHtmlForText(html) {
 /* ─────────────── Version comparison visualization ─────────────── */
 
 function buildClauseLevelComparisonHtml(previousText, currentText) {
-  const previousClauses = splitClauses(previousText, { idPrefix: "prev" });
-  const currentClauses = splitClauses(currentText, { idPrefix: "curr" });
+  const previousClauses = splitClauses(previousText, "comparison-prev");
+  const currentClauses = splitClauses(currentText, "comparison-curr");
 
   const prevByTitle = new Map();
   previousClauses.forEach((c) => {

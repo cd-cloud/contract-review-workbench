@@ -10,6 +10,7 @@ const views = {
 };
 
 function setView(name) {
+  if (typeof TimerRegistry !== "undefined") TimerRegistry.clearAll();
   currentViewName = name;
   document.body.classList.toggle("review-nav-collapsed", name === "review");
   if (name === "review") {
