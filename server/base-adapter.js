@@ -85,8 +85,12 @@ function createAiAdapter(options) {
         }
       });
       if (child.stdin && typeof child.stdin.on === "function") child.stdin.on("error", () => {});
-      child.stdin.write(JSON.stringify(request, null, 2));
-      child.stdin.end();
+      try {
+        child.stdin.write(JSON.stringify(request, null, 2));
+        child.stdin.end();
+      } catch (writeError) {
+        reject(new Error(`Failed to write to runner stdin: ${writeError.message || writeError}`));
+      }
     });
   }
 

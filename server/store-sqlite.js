@@ -9,7 +9,7 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const crypto = require("crypto");
-const { isPathInsideRoot } = require("./http-utils");
+const { isPathInsideRoot, safeJsonStringify } = require("./http-utils");
 
 const config = require("./config");
 const WORKBENCH_ROOT = config.dataDir;
@@ -350,7 +350,16 @@ migrate();
 
 /* ─────────────── Helpers ─────────────── */
 function safeJson(value) {
-  try { return JSON.stringify(value); } catch { return "null"; }
+  try {
+    const seen = new WeakSet();
+    return JSON.stringify(value, (key, val) => {
+      if (typeof val === "object" && val !== null) {
+        if (seen.has(val)) return "[Circular]";
+        seen.add(val);
+      }
+      return val;
+    });
+  } catch { return "null"; }
 }
 function parseJson(text, fallback = null) {
   try { return JSON.parse(text); } catch { return fallback; }
@@ -1289,11 +1298,17 @@ function appendAuditLog(entry = {}) {
 }
 
 function saveAnalysisJob(job = {}) {
+  // Strip large text fields from request before persisting to avoid WAL bloat
+  const requestForPersist = job.request ? { ...job.request } : {};
+  delete requestForPersist.contract_text;
+  delete requestForPersist.previous_text;
+  delete requestForPersist.text;
+  delete requestForPersist.clauses;
   const persisted = {
     id: job.id,
     status: job.status || "queued",
     phase: job.phase || "",
-    request_json: safeJson(job.request || {}),
+    request_json: safeJson(requestForPersist),
     result_json: safeJson(job.result || null),
     error: job.error || null,
     cost_meta_json: safeJson(job.costMeta || null),
@@ -1657,8 +1672,14 @@ function rebuildSearchIndex(snapshot) {
       }
     });
     tx();
+    try {
+      db.prepare("INSERT OR REPLACE INTO app_state (key, value) VALUES (?, ?)").run("searchIndexStatus", safeJson({ status: "ok", rebuiltAt: new Date().toISOString() }));
+    } catch (e) {}
   } catch (err) {
     console.error("[store-sqlite] rebuildSearchIndex failed:", err.message);
+    try {
+      db.prepare("INSERT OR REPLACE INTO app_state (key, value) VALUES (?, ?)").run("searchIndexStatus", safeJson({ status: "failed", error: err.message, failedAt: new Date().toISOString() }));
+    } catch (e) {}
   }
 }
 
@@ -1797,11 +1818,17 @@ function closeDb() {
   try { db.close(); } catch (e) {}
 }
 
+function runInTransaction(fn) {
+  const tx = db.transaction(fn);
+  return tx();
+}
+
 module.exports = {
   readDb,
   closeDb,
   writeDb,
   replaceDb,
+  runInTransaction,
   upsertContract,
   getContractWithTexts,
   upsertContractWithAudit,

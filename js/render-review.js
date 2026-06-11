@@ -18,15 +18,22 @@ let reviewAdviceLastSyncedId = "";
 let __lastRenderState = null;
 
 function captureRenderState() {
+  const clauses = state.clauses || [];
+  const findings = state.findings || [];
+  // Lightweight O(1) identity instead of expensive JSON.stringify for large arrays
+  const clausesHash = `${clauses.length}|${clauses[0]?.id || ""}|${clauses[clauses.length - 1]?.id || ""}`;
+  const findingsHash = `${findings.length}|${findings[0]?.id || ""}|${findings[findings.length - 1]?.id || ""}`;
+  const clauseActionsKeys = Object.keys(state.clauseActions || {});
+  const clauseActionsHash = `${clauseActionsKeys.length}|${clauseActionsKeys.slice(0, 3).join(",")}`;
   return {
     contractId: state.activeContractId,
     activeUpdateId: state.activeUpdateId,
     reviewMode: state.reviewMode,
     comparisonMode: state.comparisonMode,
     contractRiskCollapsed: state.contractRiskCollapsed,
-    clausesHash: JSON.stringify(state.clauses || []),
-    findingsHash: JSON.stringify(state.findings || []),
-    clauseActionsHash: JSON.stringify(state.clauseActions || {}),
+    clausesHash,
+    findingsHash,
+    clauseActionsHash,
     activeWorkbenchClauseId: state.activeWorkbenchClauseId,
     activeSubclauseId: state.activeSubclauseId,
     inlineCommentClauseId: state.inlineCommentClauseId,

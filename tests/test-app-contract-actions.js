@@ -29,7 +29,6 @@ loadScript("js/contract-parser.js");
 loadScript("js/store.js");
 // Load the module under test
 loadScript("js/app-contract-actions.js");
-loadScript("js/app-contract-actions-overrides.js");
 
 console.log("\n=== test-app-contract-actions.js ===\n");
 

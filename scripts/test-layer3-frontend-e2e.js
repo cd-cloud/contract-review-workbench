@@ -59,13 +59,13 @@ function sleep(ms) {
 }
 
 async function main() {
-  if (!localChrome) throw new Error("No Chrome/Edge found");
+  // Prefer local Chrome/Edge when available; otherwise use Playwright's bundled Chromium
   fs.mkdirSync(artifactDir, { recursive: true });
 
   const logs = [];
   const errors = [];
 
-  const browser = await chromium.launch({ headless: true, executablePath: localChrome });
+  const browser = await chromium.launch({ headless: true, executablePath: localChrome || undefined });
   const context = await browser.newContext({ viewport: { width: 1440, height: 1050 } });
   const page = await context.newPage();
 

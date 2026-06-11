@@ -83,20 +83,39 @@
   }
 
   // Observe DOM changes to enhance dynamically rendered elements
-  const observer = new MutationObserver(() => {
-    enhanceTopbar();
-    enhanceContractCards();
-  });
+  let observer = null;
+  let enhancementDebounce = null;
+
+  function runEnhancements() {
+    if (enhancementDebounce) clearTimeout(enhancementDebounce);
+    enhancementDebounce = setTimeout(() => {
+      enhancementDebounce = null;
+      enhanceTopbar();
+      enhanceContractCards();
+    }, 50);
+  }
 
   function startObserving() {
     if (!document.body) {
       setTimeout(startObserving, 100);
       return;
     }
+    if (observer) {
+      try { observer.disconnect(); } catch (e) {}
+    }
+    observer = new MutationObserver(runEnhancements);
     observer.observe(document.body, { childList: true, subtree: true });
-    enhanceTopbar();
-    enhanceContractCards();
+    runEnhancements();
   }
+
+  // Disconnect when page is hidden to reduce CPU during background operations
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden && observer) {
+      try { observer.disconnect(); } catch (e) {}
+    } else if (!document.hidden) {
+      startObserving();
+    }
+  });
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", startObserving);

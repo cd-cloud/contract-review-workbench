@@ -241,11 +241,22 @@ function tryRestartBackend() {
   setTimeout(startBackend, 2000);
 }
 
+let isStoppingBackend = false;
+
 function stopBackend() {
   return new Promise((resolve) => {
     if (!backendProcess) { resolve(); return; }
+    if (isStoppingBackend) {
+      // Wait for existing stop to complete
+      const wait = setInterval(() => {
+        if (!backendProcess) { clearInterval(wait); resolve(); }
+      }, 100);
+      setTimeout(() => { clearInterval(wait); resolve(); }, 8000);
+      return;
+    }
+    isStoppingBackend = true;
     console.log("[Electron] Stopping backend...");
-    backendProcess.removeAllListeners("close");
+    // Do NOT removeAllListeners("close") — let the natural close handler clean up references
     try { backendProcess.stdout?.removeAllListeners("data"); } catch (e) {}
     try { backendProcess.stderr?.removeAllListeners("data"); } catch (e) {}
 
@@ -280,6 +291,7 @@ function stopBackend() {
         clearTimeout(killTimeout);
         backendProcess = null;
         backendReady = false;
+        isStoppingBackend = false;
         resolve();
       }
     }, 200);
@@ -289,6 +301,7 @@ function stopBackend() {
       clearTimeout(killTimeout);
       backendProcess = null;
       backendReady = false;
+      isStoppingBackend = false;
       resolve();
     }, 8000);
   });

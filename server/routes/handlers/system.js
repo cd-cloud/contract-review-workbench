@@ -112,43 +112,46 @@ async function handleSystem(req, res, url, state = {}) {
 }
 
 async function incrementalSync(snapshot) {
-  const savedAt = new Date().toISOString();
-  const contracts = snapshot.contracts || [];
-  const versions = snapshot.updates || snapshot.contractVersions || [];
-  const clauses = snapshot.clauses || [];
-  const findings = snapshot.findings || snapshot.reviewRecords || [];
-  const clauseActions = snapshot.clauseActions || {};
+  const { runInTransaction } = require("../../store-sqlite");
+  return runInTransaction(() => {
+    const savedAt = new Date().toISOString();
+    const contracts = snapshot.contracts || [];
+    const versions = snapshot.updates || snapshot.contractVersions || [];
+    const clauses = snapshot.clauses || [];
+    const findings = snapshot.findings || snapshot.reviewRecords || [];
+    const clauseActions = snapshot.clauseActions || {};
 
-  for (const contract of contracts) {
-    upsertContract(contract);
-  }
-  for (const version of versions) {
-    upsertContractVersion(version);
-  }
-  // Group clauses/findings/actions by contract for targeted replacement
-  const clausesByContract = new Map();
-  for (const clause of clauses) {
-    const list = clausesByContract.get(clause.contractId) || [];
-    list.push(clause);
-    clausesByContract.set(clause.contractId, list);
-  }
-  const findingsByContract = new Map();
-  for (const finding of findings) {
-    const list = findingsByContract.get(finding.contractId) || [];
-    list.push(finding);
-    findingsByContract.set(finding.contractId, list);
-  }
-  for (const [contractId, contractClauses] of clausesByContract) {
-    replaceContractClauses(contractId, null, contractClauses);
-  }
-  for (const [contractId, contractFindings] of findingsByContract) {
-    replaceContractFindings(contractId, contractFindings);
-  }
-  for (const [sourceKey, actions] of Object.entries(clauseActions)) {
-    replaceClauseActions(sourceKey, actions);
-  }
+    for (const contract of contracts) {
+      upsertContract(contract);
+    }
+    for (const version of versions) {
+      upsertContractVersion(version);
+    }
+    // Group clauses/findings/actions by contract for targeted replacement
+    const clausesByContract = new Map();
+    for (const clause of clauses) {
+      const list = clausesByContract.get(clause.contractId) || [];
+      list.push(clause);
+      clausesByContract.set(clause.contractId, list);
+    }
+    const findingsByContract = new Map();
+    for (const finding of findings) {
+      const list = findingsByContract.get(finding.contractId) || [];
+      list.push(finding);
+      findingsByContract.set(finding.contractId, list);
+    }
+    for (const [contractId, contractClauses] of clausesByContract) {
+      replaceContractClauses(contractId, null, contractClauses);
+    }
+    for (const [contractId, contractFindings] of findingsByContract) {
+      replaceContractFindings(contractId, contractFindings);
+    }
+    for (const [sourceKey, actions] of Object.entries(clauseActions)) {
+      replaceClauseActions(sourceKey, actions);
+    }
 
-  return { ok: true, savedAt, mode: "incremental", contracts: contracts.length, versions: versions.length, clauses: clauses.length, findings: findings.length };
+    return { ok: true, savedAt, mode: "incremental", contracts: contracts.length, versions: versions.length, clauses: clauses.length, findings: findings.length };
+  });
 }
 
 module.exports = { handleSystem };

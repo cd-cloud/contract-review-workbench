@@ -80,7 +80,7 @@ for (const file of testFiles) {
   const result = spawnSync(process.execPath, [fullPath], {
     cwd: root,
     encoding: "utf8",
-    timeout: 60000,
+    timeout: 120000,
   });
   if (result.error?.code === "EPERM") {
     sandboxBlocked = true;

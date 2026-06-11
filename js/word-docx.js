@@ -537,7 +537,7 @@ function wordCommentsXmlToText(xml) {
     .join("\n");
 }
 
-const MAX_UPLOADED_FILE_CACHE = 20;
+const MAX_UPLOADED_FILE_CACHE = 10;
 
 function cacheUploadedFileResult(target, result) {
   if (uploadedFileCache.size >= MAX_UPLOADED_FILE_CACHE) {

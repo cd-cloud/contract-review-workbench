@@ -53,7 +53,7 @@ async function main() {
   if (!fs.existsSync(contractPath)) throw new Error(`Missing test contract: ${contractPath}`);
   fs.mkdirSync(artifactDir, { recursive: true });
 
-  const browser = await chromium.launch({ headless: true, executablePath: localChrome });
+  const browser = await chromium.launch({ headless: true, executablePath: localChrome || undefined });
   const context = await browser.newContext({ acceptDownloads: true, viewport: { width: 1440, height: 1050 } });
   const page = await context.newPage();
   const logs = [];

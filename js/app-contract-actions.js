@@ -49,6 +49,7 @@ function scheduleAutomaticCodexReview(contractId, reason = "auto") {
   const jobKey = material.sourceKey || contract.id;
   const existing = (state.autoReviewJobs || {})[jobKey];
   if (["queued", "running"].includes(existing?.status) && !isStaleCodexJob(existing, STALE_JOB_TIMEOUT_MS)) return;
+
   Store.mutate("queue-auto-review", (draft) => {
     draft.autoReviewJobs = draft.autoReviewJobs || {};
     draft.autoReviewJobs[jobKey] = {
@@ -58,25 +59,13 @@ function scheduleAutomaticCodexReview(contractId, reason = "auto") {
       queuedAt: new Date().toISOString(),
     };
   });
+
   if (typeof persistBackendAuxState === "function") {
     persistBackendAuxState({
       autoReviewJobs: state.autoReviewJobs,
     }).catch(() => {});
   }
-  saveState();
-  setTimeout(() => runAutomaticCodexReview(contractId, jobKey, reason), 0);
-  return;
-  state.autoReviewJobs[jobKey] = {
-    status: "queued",
-    reason,
-    message: "AI 自动审阅已排队",
-    queuedAt: new Date().toISOString(),
-  };
-  if (typeof persistBackendAuxState === "function") {
-    persistBackendAuxState({
-      autoReviewJobs: state.autoReviewJobs,
-    }).catch(() => {});
-  }
+
   saveState();
   setTimeout(() => runAutomaticCodexReview(contractId, jobKey, reason), 0);
 }
@@ -96,6 +85,7 @@ async function runAutomaticCodexReview(contractId, expectedSourceKey, reason = "
   const material = getWorkbenchMaterial(contract);
   const jobKey = material.sourceKey || contract.id;
   if (expectedSourceKey && jobKey !== expectedSourceKey) return;
+
   Store.mutate("start-auto-review", (draft) => {
     draft.autoReviewJobs = draft.autoReviewJobs || {};
     draft.autoReviewJobs[jobKey] = {
@@ -107,16 +97,19 @@ async function runAutomaticCodexReview(contractId, expectedSourceKey, reason = "
       updatedAt: new Date().toISOString(),
     };
   }, { save: false });
+
   if (typeof persistBackendAuxState === "function") {
     persistBackendAuxState({
       autoReviewJobs: state.autoReviewJobs,
     }).catch(() => {});
   }
-  setAnalysisStatus(contract.id, "queued", "AI 宸茶嚜鍔ㄥ紑濮嬪悎鍚屽闃呭垎鏋愶紝骞朵細鍚屾椂杩斿洖鏉℃鍒囧垎...");
+
+  setAnalysisStatus(contract.id, "queued", "AI 已自动开始合同审阅分析，并会同时返回条款切分...");
   saveState();
   renderReview();
+
   try {
-    setAnalysisStatus(contract.id, "queued", "AI 姝ｅ湪鑷姩杩愯 Legal Skill 瀹￠槄鍒嗘瀽...");
+    setAnalysisStatus(contract.id, "queued", "AI 正在自动运行 Legal Skill 审阅分析...");
     const result = await runLegalSkillAnalysis(contract, material.text);
     if (state.activeContractId !== contract.id) return;
     if (getWorkbenchMaterial(contract).sourceKey !== jobKey) {
@@ -137,9 +130,11 @@ async function runAutomaticCodexReview(contractId, expectedSourceKey, reason = "
       saveState();
       return;
     }
+
     applyLegalSkillResult(contract, result, splitVersionClauses(material.text, material.sourceKey));
     const prepared = await ensureAnalysisHasCodexSegmentation(contract);
     const clauses = splitVersionClauses(prepared.text, prepared.sourceKey);
+
     Store.mutate("complete-auto-review", (draft) => {
       draft.findings = (draft.findings || []).filter((finding) => finding.contractId !== contract.id);
       draft.findings.push(...getStoredSkillFindings(contract, clauses));
@@ -151,16 +146,18 @@ async function runAutomaticCodexReview(contractId, expectedSourceKey, reason = "
         completedAt: new Date().toISOString(),
       };
     }, { save: false });
+
     if (typeof persistBackendAuxState === "function") {
       persistBackendAuxState({
         autoReviewJobs: state.autoReviewJobs,
         findings: state.findings,
       }).catch(() => {});
     }
-    recordAudit("鑷姩杩愯 AI Legal Skill 鍒嗘瀽", { contractName: contract.name, note: reason });
+
+    recordAudit("自动运行 AI Legal Skill 分析", { contractName: contract.name, note: reason });
     saveState();
     renderReview();
-    showToast("AI 宸茶嚜鍔ㄥ畬鎴愬闃呭垎鏋愩€?");
+    showToast("AI 已自动完成审阅分析。");
   } catch (error) {
     Store.mutate("fail-auto-review", (draft) => {
       draft.autoReviewJobs = draft.autoReviewJobs || {};
@@ -171,15 +168,17 @@ async function runAutomaticCodexReview(contractId, expectedSourceKey, reason = "
         failedAt: new Date().toISOString(),
       };
     }, { save: false });
+
     if (typeof persistBackendAuxState === "function") {
       persistBackendAuxState({
         autoReviewJobs: state.autoReviewJobs,
       }).catch(() => {});
     }
+
     setAnalysisStatus(contract.id, "failed", error.message || String(error));
     saveState();
     renderReview();
-    showToast(`AI 鑷姩瀹￠槄澶辫触锛?{error.message || String(error)}`, "error");
+    showToast(`AI 自动审阅失败：${error.message || String(error)}`, "error");
   }
 }
 

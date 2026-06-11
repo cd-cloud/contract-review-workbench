@@ -132,9 +132,13 @@ function buildCostMetadata(result) {
     meta.outputTokens = result.usage.completion_tokens || result.usage.output_tokens || 0;
     meta.totalTokens = result.usage.total_tokens || (meta.inputTokens + meta.outputTokens);
   }
-  // Rough CNY estimate (example rates)
+  // Rough CNY estimate (example rates; not updated automatically)
+  // Override via LEGAL_WORKBENCH_COST_RATE_PER_1K env var if needed
   if (meta.totalTokens) {
-    const ratePer1k = meta.model.includes("moonshot") ? 0.024 : 0.03;
+    const envRate = Number(process.env.LEGAL_WORKBENCH_COST_RATE_PER_1K);
+    const ratePer1k = Number.isFinite(envRate) && envRate > 0
+      ? envRate
+      : (meta.model.includes("moonshot") ? 0.024 : 0.03);
     meta.estimatedCostCny = Number(((meta.totalTokens / 1000) * ratePer1k).toFixed(4));
   }
   return meta;
@@ -192,11 +196,14 @@ async function executeAnalysisJob(job, request) {
   }
 
   // 2. Diff review if previous text provided
-  let diffResult = null;
+  let diffParts = null;
   if (request.previous_text && request.contract_text && request.previous_text !== request.contract_text) {
     try {
       const { buildInlineDiffParts } = require("../js/diff-engine");
-      diffResult = buildInlineDiffParts(request.previous_text, request.contract_text);
+      const rawDiff = buildInlineDiffParts(request.previous_text, request.contract_text);
+      if (Array.isArray(rawDiff) && rawDiff.length > 0) {
+        diffParts = rawDiff.slice(0, 200);
+      }
     } catch (e) {}
   }
 
@@ -227,12 +234,11 @@ async function executeAnalysisJob(job, request) {
     );
     if (current.status === "cancelled" || current.__aborted) return;
 
-    if (Array.isArray(diffResult) && diffResult.length > 0) {
-      diffResult = diffResult.slice(0, 200);
+    if (Array.isArray(diffParts) && diffParts.length > 0) {
       result.diffReview = {
         changed: true,
-        parts: diffResult,
-        summary: `检测到文本差异，共 ${diffResult.length} 个差异片段`,
+        parts: diffParts,
+        summary: `检测到文本差异，共 ${diffParts.length} 个差异片段`,
       };
     }
 
