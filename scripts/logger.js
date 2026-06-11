@@ -6,6 +6,7 @@ const LOG_DIR = process.env.LEGAL_WORKBENCH_LOG_DIR
   || path.join(os.homedir(), "LegalWorkbench", "logs");
 const MAX_LOG_SIZE_BYTES = Number(process.env.LEGAL_WORKBENCH_MAX_LOG_SIZE || 10 * 1024 * 1024);
 const MAX_LOG_ROTATIONS = Number(process.env.LEGAL_WORKBENCH_MAX_LOG_ROTATIONS || 5);
+const MAX_LOG_AGE_DAYS = Number(process.env.LEGAL_WORKBENCH_MAX_LOG_AGE_DAYS || 30);
 
 fs.mkdirSync(LOG_DIR, { recursive: true });
 
@@ -40,6 +41,27 @@ function rotateLogFile(logFile) {
     // Silently fail if rotation fails
   }
 }
+
+function pruneOldLogs() {
+  try {
+    const cutoff = Date.now() - MAX_LOG_AGE_DAYS * 24 * 60 * 60 * 1000;
+    const entries = fs.readdirSync(LOG_DIR);
+    for (const name of entries) {
+      if (!name.endsWith(".log")) continue;
+      const filePath = path.join(LOG_DIR, name);
+      try {
+        const stat = fs.statSync(filePath);
+        if (stat.mtimeMs < cutoff) {
+          fs.unlinkSync(filePath);
+        }
+      } catch (e) {}
+    }
+  } catch (error) {
+    // Silently fail if pruning fails
+  }
+}
+
+pruneOldLogs();
 
 function write(level, message) {
   const timestamp = new Date().toISOString();

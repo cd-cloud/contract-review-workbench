@@ -16,7 +16,7 @@ const { configureRunnerProfile } = require("../scripts/portable-runtime");
 
 const isDev = !app.isPackaged;
 const isTest = process.env.NODE_ENV === "test" || process.env.ELECTRON_SMOKE_TEST === "1";
-const WORKBENCH_ROOT = path.join(os.homedir(), "LegalWorkbench");
+let WORKBENCH_ROOT = path.join(os.homedir(), "LegalWorkbench");
 
 function smokeLog(message) {
   if (!isTest || !process.env.ELECTRON_SMOKE_LOG) return;
@@ -442,10 +442,14 @@ function updateTrayMenu() {
       label: "立即备份",
       click: async () => {
         try {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 8000);
           const res = await fetch(`${BACKEND_URL()}/api/backup`, {
             method: "POST",
             headers: { "X-Legal-Workbench-Token": await getApiToken(), "Content-Type": "application/json" },
+            signal: controller.signal,
           });
+          clearTimeout(timeout);
           const data = await res.json();
           if (data.ok) {
             dialog.showMessageBox(mainWindow || undefined, {

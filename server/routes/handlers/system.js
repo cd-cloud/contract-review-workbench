@@ -1,5 +1,7 @@
 const { sendJson, readJson, serverErrorPayload } = require("../../http-utils");
 const { readDb, replaceDb, runWalCheckpoint, runAutoBackup, appendAuditLog, DB_PATH, WAL_PATH, FILE_DIR, WORKBENCH_ROOT } = require("../../store");
+
+let isSyncing = false;
 const { getRunnerStatus } = require("../../legal-skill-adapter");
 const { getRunnerStatus: getSuggestionRunnerStatus } = require("../../suggestion-action-adapter");
 const { getRunnerStatus: getIntakeRunnerStatus } = require("../../contract-intake-adapter");
@@ -37,6 +39,11 @@ async function handleSystem(req, res, url, state = {}) {
   }
 
   if (req.method === "POST" && url.pathname === "/api/db/sync") {
+    if (isSyncing) {
+      sendJson(res, 429, { ok: false, error: "Sync already in progress, please retry later" }, req);
+      return true;
+    }
+    isSyncing = true;
     try {
       const snapshot = await readJson(req);
       let dbResult;
@@ -50,6 +57,8 @@ async function handleSystem(req, res, url, state = {}) {
       sendJson(res, 200, { ok: true, db: dbResult }, req);
     } catch (error) {
       sendJson(res, error.statusCode || 500, serverErrorPayload(error, "Failed to sync workbench state"), req);
+    } finally {
+      isSyncing = false;
     }
     return true;
   }

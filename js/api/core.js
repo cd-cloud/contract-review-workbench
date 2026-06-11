@@ -244,7 +244,14 @@ function setAnalysisStatus(contractId, status, message) {
     }).catch(() => {});
   }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  if (state.activeContractId === contractId) renderReview();
+  if (state.activeContractId !== contractId) return;
+  const active = document.activeElement;
+  const isEditing = active && (active.isContentEditable || active.tagName === "INPUT" || active.tagName === "TEXTAREA");
+  if (isEditing) {
+    setTimeout(() => renderReview(), 500);
+  } else {
+    renderReview();
+  }
 }
 
 function clearAnalysisStatus(contractId) {
@@ -653,7 +660,7 @@ async function flushBackendSync() {
   }
   backendSyncInFlight = true;
   backendSyncDirty = false;
-  const snapshot = clone(state);
+  const snapshot = await new Promise((resolve) => setTimeout(() => resolve(clone(state)), 0));
   try {
     const response = await legalWorkbenchFetch("/api/db/sync", {
       method: "POST",

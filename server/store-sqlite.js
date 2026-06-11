@@ -1530,7 +1530,24 @@ function restoreBackupToDirectory(backupPath, targetRoot) {
     throw new Error("Refusing to overwrite the active sqlite database");
   }
   fs.mkdirSync(targetDataDir, { recursive: true });
-  fs.copyFileSync(backupDbPath, targetDbPath);
+  // Close active DB connection before copying to avoid EBUSY / WAL inconsistency
+  try { closeDb(); } catch (e) {}
+  try {
+    fs.copyFileSync(backupDbPath, targetDbPath);
+  } finally {
+    // Re-open database connection
+    try {
+      const newDb = new Database(DB_PATH, { timeout: 5000 });
+      newDb.pragma("journal_mode = WAL");
+      newDb.pragma("foreign_keys = ON");
+      // Replace the module-level db reference used by other functions
+      Object.setPrototypeOf(db, Object.getPrototypeOf(newDb));
+      Object.assign(db, newDb);
+    } catch (reopenErr) {
+      console.error("[store-sqlite] Failed to reopen database after backup restore:", reopenErr.message);
+      throw new Error("Database connection lost after backup restore. Please restart the application.");
+    }
+  }
   copyDirectoryIfExists(path.join(resolvedBackup, "contracts"), targetContractsDir);
   copyDirectoryIfExists(path.join(resolvedBackup, "files"), targetFilesDir);
   return {

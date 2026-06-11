@@ -55,7 +55,9 @@ async function readUploadedFile(file) {
         originalBufferBase64,
       };
     }
+    if (typeof showToast === "function") showToast("正在解析 Word 文档，大文件可能需要几秒...", "info");
     const parsed = await parseDocxBuffer(buffer);
+    if (typeof hideToast === "function") hideToast();
     const kind = parsed.hasRevisions ? "redline" : detectMaterialKind(parsed.acceptedText || parsed.plainText || "");
     return {
       sourceType: "docx",

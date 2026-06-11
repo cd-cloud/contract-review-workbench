@@ -252,7 +252,23 @@ function writeLocalState(nextState = state) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
   } catch (error) {
-    // Debug: localStorage write failed
+    console.error("[state] localStorage write failed:", error.message);
+    if (typeof showToast === "function") {
+      showToast("本地存储已满，请导出备份或清理旧合同", "error");
+    }
+    try {
+      const request = indexedDB.open("legal-workbench-fallback", 1);
+      request.onupgradeneeded = (event) => {
+        event.target.result.createObjectStore("state", { keyPath: "key" });
+      };
+      request.onsuccess = (event) => {
+        const db = event.target.result;
+        const tx = db.transaction("state", "readwrite");
+        tx.objectStore("state").put({ key: STORAGE_KEY, value: nextState });
+      };
+    } catch (idbError) {
+      console.error("[state] IndexedDB fallback also failed:", idbError.message);
+    }
   }
 }
 

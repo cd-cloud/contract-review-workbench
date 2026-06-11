@@ -8,13 +8,24 @@ const crypto = require("crypto");
 const config = require("./config");
 const MAX_CACHE_ENTRIES = config.cacheMaxEntries;
 const CACHE_TTL_MS = config.cacheTtlMs;
+const MAX_CACHE_BYTES = Number(process.env.LEGAL_WORKBENCH_CACHE_MAX_BYTES || 100 * 1024 * 1024);
+
+function estimateSize(value) {
+  try {
+    return JSON.stringify(value).length * 2; // rough UTF-16 byte estimate
+  } catch {
+    return 1024 * 1024; // fallback 1MB
+  }
+}
 
 class AnalysisCache {
-  constructor({ maxEntries = MAX_CACHE_ENTRIES, ttlMs = CACHE_TTL_MS } = {}) {
+  constructor({ maxEntries = MAX_CACHE_ENTRIES, ttlMs = CACHE_TTL_MS, maxBytes = MAX_CACHE_BYTES } = {}) {
     this.maxEntries = maxEntries;
     this.ttlMs = ttlMs;
-    this.map = new Map(); // hash -> { result, createdAt, hits }
+    this.maxBytes = maxBytes;
+    this.map = new Map(); // hash -> { result, createdAt, hits, sizeBytes }
     this.accessOrder = []; // LRU list of hashes
+    this.currentBytes = 0;
   }
 
   _makeKey(request) {
@@ -60,15 +71,20 @@ class AnalysisCache {
     // Evict expired entries first
     for (const [key, entry] of this.map.entries()) {
       if (now - entry.createdAt > this.ttlMs) {
+        this.currentBytes -= entry.sizeBytes || 0;
         this.map.delete(key);
         const idx = this.accessOrder.indexOf(key);
         if (idx >= 0) this.accessOrder.splice(idx, 1);
       }
     }
-    // Evict oldest if still over limit
-    while (this.map.size > this.maxEntries && this.accessOrder.length) {
+    // Evict oldest if still over byte or entry limit
+    while (this.accessOrder.length && (this.map.size > this.maxEntries || this.currentBytes > this.maxBytes)) {
       const oldest = this.accessOrder.shift();
-      this.map.delete(oldest);
+      const entry = this.map.get(oldest);
+      if (entry) {
+        this.currentBytes -= entry.sizeBytes || 0;
+        this.map.delete(oldest);
+      }
     }
   }
 
@@ -77,6 +93,7 @@ class AnalysisCache {
     const entry = this.map.get(key);
     if (!entry) return null;
     if (Date.now() - entry.createdAt > this.ttlMs) {
+      this.currentBytes -= entry.sizeBytes || 0;
       this.map.delete(key);
       const idx = this.accessOrder.indexOf(key);
       if (idx >= 0) this.accessOrder.splice(idx, 1);
@@ -89,27 +106,36 @@ class AnalysisCache {
 
   set(request, result) {
     const key = this._makeKey(request);
+    const sizeBytes = estimateSize(result);
     this._evictIfNeeded();
     // If key already exists, update in place
     if (this.map.has(key)) {
       const entry = this.map.get(key);
+      this.currentBytes -= entry.sizeBytes || 0;
       entry.result = result;
       entry.createdAt = Date.now();
       entry.hits += 1;
+      entry.sizeBytes = sizeBytes;
+      this.currentBytes += sizeBytes;
       this._touch(key);
       return;
     }
     // Evict if at capacity
-    if (this.map.size >= this.maxEntries && this.accessOrder.length) {
+    if ((this.map.size >= this.maxEntries || this.currentBytes + sizeBytes > this.maxBytes) && this.accessOrder.length) {
       const oldest = this.accessOrder.shift();
+      const oldEntry = this.map.get(oldest);
+      if (oldEntry) this.currentBytes -= oldEntry.sizeBytes || 0;
       this.map.delete(oldest);
     }
-    this.map.set(key, { result, createdAt: Date.now(), hits: 1 });
+    this.map.set(key, { result, createdAt: Date.now(), hits: 1, sizeBytes });
+    this.currentBytes += sizeBytes;
     this.accessOrder.push(key);
   }
 
   invalidate(request) {
     const key = this._makeKey(request);
+    const entry = this.map.get(key);
+    if (entry) this.currentBytes -= entry.sizeBytes || 0;
     this.map.delete(key);
     const idx = this.accessOrder.indexOf(key);
     if (idx >= 0) this.accessOrder.splice(idx, 1);
@@ -118,6 +144,7 @@ class AnalysisCache {
   clear() {
     this.map.clear();
     this.accessOrder.length = 0;
+    this.currentBytes = 0;
   }
 
   stats() {
@@ -125,6 +152,8 @@ class AnalysisCache {
       size: this.map.size,
       maxEntries: this.maxEntries,
       ttlMs: this.ttlMs,
+      maxBytes: this.maxBytes,
+      currentBytes: this.currentBytes,
     };
   }
 }

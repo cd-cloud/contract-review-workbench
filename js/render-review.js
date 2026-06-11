@@ -23,14 +23,6 @@ function renderReview() {
     views.review.innerHTML = `<div class="empty">请先新建或打开一份合同。</div>`;
     return;
   }
-  if (!contract) {
-    if (reviewAdviceSyncCleanup) {
-      reviewAdviceSyncCleanup();
-      reviewAdviceSyncCleanup = null;
-    }
-    views.review.innerHTML = `<div class="empty">请先新建或打开一份合同。</div>`;
-    return;
-  }
   const workbenchMaterial = getWorkbenchMaterial(contract);
   const workbenchClauses = splitVersionClauses(workbenchMaterial.text, workbenchMaterial.sourceKey);
   if (views.review?.classList.contains("active")) scheduleCodexSegmentation(contract, workbenchMaterial);
