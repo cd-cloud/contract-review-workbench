@@ -140,6 +140,15 @@ function buildCostMetadata(result) {
   return meta;
 }
 
+function isRetryableError(error) {
+  const msg = String(error?.message || error || "");
+  // Do not retry auth errors, missing files, or JSON parse errors
+  if (/401|403|Unauthorized|Forbidden|ENOENT|not found|JSON parse|did not return JSON/i.test(msg)) {
+    return false;
+  }
+  return /ECONNRESET|ETIMEDOUT|ENOTFOUND|socket hang up|timeout|timed out|rate limit|429|5\d{2}|Service Unavailable/i.test(msg);
+}
+
 async function runWithRetry(fn, job, signal) {
   let lastError = null;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {

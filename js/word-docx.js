@@ -56,6 +56,8 @@ async function readUploadedFile(file) {
       };
     }
     if (typeof showToast === "function") showToast("正在解析 Word 文档，大文件可能需要几秒...", "info");
+    // Yield to browser so the toast renders before the synchronous parse blocks the main thread
+    await new Promise((resolve) => setTimeout(resolve, 50));
     const parsed = await parseDocxBuffer(buffer);
     if (typeof hideToast === "function") hideToast();
     const kind = parsed.hasRevisions ? "redline" : detectMaterialKind(parsed.acceptedText || parsed.plainText || "");

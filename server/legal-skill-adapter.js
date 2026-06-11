@@ -18,6 +18,23 @@ function getSkillPath() {
   return config.legalWorkOrchestratorSkill;
 }
 
+// Cache for SKILL.md content to avoid repeated synchronous reads
+let skillCache = { path: null, mtime: 0, content: "" };
+
+function getSkillInstructions() {
+  const skillPath = getSkillPath();
+  try {
+    const stat = fs.statSync(skillPath);
+    if (skillCache.path === skillPath && skillCache.mtime >= stat.mtimeMs) {
+      return skillCache.content;
+    }
+    skillCache = { path: skillPath, mtime: stat.mtimeMs, content: fs.readFileSync(skillPath, "utf8") };
+    return skillCache.content;
+  } catch (e) {
+    return "";
+  }
+}
+
 function parseRunnerArgs(value) {
   if (!value) return [];
   try {
@@ -216,6 +233,14 @@ function mergeChunkedCostMeta(chunkResults = []) {
   return meta;
 }
 
+function isRetryableError(error) {
+  const msg = String(error?.message || error || "");
+  if (/401|403|Unauthorized|Forbidden|ENOENT|not found|JSON parse|did not return JSON/i.test(msg)) {
+    return false;
+  }
+  return /ECONNRESET|ETIMEDOUT|ENOTFOUND|socket hang up|timeout|timed out|rate limit|429|5\d{2}|Service Unavailable/i.test(msg);
+}
+
 async function runChunkWithRetry(fn, options = {}) {
   const maxRetries = Number.isFinite(Number(options.maxRetries)) ? Number(options.maxRetries) : CHUNK_MAX_RETRIES;
   const retryBaseMs = Number.isFinite(Number(options.retryBaseMs)) ? Number(options.retryBaseMs) : CHUNK_RETRY_BASE_MS;
@@ -227,9 +252,11 @@ async function runChunkWithRetry(fn, options = {}) {
     } catch (error) {
       lastError = error;
       if (options.signal?.aborted) throw error;
-      if (attempt < maxRetries) {
+      if (attempt < maxRetries && isRetryableError(error)) {
         const delayMs = retryBaseMs * Math.pow(2, attempt);
         await new Promise((resolve) => setTimeout(resolve, delayMs));
+      } else if (attempt >= maxRetries || !isRetryableError(error)) {
+        throw error;
       }
     }
   }
@@ -448,8 +475,7 @@ function runConfiguredSkillCommand(request, options = {}, runnerConfig = getRunn
 }
 
 function buildRunnerPayload(request) {
-  const skillPath = getSkillPath();
-  const skillInstructions = fs.existsSync(skillPath) ? fs.readFileSync(skillPath, "utf8") : "";
+  const skillInstructions = getSkillInstructions();
   return {
     instruction: "Use legal-work-orchestrator first and route to legal-contract-orchestrator where available. If the current provider is Kimi, Moonshot, or another OpenAI-compatible model without local Codex skills, complete the same lawyer-style contract review directly. First perform the full legal review internally, then normalize the completed work into the structured JSON expected by the workbench. Return clauseSegmentation based on legal meaning rather than regex-only parsing. If request.clauses is empty, treat it as an automatic segmentation task and prioritize clauseSegmentation with empty risk arrays. If a chapter title duplicates its only child clause title or first line, keep only one node. For add-clause suggestions, fill targetInsertPosition and linkedClauseIds whenever the suggestion belongs near an existing chapter or clause; reserve pure contractLevelRisks for suggestions with no reasonable card-level location. Do not output the same add-clause suggestion in multiple places. If request.analysis_chunk_meta exists, only analyze the clauses included in this chunk, keep clauseId exact, avoid duplicating other chunks' contract-level suggestions, and treat the provided contract_text as a focused clause snapshot rather than the whole contract.",
     skillInstructions,

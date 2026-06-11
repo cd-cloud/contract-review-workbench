@@ -111,7 +111,9 @@ let backendProcess = null;
 let backendReady = false;
 let backendRestartCount = 0;
 let isQuitting = false;
+let renderProcessReloadCount = 0;
 const MAX_BACKEND_RESTARTS = 5;
+const MAX_RENDER_PROCESS_RELOADS = 3;
 const BACKEND_API_TOKEN = process.env.LEGAL_WORKBENCH_TOKEN || crypto.randomBytes(32).toString("hex");
 
 function applySelectedRuntimeProfile(env, backendRuntime, options = {}) {

@@ -22,7 +22,7 @@ const MAX_WAL_SIZE_BYTES = config.maxWalBytes;
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(FILE_DIR, { recursive: true });
 
-const db = new Database(DB_PATH, { timeout: 5000 });
+let db = new Database(DB_PATH, { timeout: 5000 });
 db.pragma("journal_mode = WAL");
 db.pragma("foreign_keys = ON");
 
@@ -1541,8 +1541,7 @@ function restoreBackupToDirectory(backupPath, targetRoot) {
       newDb.pragma("journal_mode = WAL");
       newDb.pragma("foreign_keys = ON");
       // Replace the module-level db reference used by other functions
-      Object.setPrototypeOf(db, Object.getPrototypeOf(newDb));
-      Object.assign(db, newDb);
+      db = newDb;
     } catch (reopenErr) {
       console.error("[store-sqlite] Failed to reopen database after backup restore:", reopenErr.message);
       throw new Error("Database connection lost after backup restore. Please restart the application.");

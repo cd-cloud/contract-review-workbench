@@ -2,7 +2,7 @@ const POLL_TIMEOUT_MS = 8 * 60 * 1000;
 const POLL_INTERVAL_MS = 2500;
 const VISUAL_QA_DELAY_MS = 30 * 1000;
 const VISUAL_QA_COOLDOWN_MS = 10 * 60 * 1000;
-const BACKEND_SYNC_DELAY_MS = 2500;
+const BACKEND_SYNC_DELAY_MS = 5000;
 
 async function readBackendError(response, fallbackMessage = "请求失败") {
   let message = fallbackMessage;
@@ -660,7 +660,15 @@ async function flushBackendSync() {
   }
   backendSyncInFlight = true;
   backendSyncDirty = false;
-  const snapshot = await new Promise((resolve) => setTimeout(() => resolve(clone(state)), 0));
+  // Defer state cloning to an idle period to avoid blocking user input
+  const snapshot = await new Promise((resolve) => {
+    const doClone = () => resolve(clone(state));
+    if (typeof requestIdleCallback === "function") {
+      requestIdleCallback(doClone, { timeout: 1000 });
+    } else {
+      setTimeout(doClone, 0);
+    }
+  });
   try {
     const response = await legalWorkbenchFetch("/api/db/sync", {
       method: "POST",

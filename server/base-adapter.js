@@ -64,21 +64,11 @@ function createAiAdapter(options) {
 
   function runConfiguredCommand(request, runnerConfig = getRunnerConfig()) {
     return new Promise((resolve, reject) => {
-      const { spawn } = require("child_process");
+      const { execFile } = require("child_process");
       const runnerPath = path.resolve(process.cwd(), runnerConfig.runner);
-      const child = spawn(process.execPath, [runnerPath], {
-        stdio: ["pipe", "pipe", "pipe"],
-      });
-      let stdout = "";
-      let stderr = "";
-      child.stdout.on("data", (data) => { stdout += data; });
-      child.stderr.on("data", (data) => { stderr += data; });
-      child.on("error", (error) => {
-        reject(new Error(`${error.message}\n${stderr || ""}`.trim()));
-      });
-      child.on("close", (code) => {
-        if (code !== 0) {
-          reject(new Error(`Runner exited with code ${code}\n${stderr || ""}`.trim()));
+      const child = execFile(process.execPath, [runnerPath], { maxBuffer: 100 * 1024 * 1024 }, (error, stdout, stderr) => {
+        if (error) {
+          reject(new Error(`${error.message}\n${stderr || ""}`.trim()));
           return;
         }
         try {

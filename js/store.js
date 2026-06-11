@@ -9,7 +9,15 @@ const Store = {
   },
 
   mutate(action, updater, options = {}) {
-    if (typeof updater === "function") updater(state);
+    const prevStateRef = state;
+    const next = { ...state };
+    if (typeof updater === "function") updater(next);
+    // If updater reassigned the global state variable (e.g. reset), respect it
+    if (state !== prevStateRef) {
+      // state was replaced inside updater; do not overwrite with next
+    } else {
+      Object.assign(state, next);
+    }
     if (options.audit) {
       const details = typeof options.auditDetails === "function"
         ? options.auditDetails(state)

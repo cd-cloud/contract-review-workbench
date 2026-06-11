@@ -28,6 +28,16 @@ function renderReview() {
   if (views.review?.classList.contains("active")) scheduleCodexSegmentation(contract, workbenchMaterial);
   if (views.review?.classList.contains("active")) scheduleVisualQaOnReviewOpen(contract, workbenchMaterial);
 
+  // Preserve focus and scroll before rebuilding DOM
+  const activeEl = document.activeElement;
+  const focusId = activeEl?.id || activeEl?.dataset?.clauseCard || activeEl?.dataset?.subclauseCard || null;
+  const focusTag = activeEl?.tagName?.toLowerCase();
+  const focusSelector = activeEl?.matches?.("[data-clause-card]") ? `[data-clause-card="${activeEl.dataset.clauseCard}"]`
+    : activeEl?.matches?.("[data-subclause-card]") ? `[data-subclause-card="${activeEl.dataset.subclauseCard}"]`
+    : focusId ? `#${focusId}` : null;
+  const focusCursor = (focusTag === "input" || focusTag === "textarea") ? { start: activeEl?.selectionStart, end: activeEl?.selectionEnd } : null;
+  const scrollTop = views.review?.scrollTop || 0;
+
   views.review.innerHTML = `
     <div class="review-grid">
       ${renderReviewTopTools(contract, workbenchMaterial, workbenchClauses)}
@@ -43,6 +53,20 @@ function renderReview() {
     </div>
   `;
   setupReviewAdviceScrollSync();
+
+  // Restore scroll and focus after rebuilding DOM
+  if (views.review && scrollTop > 0) {
+    views.review.scrollTop = scrollTop;
+  }
+  if (focusSelector) {
+    const restored = document.querySelector(focusSelector);
+    if (restored) {
+      restored.focus();
+      if (focusCursor && typeof restored.setSelectionRange === "function") {
+        restored.setSelectionRange(focusCursor.start, focusCursor.end);
+      }
+    }
+  }
 }
 
 function renderReviewTopTools(contract, material, clauses) {
