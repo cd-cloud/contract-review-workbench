@@ -30,6 +30,19 @@ function detectMaterialKind(text) {
   return "version";
 }
 
+function mimeTypeFromFileName(fileName) {
+  const ext = (fileName || "").split(".").pop().toLowerCase();
+  const map = {
+    txt: "text/plain",
+    md: "text/markdown",
+    text: "text/plain",
+    eml: "message/rfc822",
+    pdf: "application/pdf",
+    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  };
+  return map[ext] || file.type || "application/octet-stream";
+}
+
 async function readUploadedFile(file) {
   const fileBuffer = await file.arrayBuffer();
   const originalBufferBase64 = arrayBufferToBase64(fileBuffer);
@@ -42,6 +55,7 @@ async function readUploadedFile(file) {
       return {
         sourceType: "docx-backend",
         fileName: file.name,
+        mimeType: mimeTypeFromFileName(file.name),
         kind,
         displayText: normalizeDocxTextArtifacts(backendParsed.hasRevisions ? backendParsed.revisionText : backendParsed.acceptedText),
         plainText: normalizeDocxTextArtifacts(backendParsed.plainText),
@@ -82,6 +96,7 @@ async function readUploadedFile(file) {
   return {
     sourceType: "text",
     fileName: file.name,
+    mimeType: mimeTypeFromFileName(file.name),
     kind,
     displayText: text,
     plainText: text,

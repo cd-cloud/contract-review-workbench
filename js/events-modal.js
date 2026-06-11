@@ -143,7 +143,7 @@ async function handleUploadFormSubmit(event) {
   Store.setActiveContract(contract.id);
   saveState();
   if (uploadResult?.originalBufferBase64) {
-    archiveContractFile(contract.id, uploadResult.originalBufferBase64, uploadResult.fileName || "contract-upload", "application/octet-stream");
+    archiveContractFile(contract.id, uploadResult.originalBufferBase64, uploadResult.fileName || "contract-upload", uploadResult.mimeType || "text/plain");
   }
   event.target.reset();
   delete event.target.dataset.detectedContractType;
@@ -252,7 +252,7 @@ async function handleProgressFormSubmit(event) {
   }
   saveState();
   if (uploadResult?.originalBufferBase64) {
-    archiveContractFile(contract.id, uploadResult.originalBufferBase64, uploadResult.fileName || "version-upload", "application/octet-stream");
+    archiveContractFile(contract.id, uploadResult.originalBufferBase64, uploadResult.fileName || "version-upload", uploadResult.mimeType || "text/plain");
   }
   event.target.reset();
   closeProgressModal();

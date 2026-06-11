@@ -636,14 +636,15 @@ async function refreshRunnerStatus() {
 }
 
 function normalizeRunnerResultMeta(result = {}) {
+  const r = result || {};
   return {
-    source: result.source || "",
-    isFallback: Boolean(result.isFallback) || /fallback/i.test(result.source || ""),
-    fallbackReason: result.fallbackReason || "",
-    promptVersion: result.promptVersion || result.prompt_version || "",
-    skillPath: result.skillPath || result.skill_path || "",
-    downstreamSkill: result.downstreamSkill || result.downstream_skill || "",
-    checkedAt: result.checkedAt || result.checked_at || "",
+    source: r.source || "",
+    isFallback: Boolean(r.isFallback) || /fallback/i.test(r.source || ""),
+    fallbackReason: r.fallbackReason || "",
+    promptVersion: r.promptVersion || r.prompt_version || "",
+    skillPath: r.skillPath || r.skill_path || "",
+    downstreamSkill: r.downstreamSkill || r.downstream_skill || "",
+    checkedAt: r.checkedAt || r.checked_at || "",
   };
 }
 
