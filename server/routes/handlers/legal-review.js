@@ -20,6 +20,7 @@ async function handleLegalReview(req, res, url) {
       const job = createAnalysisJob(request);
       sendJson(res, 202, { ok: true, job: summarizeJob(job) }, req);
     } catch (error) {
+      console.error("[legal-review/jobs] Failed to create analysis job:", error);
       sendJson(res, error.statusCode || 500, { ok: false, error: error.message || String(error) }, req);
     }
     return true;

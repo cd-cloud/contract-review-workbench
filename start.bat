@@ -1,36 +1,36 @@
-ï»¿@echo off
+@echo off
 cd /d "%~dp0."
 chcp 65001 >nul
-title AI åˆåŒå®¡é˜…å·¥ä½œå°
-echo æ­£åœ¨å¯åŠ¨ AI åˆåŒå®¡é˜…å·¥ä½œå°...
+title AI ºÏÍ¬ÉóÔÄ¹¤×÷Ì¨
+echo ÕıÔÚÆô¶¯ AI ºÏÍ¬ÉóÔÄ¹¤×÷Ì¨...
 echo.
 
 REM Check if Node.js is available
 node --version >nul 2>&1
 if errorlevel 1 (
-    echo [é”™è¯¯] æœªæ£€æµ‹åˆ° Node.jsï¼Œè¯·å…ˆå®‰è£… Node.jsã€‚
-    echo ä¸‹è½½åœ°å€: https://nodejs.org/
+    echo [´íÎó] Î´¼ì²âµ½ Node.js£¬ÇëÏÈ°²×° Node.js¡£
+    echo ÏÂÔØµØÖ·: https://nodejs.org/
     pause
     exit /b 1
 )
 
 REM Check if dependencies are installed
 if not exist "node_modules\electron\package.json" (
-    echo æ­£åœ¨å®‰è£…ä¾èµ–...
+    echo ÕıÔÚ°²×°ÒÀÀµ...
     call npm install
     if errorlevel 1 (
-        echo [é”™è¯¯] ä¾èµ–å®‰è£…å¤±è´¥ã€‚
+        echo [´íÎó] ÒÀÀµ°²×°Ê§°Ü¡£
         pause
         exit /b 1
     )
 )
 
 REM Start Electron
-echo æ­£åœ¨å¯åŠ¨æ¡Œé¢åº”ç”¨...
+echo ÕıÔÚÆô¶¯×ÀÃæÓ¦ÓÃ...
 call npm run electron
 
 if errorlevel 1 (
     echo.
-    echo [é”™è¯¯] å¯åŠ¨å¤±è´¥ï¼Œè¯·æŸ¥çœ‹ä¸Šæ–¹é”™è¯¯ä¿¡æ¯ã€‚
+    echo [´íÎó] Æô¶¯Ê§°Ü£¬Çë²é¿´ÉÏ·½´íÎóĞÅÏ¢¡£
     pause
 )
