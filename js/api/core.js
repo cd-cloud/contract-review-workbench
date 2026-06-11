@@ -2,7 +2,7 @@ const POLL_TIMEOUT_MS = 8 * 60 * 1000;
 const POLL_INTERVAL_MS = 2500;
 const VISUAL_QA_DELAY_MS = 30 * 1000;
 const VISUAL_QA_COOLDOWN_MS = 10 * 60 * 1000;
-const BACKEND_SYNC_DELAY_MS = 5000;
+const BACKEND_SYNC_DELAY_MS = 800;
 
 async function readBackendError(response, fallbackMessage = "请求失败") {
   let message = fallbackMessage;
@@ -647,6 +647,69 @@ function normalizeRunnerResultMeta(result = {}) {
   };
 }
 
+async function fetchContractWithTexts(contractId) {
+  const response = await legalWorkbenchFetch(`/api/contracts/${encodeURIComponent(contractId)}`);
+  if (!response.ok) throw new Error("获取合同文本失败");
+  const data = await response.json();
+  return data.contract || null;
+}
+
+async function ensureContractTextsLoaded(contractId) {
+  const contract = state.contracts.find((c) => c.id === contractId);
+  if (!contract) return;
+  // If the contract already has large texts in memory, nothing to do.
+  const hasLargeText = CORE_SYNC_TEXT_FIELDS.some((field) => contract[field] && contract[field].length > 200);
+  if (hasLargeText) return;
+  try {
+    const backendContract = await fetchContractWithTexts(contractId);
+    if (backendContract) {
+      for (const field of CORE_SYNC_TEXT_FIELDS) {
+        if (backendContract[field]) contract[field] = backendContract[field];
+      }
+      if (typeof renderReview === "function" && state.activeContractId === contractId) {
+        renderReview();
+      }
+    }
+  } catch (error) {
+    console.error("[ensureContractTextsLoaded] Failed to load contract texts:", error.message);
+  }
+}
+
+let lastSyncedSnapshot = null;
+const CORE_SYNC_TEXT_FIELDS = ["text", "cleanText", "redlineText", "commentsText"];
+const UPDATE_SYNC_TEXT_FIELDS = ["versionText", "acceptedText", "rejectedText", "revisionText", "commentsText"];
+
+function stripLargeTextsFromSnapshot(snapshot) {
+  const stripped = clone(snapshot);
+  for (const contract of stripped.contracts || []) {
+    for (const field of CORE_SYNC_TEXT_FIELDS) {
+      if (contract[field] && contract[field].length > 200) {
+        contract[field] = "";
+      }
+    }
+  }
+  for (const update of stripped.updates || []) {
+    for (const field of UPDATE_SYNC_TEXT_FIELDS) {
+      if (update[field] && update[field].length > 200) {
+        update[field] = "";
+      }
+    }
+  }
+  return stripped;
+}
+
+function buildIncrementalPayload(current, last) {
+  if (!last) return stripLargeTextsFromSnapshot(current);
+  // Lightweight diff: if the stripped state hasn't changed, send a minimal heartbeat.
+  const currentStripped = stripLargeTextsFromSnapshot(current);
+  const lastStripped = stripLargeTextsFromSnapshot(last);
+  if (JSON.stringify(currentStripped) === JSON.stringify(lastStripped)) {
+    return { syncMode: "incremental" }; // nothing changed
+  }
+  currentStripped.syncMode = "incremental";
+  return currentStripped;
+}
+
 function scheduleBackendSync() {
   backendSyncDirty = true;
   clearTimeout(backendSyncTimer);
@@ -669,11 +732,15 @@ async function flushBackendSync() {
       setTimeout(doClone, 0);
     }
   });
+  // Build an incremental payload stripped of large texts.
+  // The backend is the source of truth for large text fields.
+  const payload = buildIncrementalPayload(snapshot, lastSyncedSnapshot);
+  lastSyncedSnapshot = stripLargeTextsFromSnapshot(snapshot);
   try {
     const response = await legalWorkbenchFetch("/api/db/sync", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(snapshot),
+      body: JSON.stringify(payload),
     });
     if (!response.ok) throw new Error("自动同步失败");
     state.backendSync = {

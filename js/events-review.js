@@ -10,11 +10,23 @@ function handleReviewClick(event) {
   if (reviewModeButton && !reviewModeButton.disabled) {
     Store.mutate("change-review-mode", (draft) => {
       draft.reviewMode = reviewModeButton.dataset.reviewMode;
+      draft.comparisonMode = false;
     });
     if (typeof persistBackendAuxState === "function") {
       persistBackendAuxState({ reviewMode: state.reviewMode }).catch(() => {});
     }
     renderReview();
+  }
+
+  const toggleComparison = event.target.closest("[data-toggle-comparison]");
+  if (toggleComparison) {
+    event.preventDefault();
+    event.stopPropagation();
+    Store.mutate("toggle-comparison-mode", (draft) => {
+      draft.comparisonMode = !draft.comparisonMode;
+    }, { save: false });
+    renderReview();
+    return true;
   }
 
   const clauseViewModeButton = event.target.closest("[data-clause-view-mode]");

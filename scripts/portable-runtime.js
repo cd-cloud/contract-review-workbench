@@ -1,7 +1,7 @@
 const fs = require("fs");
 const net = require("net");
 const path = require("path");
-const { resolveAutomaticProviderSelection } = require("./ai-runner-lib");
+const { resolveAutomaticProviderSelection, resolveKimiCommandStatus } = require("./ai-runner-lib");
 
 const DEFAULT_PORT = 8787;
 const PORT_SCAN_LIMIT = 20;
@@ -106,17 +106,36 @@ function configureRunnerProfile(profile = "ai", targetEnv = process.env) {
   }
 
   if (normalized === "kimi") {
+    const kimiStatus = resolveKimiCommandStatus();
+    if (kimiStatus.runnable) {
+      targetEnv.LEGAL_AI_PROVIDER = "kimi-cli";
+      assignRunner("LEGAL_SKILL_RUNNER_SCRIPT", "scripts/kimi-code-skill-runner.js", targetEnv);
+      assignRunner("SUGGESTION_ACTION_RUNNER_SCRIPT", "scripts/ai-suggestion-runner.js", targetEnv);
+      assignRunner("CONTRACT_INTAKE_RUNNER_SCRIPT", "scripts/ai-intake-runner.js", targetEnv);
+      assignRunner("VISUAL_QA_RUNNER_SCRIPT", "scripts/ai-visual-qa-runner.js", targetEnv);
+      applyRuntimeSelection({ profile: normalized, mode: "kimi-cli", provider: "kimi-cli", reason: "Kimi Code CLI is runnable; using true skill execution." }, targetEnv);
+      return normalized;
+    }
     targetEnv.LEGAL_AI_PROVIDER = "kimi";
     assignRunner("LEGAL_SKILL_RUNNER_SCRIPT", "scripts/ai-skill-runner.js", targetEnv);
     assignRunner("SUGGESTION_ACTION_RUNNER_SCRIPT", "scripts/ai-suggestion-runner.js", targetEnv);
     assignRunner("CONTRACT_INTAKE_RUNNER_SCRIPT", "scripts/ai-intake-runner.js", targetEnv);
     assignRunner("VISUAL_QA_RUNNER_SCRIPT", "scripts/ai-visual-qa-runner.js", targetEnv);
-    applyRuntimeSelection({ profile: normalized, mode: "openai-compatible", provider: "kimi", reason: "Kimi profile selected explicitly." }, targetEnv);
+    applyRuntimeSelection({ profile: normalized, mode: "openai-compatible", provider: "kimi", reason: "Kimi profile selected explicitly. Kimi Code CLI is not available; falling back to API." }, targetEnv);
     return normalized;
   }
 
   const selection = resolveAutomaticAiProfile();
   applyRuntimeSelection(selection, targetEnv);
+
+  if (selection.mode === "kimi-cli") {
+    targetEnv.LEGAL_AI_PROVIDER = selection.provider;
+    assignRunner("LEGAL_SKILL_RUNNER_SCRIPT", "scripts/kimi-code-skill-runner.js", targetEnv);
+    assignRunner("SUGGESTION_ACTION_RUNNER_SCRIPT", "scripts/ai-suggestion-runner.js", targetEnv);
+    assignRunner("CONTRACT_INTAKE_RUNNER_SCRIPT", "scripts/ai-intake-runner.js", targetEnv);
+    assignRunner("VISUAL_QA_RUNNER_SCRIPT", "scripts/ai-visual-qa-runner.js", targetEnv);
+    return "kimi";
+  }
 
   if (selection.mode === "codex-cli") {
     targetEnv.LEGAL_AI_PROVIDER = selection.provider;

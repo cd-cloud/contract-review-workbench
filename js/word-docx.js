@@ -622,16 +622,64 @@ function getWordHtmlLineClass(text) {
   return "";
 }
 
+function buildDocxPageBreak() {
+  return '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
+}
+
+function buildDocxCoverParagraphs(contract, material) {
+  const now = new Date().toLocaleString("zh-CN");
+  const spacer = '<w:p><w:pPr><w:spacing w:before="1200"/></w:pPr><w:r><w:t xml:space="preserve"> </w:t></w:r></w:p>';
+  return [
+    spacer,
+    spacer,
+    buildDocxParagraph([{ type: "same", text: contract.name || "合同审阅批注稿" }], "Title"),
+    buildDocxParagraph([{ type: "same", text: "Legal Work Orchestrator 红线批注稿" }], "Meta"),
+    buildDocxParagraph([{ type: "same", text: `导出版本：${material.title}` }], "MetaLine"),
+    buildDocxParagraph([{ type: "same", text: `生成时间：${now}` }], "MetaLine"),
+    buildDocxParagraph([{ type: "same", text: `相对方：${contract.counterpartyName || "未填写"}` }], "MetaLine"),
+    buildDocxParagraph([{ type: "same", text: `我方角色：${contract.ourRole || "未填写"}` }], "MetaLine"),
+    buildDocxParagraph([{ type: "same", text: `合同类型：${contract.type || "未识别"}` }], "MetaLine"),
+    buildDocxPageBreak(),
+  ];
+}
+
+function buildEnrichedClauseComment(userComment, clauseFindings, subComments) {
+  const parts = [];
+  if (userComment) parts.push(userComment);
+
+  clauseFindings.forEach((finding) => {
+    const severityLabel = finding.severity === "high" ? "【高风险】" : finding.severity === "medium" ? "【中风险】" : "【低风险】";
+    parts.push(`${severityLabel} ${finding.issue || finding.title || ""}`);
+    if (finding.proposedRevision || finding.fix) {
+      parts.push(`建议文本：${finding.proposedRevision || finding.fix}`);
+    }
+    if (finding.negotiation || finding.negotiationPosition) {
+      parts.push(`谈判立场：${finding.negotiation || finding.negotiationPosition}`);
+    }
+    if (finding.businessDecision) {
+      parts.push(`业务确认：${finding.businessDecision}`);
+    }
+  });
+
+  if (subComments.length) {
+    parts.push(...subComments);
+  }
+
+  return parts.join("\n\n");
+}
+
 function buildDocxRedlinePackage(contract) {
   const material = getWorkbenchMaterial(contract);
   const clauses = splitVersionClauses(material.text, material.sourceKey);
   const actions = getClauseActions(material.sourceKey);
+  const findings = getAnalysisFindings(contract, clauses);
   const comments = [];
   const generatedAt = new Date().toISOString();
   let revisionId = 1;
   let commentId = 0;
 
   const paragraphs = [
+    ...buildDocxCoverParagraphs(contract, material),
     buildDocxParagraph([{ type: "same", text: contract.name || "合同修订批注稿" }], "Title"),
     buildDocxParagraph([{ type: "same", text: `导出版本：${material.title}｜生成时间：${new Date().toLocaleString()}` }], "Meta"),
     ...buildDocxExportIntroParagraphs(contract, material, clauses, actions),
@@ -641,10 +689,12 @@ function buildDocxRedlinePackage(contract) {
     const baseAction = actions[clause.id] || {};
     const effectiveText = getEditedClauseText(material.sourceKey, clause);
     const subComments = splitSubclauses(clause).map((subclause) => actions[subclause.id]?.comment).filter(Boolean);
+    const clauseFindings = findings.filter((f) => f.clauseId === clause.id);
+    const enrichedComment = buildEnrichedClauseComment(baseAction.comment, clauseFindings, subComments);
     const action = {
       ...baseAction,
       editedText: baseAction.editedText || (effectiveText !== clause.text ? effectiveText : ""),
-      comment: baseAction.comment || subComments.join("\n"),
+      comment: enrichedComment,
     };
     const currentCommentId = action.comment ? commentId : null;
     if (action.comment) {

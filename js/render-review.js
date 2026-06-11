@@ -3,8 +3,8 @@
   const revisionAvailable = canUseRevisionMode(contract);
   return `
     <div class="reader-tabs" style="margin-bottom:14px">
-      <button class="reader-tab ${mode === "clean" ? "active" : ""}" type="button" data-review-mode="clean">清洁模式</button>
-      <button class="reader-tab ${mode === "revision" ? "active" : ""}" type="button" data-review-mode="revision" ${revisionAvailable ? "" : "disabled"}>修订模式</button>
+      <button class="reader-tab ${mode === "clean" && !state.comparisonMode ? "active" : ""}" type="button" data-review-mode="clean">清洁模式</button>
+      <button class="reader-tab ${mode === "revision" && !state.comparisonMode ? "active" : ""}" type="button" data-review-mode="revision" ${revisionAvailable ? "" : "disabled"}>修订模式</button>
     </div>
     ${revisionAvailable ? "" : `<p class="muted">只有初稿时不能使用修订模式。</p>`}
   `;
@@ -15,14 +15,56 @@ let reviewAdviceSyncFrame = null;
 let reviewAdviceSyncTimers = [];
 let reviewAdviceLastSyncedId = "";
 
+let __lastRenderState = null;
+
+function captureRenderState() {
+  return {
+    contractId: state.activeContractId,
+    activeUpdateId: state.activeUpdateId,
+    reviewMode: state.reviewMode,
+    comparisonMode: state.comparisonMode,
+    contractRiskCollapsed: state.contractRiskCollapsed,
+    clausesHash: JSON.stringify(state.clauses || []),
+    findingsHash: JSON.stringify(state.findings || []),
+    clauseActionsHash: JSON.stringify(state.clauseActions || {}),
+    activeWorkbenchClauseId: state.activeWorkbenchClauseId,
+    activeSubclauseId: state.activeSubclauseId,
+    inlineCommentClauseId: state.inlineCommentClauseId,
+  };
+}
+
+function isRenderStateUnchanged(last) {
+  if (!last) return false;
+  const current = captureRenderState();
+  return (
+    last.contractId === current.contractId &&
+    last.activeUpdateId === current.activeUpdateId &&
+    last.reviewMode === current.reviewMode &&
+    last.contractRiskCollapsed === current.contractRiskCollapsed &&
+    last.clausesHash === current.clausesHash &&
+    last.findingsHash === current.findingsHash &&
+    last.clauseActionsHash === current.clauseActionsHash &&
+    last.activeWorkbenchClauseId === current.activeWorkbenchClauseId &&
+    last.activeSubclauseId === current.activeSubclauseId &&
+    last.inlineCommentClauseId === current.inlineCommentClauseId
+  );
+}
+
 function renderReview() {
   resetClauseRiskFindingCache();
   const contract = state.contracts.find((item) => item.id === state.activeContractId);
   if (!contract) {
     if (reviewAdviceSyncCleanup) { reviewAdviceSyncCleanup(); reviewAdviceSyncCleanup = null; }
     views.review.innerHTML = `<div class="empty">请先新建或打开一份合同。</div>`;
+    __lastRenderState = null;
     return;
   }
+
+  // Skip re-rendering if nothing that affects the review view has changed.
+  if (isRenderStateUnchanged(__lastRenderState)) {
+    return;
+  }
+
   const workbenchMaterial = getWorkbenchMaterial(contract);
   const workbenchClauses = splitVersionClauses(workbenchMaterial.text, workbenchMaterial.sourceKey);
   if (views.review?.classList.contains("active")) scheduleCodexSegmentation(contract, workbenchMaterial);
@@ -67,6 +109,8 @@ function renderReview() {
       }
     }
   }
+
+  __lastRenderState = captureRenderState();
 }
 
 function renderReviewTopTools(contract, material, clauses) {
@@ -91,12 +135,16 @@ function renderReviewTopTools(contract, material, clauses) {
         ${contract.businessBackground ? `<p class="muted contract-purpose-line" title="${escapeHtml(contract.businessBackground)}">背景：${escapeHtml(contract.businessBackground)}</p>` : ""}
       </div>
       <div class="review-top-tool-grid">
-        ${renderReviewNextActions(contract, clauses, codexStatus)}
-        ${renderVisualQaPanel(material.sourceKey, contract, material, clauses)}
+        ${renderReviewNextActions(contract, clauses, codexStatus, material)}
         ${renderContractStructureOverview(contract, structureMaterial, structureClauses)}
         <section class="review-utility-panel">
           <h3 class="section-title">审阅模式</h3>
           ${renderReviewModeControl(contract)}
+          <h3 class="section-title">版本对比</h3>
+          <button class="small-button ${state.comparisonMode ? "active" : ""}" type="button" data-toggle-comparison="true">
+            ${state.comparisonMode ? "退出对比" : "版本对比视图"}
+          </button>
+          <p class="muted">对比当前版本与上一版本的条款差异。</p>
           <h3 class="section-title">版本时间线</h3>
           ${renderReviewTimeline(contract.id)}
         </section>
@@ -265,10 +313,10 @@ function referenceItem(item) {
   `;
 }
 
-function renderReviewNextActions(contract, clauses, codexStatus = null) {
+function renderReviewNextActions(contract, clauses, codexStatus = null, material = null) {
   const findings = getAnalysisFindings(contract, clauses);
   const highCount = findings.filter((finding) => finding.severity === "high").length;
-  const material = getWorkbenchMaterial(contract);
+  material = material || getWorkbenchMaterial(contract);
   const pendingEdits = Object.values(getClauseActions(material.sourceKey)).filter((action) => action.deleted || action.editedText || action.comment).length;
   codexStatus = codexStatus || getCodexRunStatus(contract, material);
   const legalSummary = codexStatus.legalSummary || summarizeLegalSkillResult(codexStatus.legalResult);
@@ -295,6 +343,7 @@ function renderReviewNextActions(contract, clauses, codexStatus = null) {
       ${renderCodexStatusPanel(codexStatus)}
       <div class="stacked-actions">
         <button class="small-button" type="button" data-run-legal-skill="${contract.id}">运行 AI Legal Skill</button>
+        <button class="small-button" type="button" data-run-visual-qa="${escapeHtml(material.sourceKey)}">运行 Agent B 检查</button>
         <button class="small-button" type="button" data-generate-send-version="${contract.id}" ${actionDisabled}>生成拟发送版本</button>
         <button class="small-button" type="button" data-export-word-redline="${contract.id}" ${actionDisabled}>导出 Word 红线/批注稿</button>
       </div>
@@ -616,7 +665,55 @@ function getReaderFilters() {
   return state.readerFilters;
 }
 
+function renderVersionComparisonPanel(contract) {
+  const updates = getContractUpdates(contract.id);
+  const activeIndex = updates.findIndex((u) => u.id === state.activeUpdateId);
+  const currentUpdate = updates[activeIndex] || null;
+  const previousUpdate = activeIndex > 0 ? updates[activeIndex - 1] : updates.at(-2);
+
+  if (!currentUpdate || !previousUpdate) {
+    return `<div class="empty">当前合同至少需要两个版本才能进行对比。</div>`;
+  }
+
+  const previousText = previousUpdate.acceptedText || previousUpdate.versionText || "";
+  const currentText = currentUpdate.acceptedText || currentUpdate.versionText || "";
+
+  if (!previousText || !currentText) {
+    return `<div class="empty">版本文本不完整，无法进行对比。</div>`;
+  }
+
+  const { stats, html } = buildClauseLevelComparisonHtml(previousText, currentText);
+
+  return `
+    <div class="reader-toolbar">
+      <div>
+        <p class="eyebrow">Comparison</p>
+        <h3 class="section-title">版本对比</h3>
+        <p class="muted">
+          ${escapeHtml(previousUpdate.type)} (${escapeHtml(previousUpdate.createdAt)})
+          <span style="margin:0 8px">→</span>
+          ${escapeHtml(currentUpdate.type)} (${escapeHtml(currentUpdate.createdAt)})
+        </p>
+        <div class="comparison-toolbar" style="margin-top:8px">
+          <span class="status-pill" style="background:#d1f2eb;color:#0e6251">新增 ${stats.added}</span>
+          <span class="status-pill" style="background:#fadbd8;color:#943126">删除 ${stats.deleted}</span>
+          <span class="status-pill" style="background:#fdebd0;color:#7e5109">修改 ${stats.modified}</span>
+          <span class="status-pill" style="background:#eaeded;color:#515a5a">未变 ${stats.unchanged}</span>
+        </div>
+      </div>
+    </div>
+    <div class="review-workspace-split">
+      <div class="clause-stack">
+        ${html}
+      </div>
+    </div>
+  `;
+}
+
 function renderMaterialReader(contract) {
+  if (state.comparisonMode) {
+    return renderVersionComparisonPanel(contract);
+  }
   return renderInlineClauseWorkbench(contract);
 }
 
@@ -686,7 +783,7 @@ function renderInlineClauseWorkbench(contract) {
     </div>
     <div class="review-workspace-split">
       <div class="clause-stack">
-        ${tree.length ? tree.map((node) => renderClauseTreeNode(contract, material, node, clauses, selectedClause)).join("") : `<div class="empty">没有符合筛选条件的条款</div>`}
+        ${tree.length ? tree.map((node) => renderClauseTreeNode(contract, material, node, clauses, selectedClause, clauses.length)).join("") : `<div class="empty">没有符合筛选条件的条款</div>`}
       </div>
       ${renderAdviceSidebar(contract, material, visibleClauses)}
     </div>

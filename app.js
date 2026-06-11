@@ -16,7 +16,6 @@ function hideGlobalLoading() {
 let state = loadState();
 let isBackendOnline = true;
 let offlineSyncPending = false;
-let clauseClickTimer = null;
 let clauseEditAutosaveTimer = null;
 
 const STALE_JOB_TIMEOUT_MS = 10 * 60 * 1000;

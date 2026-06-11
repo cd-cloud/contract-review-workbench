@@ -4,11 +4,7 @@ function escapeHtml(value) {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;")
-    .replaceAll("`", "&#96;")
-    .replaceAll("{", "&#123;")
-    .replaceAll("}", "&#125;")
-    .replaceAll("\\", "&#92;");
+    .replaceAll("'", "&#039;");
 }
 
 function riskLabel(level) {

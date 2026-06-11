@@ -74,6 +74,10 @@ const Store = {
     state.activeClauseId = state.clauses.find((c) => c.contractId === contractId)?.id || null;
     const updates = (state.updates || []).filter((u) => u.contractId === contractId);
     state.activeUpdateId = updates.at(-1)?.id || null;
+    // Load large texts from backend on demand. Backend is the source of truth.
+    if (typeof ensureContractTextsLoaded === "function") {
+      ensureContractTextsLoaded(contractId);
+    }
   },
 
   pushUpdate(update) {

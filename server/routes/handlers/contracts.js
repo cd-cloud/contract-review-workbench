@@ -1,9 +1,25 @@
 const { sendJson, readJson, serverErrorPayload } = require("../../http-utils");
-const { upsertContractWithAudit, upsertContractVersionWithAudit, replaceClauseActions, appendInsertedClause, appendAuditLog, deleteContractCascade, deleteContractVersionCascade, listAllContractsWithPaths } = require("../../store");
+const { upsertContractWithAudit, upsertContractVersionWithAudit, replaceClauseActions, appendInsertedClause, appendAuditLog, deleteContractCascade, deleteContractVersionCascade, listAllContractsWithPaths, getContractWithTexts } = require("../../store");
 
 async function handleContracts(req, res, url) {
   if (req.method === "GET" && url.pathname === "/api/contracts") {
     sendJson(res, 200, { ok: true, contracts: listAllContractsWithPaths() }, req);
+    return true;
+  }
+
+  if (req.method === "GET" && url.pathname.startsWith("/api/contracts/") && !url.pathname.includes("/files") && !url.pathname.includes("/exports")) {
+    try {
+      const parts = url.pathname.split("/");
+      const contractId = decodeURIComponent(parts[3]);
+      const contract = getContractWithTexts(contractId);
+      if (!contract) {
+        sendJson(res, 404, { ok: false, error: "Contract not found" }, req);
+        return true;
+      }
+      sendJson(res, 200, { ok: true, contract }, req);
+    } catch (error) {
+      sendJson(res, error.statusCode || 500, serverErrorPayload(error, "Failed to fetch contract"), req);
+    }
     return true;
   }
 

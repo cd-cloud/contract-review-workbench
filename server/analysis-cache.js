@@ -1,11 +1,15 @@
 /**
  * Analysis cache: LRU + TTL deduplication for legal review results.
  * Keys are SHA-256 hashes of normalized contract text + analysis options.
+ *
+ * Backed by SQLite for persistence across restarts.
  */
 
 const crypto = require("crypto");
 
 const config = require("./config");
+const { loadAnalysisCache, saveAnalysisCacheEntry, pruneAnalysisCache } = require("./store-sqlite");
+
 const MAX_CACHE_ENTRIES = config.cacheMaxEntries;
 const CACHE_TTL_MS = config.cacheTtlMs;
 const MAX_CACHE_BYTES = Number(process.env.LEGAL_WORKBENCH_CACHE_MAX_BYTES || 100 * 1024 * 1024);
@@ -26,6 +30,21 @@ class AnalysisCache {
     this.map = new Map(); // hash -> { result, createdAt, hits, sizeBytes }
     this.accessOrder = []; // LRU list of hashes
     this.currentBytes = 0;
+    this._loaded = false;
+    this._schedulePersist = this._debouncePersist();
+  }
+
+  _ensureLoaded() {
+    if (this._loaded) return;
+    this._loaded = true;
+    try {
+      const persisted = loadAnalysisCache({ maxEntries: this.maxEntries, ttlMs: this.ttlMs });
+      this.map = persisted.entries;
+      this.accessOrder = persisted.accessOrder;
+      this.currentBytes = persisted.currentBytes;
+    } catch (e) {
+      console.error("[analysis-cache] Failed to load persisted cache:", e.message);
+    }
   }
 
   _makeKey(request) {
@@ -88,7 +107,24 @@ class AnalysisCache {
     }
   }
 
+  _debouncePersist() {
+    let timer = null;
+    return (key, entry) => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
+        try {
+          saveAnalysisCacheEntry(key, entry.result, entry.sizeBytes, entry.hits);
+          pruneAnalysisCache({ maxEntries: this.maxEntries, ttlMs: this.ttlMs, maxBytes: this.maxBytes });
+        } catch (e) {
+          console.error("[analysis-cache] Persist failed:", e.message);
+        }
+      }, 2000);
+    };
+  }
+
   get(request) {
+    this._ensureLoaded();
     const key = this._makeKey(request);
     const entry = this.map.get(key);
     if (!entry) return null;
@@ -101,10 +137,13 @@ class AnalysisCache {
     }
     entry.hits += 1;
     this._touch(key);
+    // Persist hit count asynchronously
+    this._schedulePersist(key, entry);
     return { result: entry.result, hits: entry.hits, cachedAt: entry.createdAt };
   }
 
   set(request, result) {
+    this._ensureLoaded();
     const key = this._makeKey(request);
     const sizeBytes = estimateSize(result);
     this._evictIfNeeded();
@@ -118,6 +157,7 @@ class AnalysisCache {
       entry.sizeBytes = sizeBytes;
       this.currentBytes += sizeBytes;
       this._touch(key);
+      this._schedulePersist(key, entry);
       return;
     }
     // Evict if at capacity
@@ -127,12 +167,15 @@ class AnalysisCache {
       if (oldEntry) this.currentBytes -= oldEntry.sizeBytes || 0;
       this.map.delete(oldest);
     }
-    this.map.set(key, { result, createdAt: Date.now(), hits: 1, sizeBytes });
+    const newEntry = { result, createdAt: Date.now(), hits: 1, sizeBytes };
+    this.map.set(key, newEntry);
     this.currentBytes += sizeBytes;
     this.accessOrder.push(key);
+    this._schedulePersist(key, newEntry);
   }
 
   invalidate(request) {
+    this._ensureLoaded();
     const key = this._makeKey(request);
     const entry = this.map.get(key);
     if (entry) this.currentBytes -= entry.sizeBytes || 0;
@@ -148,6 +191,7 @@ class AnalysisCache {
   }
 
   stats() {
+    this._ensureLoaded();
     return {
       size: this.map.size,
       maxEntries: this.maxEntries,

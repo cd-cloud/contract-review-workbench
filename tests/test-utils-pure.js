@@ -23,13 +23,13 @@ test("escapeHtml escapes basic HTML entities", () => {
   assert.strictEqual(escapeHtml("'single'"), "&#039;single&#039;");
 });
 
-test("escapeHtml escapes backtick and braces", () => {
-  assert.strictEqual(escapeHtml("`code`"), "&#96;code&#96;");
-  assert.strictEqual(escapeHtml("{obj}"), "&#123;obj&#125;");
+test("escapeHtml does NOT escape backtick and braces (to preserve normal text)", () => {
+  assert.strictEqual(escapeHtml("`code`"), "`code`");
+  assert.strictEqual(escapeHtml("{obj}"), "{obj}");
 });
 
-test("escapeHtml escapes backslash", () => {
-  assert.strictEqual(escapeHtml("path\\file"), "path&#92;file");
+test("escapeHtml does NOT escape backslash (to preserve file paths)", () => {
+  assert.strictEqual(escapeHtml("path\\file"), "path\\file");
 });
 
 test("escapeHtml handles null/undefined", () => {
@@ -42,7 +42,7 @@ test("escapeHtml handles null/undefined", () => {
 test("escapeHtml handles complex injection attempt", () => {
   // Note: \` in template literal is escaped backtick, not backslash + backtick
   const malicious = `<script>alert("xss")</script>'\`{}`;
-  const expected = "&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;&#039;&#96;&#123;&#125;";
+  const expected = "&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;&#039;`{}";
   assert.strictEqual(escapeHtml(malicious), expected);
 });
 

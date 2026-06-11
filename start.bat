@@ -1,4 +1,5 @@
-@echo off
+﻿@echo off
+cd /d "%~dp0."
 chcp 65001 >nul
 title AI 合同审阅工作台
 echo 正在启动 AI 合同审阅工作台...

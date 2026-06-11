@@ -47,7 +47,9 @@ function handleStatic(req, res, url) {
   }
 
   if (req.method === "GET" && (url.pathname === "/app.js" || url.pathname === "/styles.css" || url.pathname.startsWith("/js/") || url.pathname.startsWith("/lib/"))) {
-    sendStaticFile(res, path.join(ROOT_DIR, decodeURIComponent(url.pathname)));
+    sendStaticFile(res, path.join(ROOT_DIR, decodeURIComponent(url.pathname)), {
+      "Cache-Control": "no-store, max-age=0",
+    });
     return true;
   }
 

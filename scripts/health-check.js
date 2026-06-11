@@ -47,10 +47,16 @@ function cookieHeaderFromResponse(headers = {}) {
 async function main() {
   const port = process.argv[2] || process.env.LEGAL_WORKBENCH_PORT || "8787";
   const base = `http://127.0.0.1:${port}`;
-  const runtimeResponse = await request(`${base}/js/runtime-config.js`);
-  const runtime = parseRuntimeConfig(runtimeResponse.body);
-  const origin = runtime.origin || base;
-  const cookie = cookieHeaderFromResponse(runtimeResponse.headers);
+  let origin = base;
+  let cookie = "";
+  try {
+    const runtimeResponse = await request(`${base}/js/runtime-config.js`);
+    const runtime = parseRuntimeConfig(runtimeResponse.body);
+    origin = runtime.origin || base;
+    cookie = cookieHeaderFromResponse(runtimeResponse.headers);
+  } catch (e) {
+    // runtime-config.js may be unavailable; fall back to direct API calls
+  }
   const headers = cookie ? { Cookie: cookie } : {};
   const health = await requestJson(`${origin}/api/health`, headers);
   const runner = await requestJson(`${origin}/api/legal-review/runner-status`, headers);

@@ -5,6 +5,7 @@ const path = require("path");
 
 const appRoot = path.resolve(__dirname, "..");
 const CODEX_HOME = process.env.CODEX_HOME || path.join(process.env.USERPROFILE || process.env.HOME || "", ".codex");
+const KIMI_CODE_HOME = process.env.KIMI_CODE_HOME || path.join(process.env.USERPROFILE || process.env.HOME || "", ".kimi-code");
 
 function readStdinJson() {
   return new Promise((resolve, reject) => {
@@ -72,9 +73,31 @@ function getPreferredCodexCommand() {
   return "codex";
 }
 
+function getPreferredKimiCommand() {
+  const configured = process.env.KIMI_CLI_COMMAND || process.env.KIMI_CODE_COMMAND;
+  if (configured) return configured;
+  const appData = process.env.APPDATA || process.env.USERPROFILE || "";
+  const vsCodeKimi = appData
+    ? path.join(appData, "Code", "User", "globalStorage", "moonshot-ai.kimi-code", "bin", "kimi", "kimi.exe")
+    : "";
+  if (vsCodeKimi && fs.existsSync(vsCodeKimi)) return vsCodeKimi;
+  return "kimi";
+}
+
 function lookupCodexCandidates() {
   const lookupCommand = process.platform === "win32" ? "where" : "which";
   const args = process.platform === "win32" ? ["codex"] : ["-a", "codex"];
+  const result = spawnSync(lookupCommand, args, { encoding: "utf8", windowsHide: true });
+  if (result.status !== 0) return [];
+  return String(result.stdout || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function lookupKimiCandidates() {
+  const lookupCommand = process.platform === "win32" ? "where" : "which";
+  const args = process.platform === "win32" ? ["kimi"] : ["-a", "kimi"];
   const result = spawnSync(lookupCommand, args, { encoding: "utf8", windowsHide: true });
   if (result.status !== 0) return [];
   return String(result.stdout || "")
@@ -92,6 +115,18 @@ function rankCodexCandidate(command) {
   if (/\.exe$/.test(normalized)) score += 20;
   if (/windowsapps/.test(normalized)) score -= 20;
   if (/\/codex$/.test(normalized) && !/\.(cmd|bat|exe)$/.test(normalized)) score -= 10;
+  return score;
+}
+
+function rankKimiCandidate(command) {
+  const normalized = String(command || "").toLowerCase().replace(/\\/g, "/");
+  let score = 0;
+  if (/\/moonshot-ai\.kimi-code\/bin\/kimi\/kimi$/.test(normalized)) score += 50;
+  if (/\.cmd$/.test(normalized)) score += 35;
+  if (/\.bat$/.test(normalized)) score += 30;
+  if (/\.exe$/.test(normalized)) score += 20;
+  if (/windowsapps/.test(normalized)) score -= 20;
+  if (/\/kimi$/.test(normalized) && !/\.(cmd|bat|exe)$/.test(normalized)) score -= 10;
   return score;
 }
 
@@ -146,6 +181,36 @@ function inspectCodexCommand(command) {
   return { command, exists: true, runnable: false, detail, diagnosis: "machine", confidence: "high" };
 }
 
+function inspectKimiCommand(command) {
+  if (!command) return { command: "kimi", exists: false, runnable: false, detail: "Kimi Code CLI not configured." };
+  if (path.isAbsolute(command) && !fs.existsSync(command)) {
+    return { command, exists: false, runnable: false, detail: "Configured Kimi Code CLI path does not exist.", diagnosis: "machine" };
+  }
+  const execution = getExecutionContext();
+  const result = spawnSync(command, ["--version"], { encoding: "utf8", timeout: 8000, windowsHide: true });
+  if (result.error) {
+    const code = String(result.error.code || "");
+    const sandboxLimited = execution.sandboxLikely && ["EPERM", "EACCES"].includes(code);
+    return {
+      command,
+      exists: code !== "ENOENT",
+      runnable: false,
+      detail: result.error.message || String(result.error),
+      diagnosis: sandboxLimited ? "sandbox-limited" : "machine",
+      confidence: sandboxLimited ? "low" : "high",
+    };
+  }
+  if (result.status === 0) {
+    const detail = String(result.stdout || result.stderr || "")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find(Boolean) || "kimi --version succeeded";
+    return { command, exists: true, runnable: true, detail, diagnosis: "ok", confidence: "high" };
+  }
+  const detail = String(result.stderr || result.stdout || "").trim() || `kimi --version exited with code ${result.status}`;
+  return { command, exists: true, runnable: false, detail, diagnosis: "machine", confidence: "high" };
+}
+
 let _codexCommandStatusCache = null;
 let _codexCommandStatusCacheAt = 0;
 
@@ -171,8 +236,39 @@ function resolveCodexCommandStatus() {
   return result;
 }
 
+let _kimiCommandStatusCache = null;
+let _kimiCommandStatusCacheAt = 0;
+
+function resolveKimiCommandStatus() {
+  if (_kimiCommandStatusCache && Date.now() - _kimiCommandStatusCacheAt < 30000) {
+    return _kimiCommandStatusCache;
+  }
+  const preferred = getPreferredKimiCommand();
+  const appData = process.env.APPDATA || process.env.USERPROFILE || "";
+  const vsCodeKimi = appData
+    ? path.join(appData, "Code", "User", "globalStorage", "moonshot-ai.kimi-code", "bin", "kimi", "kimi")
+    : "";
+  const candidates = [...new Set([preferred, vsCodeKimi, ...lookupKimiCandidates()].filter(Boolean))]
+    .sort((a, b) => rankKimiCandidate(b) - rankKimiCandidate(a));
+  const fallbackCommand = preferred || vsCodeKimi || "kimi";
+  let firstExisting = null;
+  for (const candidate of candidates.length ? candidates : [fallbackCommand]) {
+    const status = inspectKimiCommand(candidate);
+    if (status.runnable) return status;
+    if (!firstExisting && status.exists) firstExisting = status;
+  }
+  const result = firstExisting || { command: fallbackCommand, exists: false, runnable: false, detail: "Kimi Code CLI not found in PATH or configured location.", diagnosis: "machine", confidence: "high" };
+  _kimiCommandStatusCache = result;
+  _kimiCommandStatusCacheAt = Date.now();
+  return result;
+}
+
 function getCodexCommand() {
   return resolveCodexCommandStatus().command;
+}
+
+function getKimiCommand() {
+  return resolveKimiCommandStatus().command;
 }
 
 function resolveChatCompletionsUrl() {
@@ -247,19 +343,20 @@ function getProviderStatus() {
   const provider = getProvider();
   const apiKey = getApiKey();
   const codex = resolveCodexCommandStatus();
+  const kimi = resolveKimiCommandStatus();
   const codexConfig = readCodexConfig();
   const codexConfiguredProvider = String(process.env.CODEX_CONFIG_MODEL_PROVIDER || process.env.CODEX_MODEL_PROVIDER || "").trim();
   const effectiveCodexProvider = codexConfiguredProvider || codexConfig.provider || "";
   let baseUrl = "";
   try {
-    baseUrl = provider === "codex" || provider === "codex-cli" ? "" : resolveChatCompletionsUrl();
+    baseUrl = provider === "codex" || provider === "codex-cli" || provider === "kimi-cli" ? "" : resolveChatCompletionsUrl();
   } catch (error) {
     baseUrl = "";
   }
   return {
     provider,
-    mode: provider === "codex" || provider === "codex-cli" ? "codex-cli" : "openai-compatible",
-    model: provider === "codex" || provider === "codex-cli" ? "" : getModelName(),
+    mode: provider === "codex" || provider === "codex-cli" ? "codex-cli" : provider === "kimi-cli" ? "kimi-cli" : "openai-compatible",
+    model: provider === "codex" || provider === "codex-cli" || provider === "kimi-cli" ? "" : getModelName(),
     baseUrlConfigured: Boolean(baseUrl),
     apiKeyConfigured: Boolean(apiKey),
     codexCommand: codex.command,
@@ -273,6 +370,12 @@ function getProviderStatus() {
     codexProviderBaseUrl: codexConfig.baseUrl || "",
     codexProviderWireApi: codexConfig.wireApi || "",
     codexConfigPath: codexConfig.configPath || "",
+    kimiCommand: kimi.command,
+    kimiExists: kimi.exists,
+    kimiRunnable: Boolean(kimi.runnable),
+    kimiDetail: kimi.detail || "",
+    kimiDiagnosis: kimi.diagnosis || "",
+    kimiConfidence: kimi.confidence || "high",
     executionContext: getExecutionContext(),
   };
 }
@@ -280,46 +383,20 @@ function getProviderStatus() {
 function resolveAutomaticProviderSelection() {
   const current = getProviderStatus();
   const api = getApiProviderStatus();
-  if (current.mode === "openai-compatible" && api.ready) {
+
+  // Priority 1: Kimi Code CLI (true skill execution for Kimi users)
+  if (current.kimiRunnable) {
     return {
-      profile: api.provider === "kimi" || api.provider === "moonshot" ? "kimi" : "ai",
-      provider: api.provider,
-      mode: "openai-compatible",
-      reason: "Configured API provider is ready.",
+      profile: "kimi",
+      provider: "kimi-cli",
+      mode: "kimi-cli",
+      reason: "Kimi Code CLI is runnable.",
       providerStatus: current,
       apiStatus: api,
     };
   }
-  if (current.mode === "codex-cli" && current.codexRunnable) {
-    return {
-      profile: "codex",
-      provider: "codex-cli",
-      mode: "codex-cli",
-      reason: "Codex CLI is runnable.",
-      providerStatus: current,
-      apiStatus: api,
-    };
-  }
-  if (current.mode === "openai-compatible" && !api.ready && current.codexRunnable) {
-    return {
-      profile: "codex",
-      provider: "codex-cli",
-      mode: "codex-cli",
-      reason: "Configured API provider is incomplete; falling back to local Codex CLI.",
-      providerStatus: current,
-      apiStatus: api,
-    };
-  }
-  if (current.mode === "codex-cli" && !current.codexRunnable && api.ready) {
-    return {
-      profile: api.provider === "kimi" || api.provider === "moonshot" ? "kimi" : "ai",
-      provider: api.provider,
-      mode: "openai-compatible",
-      reason: "Codex CLI is unavailable; falling back to configured API provider.",
-      providerStatus: current,
-      apiStatus: api,
-    };
-  }
+
+  // Priority 2: Codex CLI
   if (current.codexRunnable) {
     return {
       profile: "codex",
@@ -330,23 +407,29 @@ function resolveAutomaticProviderSelection() {
       apiStatus: api,
     };
   }
+
+  // Priority 3: Configured API provider
   if (api.ready) {
     return {
       profile: api.provider === "kimi" || api.provider === "moonshot" ? "kimi" : "ai",
       provider: api.provider,
       mode: "openai-compatible",
-      reason: "Using configured API provider because local Codex CLI is unavailable.",
+      reason: "Using configured API provider because no local CLI is available.",
       providerStatus: current,
       apiStatus: api,
     };
   }
+
+  // Fallback
   return {
     profile: "fallback",
     provider: current.provider,
     mode: "fallback",
-    reason: current.codexExists
-      ? `No healthy AI provider detected. Codex CLI exists but is not runnable: ${current.codexDetail || "unknown error"}.`
-      : "No healthy AI provider detected. Configure Codex CLI or an OpenAI-compatible API provider.",
+    reason: current.kimiExists
+      ? `Kimi Code CLI exists but is not runnable: ${current.kimiDetail || "unknown error"}.`
+      : current.codexExists
+        ? `Codex CLI exists but is not runnable: ${current.codexDetail || "unknown error"}.`
+        : "No healthy AI provider detected. Configure Kimi Code CLI, Codex CLI, or an OpenAI-compatible API provider.",
     providerStatus: current,
     apiStatus: api,
   };
@@ -393,6 +476,9 @@ async function runJsonTask({ prompt, schemaPath, outputPrefix = "legal-ai", syst
   const provider = getProvider();
   if (provider === "codex" || provider === "codex-cli") {
     return runCodexJsonTask({ prompt, schemaPath, outputPrefix });
+  }
+  if (provider === "kimi-cli") {
+    return runKimiCliJsonTask({ prompt, schemaPath, outputPrefix });
   }
   if (["openai", "openai-compatible", "kimi", "moonshot"].includes(provider)) {
     return runOpenAiCompatibleJsonTask({ prompt, schemaPath, systemPrompt });
@@ -497,19 +583,121 @@ function runCodexJsonTask({ prompt, schemaPath, outputPrefix, signal }) {
   });
 }
 
+function runKimiCliJsonTask({ prompt, schemaPath, outputPrefix, signal }) {
+  const kimiCommand = getKimiCommand();
+  const args = [
+    "--print",
+    "-p", prompt,
+    "--yolo",
+    "--output-format", "stream-json",
+    "--final-message-only",
+    "--work-dir", appRoot,
+  ];
+  return new Promise((resolve, reject) => {
+    const child = spawn(kimiCommand, args, {
+      cwd: appRoot,
+      shell: false,
+      env: { ...process.env, NO_COLOR: "1" },
+      windowsHide: true,
+    });
+    let stdout = "";
+    let stderr = "";
+    let aborted = false;
+    let settled = false;
+
+    function settleReject(error) {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    }
+
+    function settleResolve(value) {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    }
+
+    function onAbort() {
+      aborted = true;
+      try { child.kill("SIGTERM"); } catch (e) {}
+      setTimeout(() => {
+        try { if (!child.killed) child.kill("SIGKILL"); } catch (e) {}
+      }, 3000);
+      settleReject(new Error("AI analysis was cancelled"));
+    }
+
+    if (signal) {
+      if (signal.aborted) {
+        onAbort();
+        return;
+      }
+      signal.addEventListener("abort", onAbort, { once: true });
+    }
+
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.on("error", (err) => {
+      if (signal) signal.removeEventListener("abort", onAbort);
+      settleReject(err);
+    });
+    child.on("close", (code) => {
+      if (signal) signal.removeEventListener("abort", onAbort);
+      if (aborted) return;
+      if (code !== 0) {
+        settleReject(new Error(`kimi exec failed with code ${code}\n${stderr || stdout}`.trim()));
+        return;
+      }
+      // Parse Kimi Code CLI stream-json output: {"role":"assistant","content":"..."}
+      const lines = stdout.split(/\r?\n/).filter(Boolean);
+      let finalText = "";
+      for (let i = lines.length - 1; i >= 0; i--) {
+        const line = lines[i].trim();
+        if (line.startsWith("{")) {
+          try {
+            const parsed = JSON.parse(line);
+            if (parsed.role === "assistant" && typeof parsed.content === "string") {
+              finalText = parsed.content;
+              break;
+            }
+          } catch (e) {
+            // not valid JSON, continue
+          }
+        }
+      }
+      if (!finalText) finalText = stdout;
+      try {
+        settleResolve(parseJsonOutput(finalText));
+      } catch (error) {
+        settleReject(error);
+      }
+    });
+  });
+}
+
 async function runOpenAiCompatibleJsonTask({ prompt, schemaPath, systemPrompt, signal }) {
   const apiKey = getApiKey();
   if (!apiKey) throw new Error("LEGAL_AI_API_KEY is required for openai-compatible provider.");
   const schema = fs.existsSync(schemaPath) ? fs.readFileSync(schemaPath, "utf8") : "";
+  const provider = getProvider();
+  const isKimi = provider === "kimi" || provider === "moonshot";
+
+  // Kimi/Moonshot benefit from stronger JSON guardrails in the system prompt
+  // because some OpenAI-compatible providers do not fully support response_format.
+  const effectiveSystemPrompt = isKimi
+    ? `${systemPrompt || "You are a legal contract review backend."}\n\nCRITICAL: Return ONLY a single valid JSON object. Do not wrap it in Markdown code fences (\\x60\\x60\\x60), do not add explanations, and do not output any text outside the JSON.`
+    : (systemPrompt || "You are a legal contract review backend. Return valid JSON only. Do not include Markdown or code fences.");
+
   const body = {
     model: getModelName(),
     temperature: Number(process.env.LEGAL_AI_TEMPERATURE || 0.2),
     messages: [
       {
         role: "system",
-        content:
-          systemPrompt ||
-          "You are a legal contract review backend. Return valid JSON only. Do not include Markdown or code fences.",
+        content: effectiveSystemPrompt,
       },
       {
         role: "user",
@@ -517,25 +705,42 @@ async function runOpenAiCompatibleJsonTask({ prompt, schemaPath, systemPrompt, s
       },
     ],
   };
-  if (process.env.LEGAL_AI_RESPONSE_FORMAT !== "none") {
+
+  // Kimi/Moonshot may not support response_format or may ignore it.
+  // Rely on the explicit system-prompt guardrails instead.
+  if (!isKimi && process.env.LEGAL_AI_RESPONSE_FORMAT !== "none") {
     body.response_format = { type: "json_object" };
   }
-  const response = await fetch(resolveChatCompletionsUrl(), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(body),
-    signal: signal || undefined,
-  });
-  const text = await response.text();
-  if (!response.ok) {
-    throw new Error(`AI provider returned ${response.status}: ${text.slice(0, 1000)}`);
+
+  // Use a longer timeout for Kimi because TTFT can be high on large legal prompts.
+  const controller = new AbortController();
+  const timeoutMs = isKimi ? 300000 : 180000;
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  if (signal) {
+    signal.addEventListener("abort", () => controller.abort(), { once: true });
   }
-  const payload = parseJsonOutput(text);
-  const content = payload.choices?.[0]?.message?.content || payload.output_text || payload.content || text;
-  return parseJsonOutput(content);
+
+  try {
+    const response = await fetch(resolveChatCompletionsUrl(), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    const text = await response.text();
+    if (!response.ok) {
+      throw new Error(`AI provider returned ${response.status}: ${text.slice(0, 1000)}`);
+    }
+    const payload = parseJsonOutput(text);
+    const content = payload.choices?.[0]?.message?.content || payload.output_text || payload.content || text;
+    return parseJsonOutput(content);
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 function parseJsonOutput(text) {
@@ -577,10 +782,12 @@ module.exports = {
   getApiProviderStatus,
   getProvider,
   getCodexCommand,
+  getKimiCommand,
   getProviderStatus,
   getConfiguredProvider,
   resolveAutomaticProviderSelection,
   resolveCodexCommandStatus,
+  resolveKimiCommandStatus,
   readStdinJson,
   runJsonTask,
   printJson,

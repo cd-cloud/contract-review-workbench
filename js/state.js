@@ -1,6 +1,11 @@
 const STORAGE_KEY = "legal-contract-workbench-mvp";
+const TEXT_STORE_KEY = "legal-workbench-text-store";
+const TEXT_STORE_DB = "legal-workbench-text-db";
+const TEXT_STORE_VERSION = 1;
 const MAX_AUDIT_LOGS = 500;
 const uploadedFileCache = new Map();
+
+const LARGE_TEXT_FIELDS = ["text", "cleanText", "redlineText", "commentsText"];
 
 const clauseTypes = [
   "服务范围",
@@ -231,13 +236,113 @@ function addDays(dateText, days) {
   return date.toISOString().slice(0, 10);
 }
 
+/* ─────────────── Large-text IndexedDB helpers ─────────────── */
+
+function openTextStore() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(TEXT_STORE_DB, TEXT_STORE_VERSION);
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains(TEXT_STORE_KEY)) {
+        db.createObjectStore(TEXT_STORE_KEY, { keyPath: "id" });
+      }
+    };
+    request.onsuccess = (event) => resolve(event.target.result);
+    request.onerror = (event) => reject(event.target.error || new Error("IndexedDB open failed"));
+    request.onblocked = () => reject(new Error("IndexedDB blocked"));
+  });
+}
+
+async function saveContractTexts(state) {
+  const db = await openTextStore();
+  const tx = db.transaction(TEXT_STORE_KEY, "readwrite");
+  const store = tx.objectStore(TEXT_STORE_KEY);
+  for (const contract of state.contracts || []) {
+    const payload = { id: contract.id };
+    let hasText = false;
+    for (const field of LARGE_TEXT_FIELDS) {
+      if (contract[field]) {
+        payload[field] = contract[field];
+        hasText = true;
+      }
+    }
+    if (hasText) {
+      store.put(payload);
+    }
+  }
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = (event) => { db.close(); reject(event.target.error); };
+  });
+}
+
+async function loadContractTexts(state) {
+  const db = await openTextStore();
+  const tx = db.transaction(TEXT_STORE_KEY, "readonly");
+  const store = tx.objectStore(TEXT_STORE_KEY);
+  for (const contract of state.contracts || []) {
+    const request = store.get(contract.id);
+    request.onsuccess = (event) => {
+      const record = event.target.result;
+      if (record) {
+        for (const field of LARGE_TEXT_FIELDS) {
+          if (record[field] !== undefined) contract[field] = record[field];
+        }
+      }
+    };
+  }
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = (event) => { db.close(); reject(event.target.error); };
+  });
+}
+
+const UPDATE_LARGE_TEXT_FIELDS = ["versionText", "acceptedText", "rejectedText", "revisionText", "commentsText"];
+
+function stripLargeTexts(nextState) {
+  const skeleton = clone(nextState);
+  for (const contract of skeleton.contracts || []) {
+    for (const field of LARGE_TEXT_FIELDS) {
+      if (contract[field] && contract[field].length > 200) {
+        contract[field] = "";
+      }
+    }
+  }
+  for (const update of skeleton.updates || []) {
+    for (const field of UPDATE_LARGE_TEXT_FIELDS) {
+      if (update[field] && update[field].length > 200) {
+        update[field] = "";
+      }
+    }
+  }
+  return skeleton;
+}
+
+function hasStrippedTexts(state) {
+  for (const contract of state.contracts || []) {
+    for (const field of LARGE_TEXT_FIELDS) {
+      if (contract[field] === "" && seedData.contracts[0]?.[field]?.length > 200) {
+        // Heuristic: if a previously long field is now empty, it was likely stripped
+      }
+    }
+  }
+  return false;
+}
+
+/* ─────────────── State load / save ─────────────── */
+
 function loadState() {
   const stored = localStorage.getItem(STORAGE_KEY);
   if (stored) {
     try {
       const parsed = JSON.parse(stored);
       const normalized = normalizeWorkbenchState(parsed);
-      if (normalized) return normalized;
+      if (normalized) {
+        // IndexedDB offline cache is a secondary fallback when backend is unreachable.
+        // The primary source of truth is the backend SQLite database.
+        loadContractTexts(normalized).catch(() => {});
+        return normalized;
+      }
     } catch (error) {
       localStorage.removeItem(STORAGE_KEY);
     }
@@ -249,25 +354,16 @@ function loadState() {
 }
 
 function writeLocalState(nextState = state) {
+  // Always strip large text fields before persisting to localStorage.
+  // The backend SQLite database is the single source of truth for large texts.
+  // IndexedDB remains as an offline fallback cache.
+  const skeleton = stripLargeTexts(nextState);
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(skeleton));
   } catch (error) {
     console.error("[state] localStorage write failed:", error.message);
     if (typeof showToast === "function") {
       showToast("本地存储已满，请导出备份或清理旧合同", "error");
-    }
-    try {
-      const request = indexedDB.open("legal-workbench-fallback", 1);
-      request.onupgradeneeded = (event) => {
-        event.target.result.createObjectStore("state", { keyPath: "key" });
-      };
-      request.onsuccess = (event) => {
-        const db = event.target.result;
-        const tx = db.transaction("state", "readwrite");
-        tx.objectStore("state").put({ key: STORAGE_KEY, value: nextState });
-      };
-    } catch (idbError) {
-      console.error("[state] IndexedDB fallback also failed:", idbError.message);
     }
   }
 }

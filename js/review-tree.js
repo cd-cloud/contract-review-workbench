@@ -41,13 +41,24 @@ function normalizeTreeTitle(text) {
     .trim();
 }
 
-function renderClauseTreeNode(contract, material, node, clauses, selectedClause) {
-  if (node.kind === "chapter") return renderChapterCard(contract, material, node, clauses, selectedClause);
+function renderClauseTreeNode(contract, material, node, clauses, selectedClause, totalClauses = 0) {
+  if (node.kind === "chapter") return renderChapterCard(contract, material, node, clauses, selectedClause, totalClauses);
   return renderInlineClauseCard(contract, material, node.clause, clauses, selectedClause?.id === node.clause.id);
 }
 
-function renderChapterCard(contract, material, chapter, clauses, selectedClause) {
-  const expanded = isTreeNodeExpanded(chapter.id);
+const LAZY_RENDER_THRESHOLD = 150;
+
+function shouldAutoCollapseChapter(contract, material, chapter, totalClauses) {
+  if (totalClauses <= LAZY_RENDER_THRESHOLD) return false;
+  const childRisks = chapter.clauses.map((clause) => getClauseRiskSummary(contract, clause, material.sourceKey, clause.id));
+  const hasHigh = childRisks.some((r) => r.severity === "high");
+  const hasActive = chapter.clauses.some((c) => c.id === state.activeWorkbenchClauseId);
+  return !hasHigh && !hasActive;
+}
+
+function renderChapterCard(contract, material, chapter, clauses, selectedClause, totalClauses = 0) {
+  const autoCollapsed = shouldAutoCollapseChapter(contract, material, chapter, totalClauses);
+  const expanded = autoCollapsed ? false : isTreeNodeExpanded(chapter.id);
   const childRisks = chapter.clauses.map((clause) => getClauseRiskSummary(contract, clause));
   const severity = childRisks.some((item) => item.severity === "high") ? "high" : childRisks.some((item) => item.severity === "medium") ? "medium" : "low";
   return `
@@ -61,6 +72,7 @@ function renderChapterCard(contract, material, chapter, clauses, selectedClause)
             <span class="tag">章节</span>
             <span class="risk ${escapeHtml(severity)}">风险${riskLabel(severity)}</span>
             <span class="status-pill">${chapter.clauses.length} 条</span>
+            ${totalClauses > LAZY_RENDER_THRESHOLD && autoCollapsed ? `<span class="status-pill muted">已自动折叠</span>` : ""}
           </div>
           <h4>${escapeHtml(chapter.title)}</h4>
         </div>

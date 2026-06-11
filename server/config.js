@@ -20,7 +20,10 @@ function asString(value, defaultValue) {
 
 function asBool(value, defaultValue) {
   if (value === undefined || value === null || value === "") return defaultValue;
-  return String(value).toLowerCase() === "1" || String(value).toLowerCase() === "true";
+  const s = String(value).toLowerCase().trim();
+  if (["1", "true", "yes", "on", "y"].includes(s)) return true;
+  if (["0", "false", "no", "off", "n", "null", "undefined", ""].includes(s)) return false;
+  return defaultValue;
 }
 
 const config = {

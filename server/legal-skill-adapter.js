@@ -48,7 +48,10 @@ function parseRunnerArgs(value) {
 function getRunnerConfig() {
   const providerStatus = getProviderStatus();
   const explicitRunnerScript = Object.prototype.hasOwnProperty.call(process.env, "LEGAL_SKILL_RUNNER_SCRIPT");
-  const defaultRunnerScript = providerStatus.mode === "openai-compatible" ? "scripts/ai-skill-runner.js" : "scripts/codex-skill-runner.js";
+  const defaultRunnerScript =
+    providerStatus.mode === "kimi-cli" ? "scripts/kimi-code-skill-runner.js" :
+    providerStatus.mode === "codex-cli" ? "scripts/codex-skill-runner.js" :
+    "scripts/ai-skill-runner.js";
   const runnerScript = process.env.LEGAL_SKILL_ALLOW_FALLBACK === "1" && !explicitRunnerScript
     ? ""
     : explicitRunnerScript
@@ -91,17 +94,22 @@ function getRunnerStatus() {
   const runnerConfig = getRunnerConfig();
   const runnerScriptExists = runnerConfig.runnerScript ? fs.existsSync(path.resolve(process.cwd(), runnerConfig.runnerScript)) : false;
   const skillExists = fs.existsSync(runnerConfig.skillPath);
-  const usesCodexCli = runnerConfig.providerStatus.mode === "codex-cli";
+  const usesLocalCli = runnerConfig.providerStatus.mode === "codex-cli" || runnerConfig.providerStatus.mode === "kimi-cli";
+  const cliReady =
+    runnerConfig.providerStatus.mode === "codex-cli" ? runnerConfig.providerStatus.codexRunnable :
+    runnerConfig.providerStatus.mode === "kimi-cli" ? runnerConfig.providerStatus.kimiRunnable :
+    true;
   const ready = Boolean(
     runnerConfig.runnerCommand &&
     (!runnerConfig.runnerScript || runnerScriptExists) &&
-    (!usesCodexCli || runnerConfig.providerStatus.codexRunnable) &&
-    (!usesCodexCli || skillExists)
+    (!usesLocalCli || cliReady) &&
+    (!usesLocalCli || skillExists)
   );
+  const cliName = runnerConfig.providerStatus.mode === "kimi-cli" ? "Kimi Code CLI" : "Codex CLI";
   const summary = ready
-    ? "本机 Codex CLI + legal-work-orchestrator 已就绪。"
+    ? `本机 ${cliName} + legal-work-orchestrator 已就绪。`
     : runnerConfig.runnerCommand
-      ? "本机 AI 审阅未就绪，请检查 Codex CLI 和 legal-work-orchestrator skill。"
+      ? `本机 AI 审阅未就绪，请检查 ${cliName} 和 legal-work-orchestrator skill。`
       : "本机 AI 审阅未启用，当前使用本地规则兜底。";
   return {
     configured: Boolean(runnerConfig.runnerCommand),
@@ -128,7 +136,7 @@ function getRunnerStatus() {
     launcherMode: config.runtimeMode || null,
     launcherReason: config.runtimeReason || "",
     effectiveProvider: config.effectiveProvider || runnerConfig.providerStatus.provider,
-    mode: runnerConfig.runnerCommand ? (usesCodexCli ? "codex-cli-local-skill" : `configured-runner:${runnerConfig.providerStatus.provider}`) : "fallback",
+    mode: runnerConfig.runnerCommand ? (usesLocalCli ? `${runnerConfig.providerStatus.mode}-local-skill` : `configured-runner:${runnerConfig.providerStatus.provider}`) : "fallback",
   };
 }
 
@@ -329,6 +337,13 @@ async function analyzeLegalReviewInChunks(request, options = {}, runnerConfig = 
   if (requests.length <= 1) {
     return runConfiguredSkillCommand({ ...request, clauses }, options, runnerConfig);
   }
+
+  // Kimi/Moonshot have lower RPM limits; reduce concurrency and add stagger.
+  const provider = getProviderStatus().provider;
+  const isKimi = provider === "kimi" || provider === "moonshot";
+  const chunkConcurrency = isKimi ? 1 : MAX_CHUNK_CONCURRENCY;
+  const chunkDelayMs = isKimi ? 2000 : 0;
+
   const chunkResults = [];
   const failedChunks = [];
   let cursor = 0;
@@ -337,6 +352,12 @@ async function analyzeLegalReviewInChunks(request, options = {}, runnerConfig = 
       const index = cursor++;
       const chunkRequest = requests[index];
       if (options.signal?.aborted) throw new Error("AI analysis was cancelled");
+
+      // Staggered start for rate-limited providers to avoid 429 errors
+      if (chunkDelayMs > 0 && index > 0) {
+        await new Promise((resolve) => setTimeout(resolve, chunkDelayMs));
+      }
+
       try {
         chunkResults.push(await runChunkWithRetry(
           () => runConfiguredSkillCommand(chunkRequest, options, runnerConfig),
@@ -352,7 +373,7 @@ async function analyzeLegalReviewInChunks(request, options = {}, runnerConfig = 
       }
     }
   }
-  const workerCount = Math.max(1, Math.min(MAX_CHUNK_CONCURRENCY, requests.length));
+  const workerCount = Math.max(1, Math.min(chunkConcurrency, requests.length));
   await Promise.all(Array.from({ length: workerCount }, () => worker()));
 
   // Retry failed chunks once
@@ -424,7 +445,8 @@ function runConfiguredSkillCommand(request, options = {}, runnerConfig = getRunn
       reject(new Error("Skill command timed out after 130s"));
     }, 130000);
     const payload = buildRunnerPayload(request);
-    child = execFile(runnerConfig.runnerCommand, runnerConfig.runnerArgs, { maxBuffer: 100 * 1024 * 1024 }, (error, stdout, stderr) => {
+    const skillMaxBuffer = Number(process.env.LEGAL_WORKBENCH_SKILL_MAX_BUFFER || 0) || 100 * 1024 * 1024;
+    child = execFile(runnerConfig.runnerCommand, runnerConfig.runnerArgs, { maxBuffer: skillMaxBuffer }, (error, stdout, stderr) => {
       clearTimeout(timeoutId);
       if (error) {
         reject(new Error(`${error.message}\n${stderr || ""}`.trim()));

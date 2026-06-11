@@ -313,6 +313,22 @@ function createWindow() {
   // Wait for backend before loading
   if (backendReady) {
     loadWorkbench();
+  } else {
+    // Show a loading state until backend is ready
+    mainWindow.loadURL(`data:text/html,${encodeURIComponent(`
+      <!doctype html>
+      <html>
+        <head><meta charset="utf-8"><title>AI 合同审阅工作台</title></head>
+        <body style="display:flex;align-items:center;justify-content:center;height:100vh;margin:0;font-family:system-ui,sans-serif;background:#f8f9fa;color:#495057;">
+          <div style="text-align:center;">
+            <div style="width:40px;height:40px;border:3px solid #e9ecef;border-top-color:#0d6efd;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 16px;"></div>
+            <p style="margin:0;font-size:16px;">正在启动后端服务…</p>
+            <p style="margin:8px 0 0;font-size:13px;color:#adb5bd;">首次启动可能需要几秒</p>
+          </div>
+          <style>@keyframes spin{to{transform:rotate(360deg);}}</style>
+        </body>
+      </html>
+    `)}`);
   }
 
   if (isTest) {
@@ -357,8 +373,13 @@ function createWindow() {
   });
 }
 
-function loadWorkbench() {
+async function loadWorkbench() {
   if (!mainWindow) return;
+  if (isDev) {
+    try {
+      await mainWindow.webContents.session.clearCache();
+    } catch (e) {}
+  }
   smokeLog(`loading ${BACKEND_URL()}`);
   mainWindow.loadURL(BACKEND_URL());
 }

@@ -322,6 +322,11 @@ async function runVisualQaForMaterial(contract, material = getWorkbenchMaterial(
     }
     saveState();
     if (state.activeContractId === contract.id) renderReview();
+    // Auto-apply safe fixes after Visual QA completes
+    const fixResult = applyVisualQaAutoFixes(sourceKey, { rerun: false });
+    if (fixResult.applied > 0) {
+      showToast(`Agent B 已自动执行 ${fixResult.applied} 项安全修复。`);
+    }
     if (queuedNext) scheduleVisualQa(contract.id, queuedReason, { delay: VISUAL_QA_INTERACTION_DELAY_MS });
     return report;
   } catch (error) {

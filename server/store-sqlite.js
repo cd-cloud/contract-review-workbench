@@ -314,6 +314,19 @@ const MIGRATIONS = [
       );
     `);
   },
+  // v1 → v2: analysis cache persistence
+  function migrate_v2() {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS analysis_cache (
+        hash TEXT PRIMARY KEY,
+        result_json TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        hits INTEGER NOT NULL DEFAULT 1,
+        size_bytes INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE INDEX IF NOT EXISTS idx_analysis_cache_created_at ON analysis_cache(created_at);
+    `);
+  },
 ];
 
 function migrate() {
@@ -724,199 +737,201 @@ function replaceDb(snapshot) {
   pruneOrphanedFiles(validContractIds, validVersionIds, validFileIds);
 
   db.pragma("foreign_keys = OFF");
+  db.prepare("BEGIN IMMEDIATE").run();
   try {
-    const tx = db.transaction(() => {
-      // 1. Persist non-authoritative frontend state separately from structured data.
-      writeAuxState(auxState);
-      db.prepare("DELETE FROM app_state WHERE key = 'snapshot'").run();
+    // 1. Persist non-authoritative frontend state separately from structured data.
+    writeAuxState(auxState);
+    db.prepare("DELETE FROM app_state WHERE key = 'snapshot'").run();
 
-      // 2. Clear structured tables
-      db.prepare("DELETE FROM files").run();
-      db.prepare("DELETE FROM contract_versions").run();
-      db.prepare("DELETE FROM clauses").run();
-      db.prepare("DELETE FROM findings").run();
-      db.prepare("DELETE FROM clause_actions").run();
-      db.prepare("DELETE FROM negotiations").run();
-      db.prepare("DELETE FROM contracts").run();
-      db.prepare("DELETE FROM counterparties").run();
-      db.prepare("DELETE FROM playbooks").run();
-      db.prepare("DELETE FROM risk_rules").run();
-      db.prepare("DELETE FROM audit_logs").run();
-      db.prepare("DELETE FROM users").run();
+    // 2. Clear structured tables
+    db.prepare("DELETE FROM files").run();
+    db.prepare("DELETE FROM contract_versions").run();
+    db.prepare("DELETE FROM clauses").run();
+    db.prepare("DELETE FROM findings").run();
+    db.prepare("DELETE FROM clause_actions").run();
+    db.prepare("DELETE FROM negotiations").run();
+    db.prepare("DELETE FROM contracts").run();
+    db.prepare("DELETE FROM counterparties").run();
+    db.prepare("DELETE FROM playbooks").run();
+    db.prepare("DELETE FROM risk_rules").run();
+    db.prepare("DELETE FROM audit_logs").run();
+    db.prepare("DELETE FROM users").run();
 
-      // 3. Insert contracts
-      const insertContract = db.prepare(`
-        INSERT INTO contracts (id, name, type, purpose, business_background, status, our_role,
-          counterparty_id, counterparty_name, amount, term, payment, governing_law, dispute,
-          text, clean_text, redline_text, comments_text, clause_source, risk_level, ai_tags,
-          created_at, updated_at, folder_path)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-      for (const c of normalizedSnapshot.contracts || []) {
-        const folderPath = ensureContractFolder(c);
-        insertContract.run(
-          c.id, c.name, c.type, c.purpose, c.businessBackground, c.status, c.ourRole,
-          c.counterpartyId, c.counterpartyName, c.amount, c.term, c.payment, c.governingLaw, c.dispute,
-          c.text, c.cleanText, c.redlineText, c.commentsText, c.clauseSource, c.riskLevel,
-          safeJson(c.aiTags), c.createdAt, c.updatedAt, folderPath
+    // 3. Insert contracts
+    const insertContract = db.prepare(`
+      INSERT INTO contracts (id, name, type, purpose, business_background, status, our_role,
+        counterparty_id, counterparty_name, amount, term, payment, governing_law, dispute,
+        text, clean_text, redline_text, comments_text, clause_source, risk_level, ai_tags,
+        created_at, updated_at, folder_path)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const c of normalizedSnapshot.contracts || []) {
+      const folderPath = ensureContractFolder(c);
+      insertContract.run(
+        c.id, c.name, c.type, c.purpose, c.businessBackground, c.status, c.ourRole,
+        c.counterpartyId, c.counterpartyName, c.amount, c.term, c.payment, c.governingLaw, c.dispute,
+        c.text, c.cleanText, c.redlineText, c.commentsText, c.clauseSource, c.riskLevel,
+        safeJson(c.aiTags), c.createdAt, c.updatedAt, folderPath
+      );
+    }
+
+    // 4. Insert contract versions (updates)
+    const insertVersion = db.prepare(`
+      INSERT INTO contract_versions (id, contract_id, version_number, type, note, material_kind,
+        text, clean_text, redline_text, comments_text, accepted_text, file_path, created_at, feedback_deadline, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const v of normalizedSnapshot.updates || normalizedSnapshot.contractVersions || []) {
+      insertVersion.run(
+        v.id, v.contractId, v.versionNumber || 0, v.type, v.note, v.materialKind,
+        v.versionText || v.text, v.cleanText, v.redlineText, v.commentsText, v.acceptedText,
+        v.filePath || null, v.createdAt, v.feedbackDeadline, v.status
+      );
+    }
+
+    const insertFile = db.prepare(`
+      INSERT INTO files (id, contract_id, version_id, name, original_name, mime_type, file_path, size, file_type, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const file of normalizedSnapshot.files || []) {
+      insertFile.run(
+        file.id, file.contractId, file.versionId || null, file.name,
+        file.originalName || file.name, file.mimeType || "application/octet-stream",
+        file.path || file.filePath || "", Number(file.size || 0),
+        file.fileType || "attachment", file.createdAt || savedAt
+      );
+    }
+
+    // 5. Insert clauses
+    const insertClause = db.prepare(`
+      INSERT INTO clauses (id, contract_id, version_id, stable_id, number, title, clause_type,
+        text, hierarchy_level, chapter_title, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const cl of normalizedSnapshot.clauses || []) {
+      insertClause.run(
+        cl.id, cl.contractId, cl.versionId || null, cl.stableId, cl.number, cl.title, cl.type,
+        cl.text, cl.hierarchyLevel, cl.chapterTitle, cl.createdAt
+      );
+    }
+
+    // 6. Insert findings (reviewRecords)
+    const insertFinding = db.prepare(`
+      INSERT INTO findings (id, contract_id, clause_id, severity, action_type, title, issue,
+        consequence, proposed_revision, target_text, replacement_text, comment_text,
+        negotiation_position, fallback_text, business_decision, adoption_note,
+        negotiation_bottom_line, acceptable_fallback, linked_clause_ids, quality_score, status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const f of normalizedSnapshot.findings || normalizedSnapshot.reviewRecords || []) {
+      insertFinding.run(
+        f.id, f.contractId, f.clauseId || null, f.severity, f.actionType, f.title, f.issue,
+        f.consequence, f.proposedRevision, f.targetText, f.replacementText, f.commentText,
+        f.negotiationPosition, f.fallbackText, f.businessDecision, f.adoptionNote,
+        f.negotiationBottomLine, f.acceptableFallback, safeJson(f.linkedClauseIds),
+        f.qualityScore, f.status, f.createdAt
+      );
+    }
+
+    // 7. Insert clause actions (flattened)
+    const insertAction = db.prepare(`
+      INSERT INTO clause_actions (id, source_key, clause_id, action_type, text, comment, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    const actions = normalizedSnapshot.clauseActions || {};
+    for (const [sourceKey, clauseMap] of Object.entries(actions)) {
+      for (const [clauseId, action] of Object.entries(clauseMap || {})) {
+        insertAction.run(
+          `${sourceKey}:${clauseId}`, sourceKey, clauseId,
+          action.actionType, action.text, action.comment, action.createdAt
         );
       }
+    }
 
-      // 4. Insert contract versions (updates)
-      const insertVersion = db.prepare(`
-        INSERT INTO contract_versions (id, contract_id, version_number, type, note, material_kind,
-          text, clean_text, redline_text, comments_text, accepted_text, file_path, created_at, feedback_deadline, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-      for (const v of normalizedSnapshot.updates || normalizedSnapshot.contractVersions || []) {
-        insertVersion.run(
-          v.id, v.contractId, v.versionNumber || 0, v.type, v.note, v.materialKind,
-          v.versionText || v.text, v.cleanText, v.redlineText, v.commentsText, v.acceptedText,
-          v.filePath || null, v.createdAt, v.feedbackDeadline, v.status
-        );
-      }
+    // 8. Insert counterparties
+    const insertCp = db.prepare(`
+      INSERT INTO counterparties (id, name, type, industry, importance, risk_level, notes,
+        contact, email, phone, risk_profile, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const cp of normalizedSnapshot.counterparties || []) {
+      insertCp.run(
+        cp.id, cp.name, cp.type, cp.industry, cp.importance, cp.riskLevel, cp.notes,
+        cp.contact, cp.email, cp.phone, safeJson(cp.riskProfile), cp.createdAt, cp.updatedAt
+      );
+    }
 
-      const insertFile = db.prepare(`
-        INSERT INTO files (id, contract_id, version_id, name, original_name, mime_type, file_path, size, file_type, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-      for (const file of normalizedSnapshot.files || []) {
-        insertFile.run(
-          file.id, file.contractId, file.versionId || null, file.name,
-          file.originalName || file.name, file.mimeType || "application/octet-stream",
-          file.path || file.filePath || "", Number(file.size || 0),
-          file.fileType || "attachment", file.createdAt || savedAt
-        );
-      }
+    // 9. Insert negotiations
+    const insertNeg = db.prepare(`
+      INSERT INTO negotiations (id, contract_id, counterparty_id, clause_id, round,
+        counterparty_position, our_response, final_result, concession, reason, decision_maker, captured, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const n of normalizedSnapshot.negotiations || []) {
+      insertNeg.run(
+        n.id, n.contractId, n.counterpartyId, n.clauseId, n.round,
+        n.counterpartyPosition, n.ourResponse, n.finalResult, n.concession,
+        n.reason, n.decisionMaker, n.captured ? 1 : 0, n.createdAt
+      );
+    }
 
-      // 5. Insert clauses
-      const insertClause = db.prepare(`
-        INSERT INTO clauses (id, contract_id, version_id, stable_id, number, title, clause_type,
-          text, hierarchy_level, chapter_title, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-      for (const cl of normalizedSnapshot.clauses || []) {
-        insertClause.run(
-          cl.id, cl.contractId, cl.versionId || null, cl.stableId, cl.number, cl.title, cl.type,
-          cl.text, cl.hierarchyLevel, cl.chapterTitle, cl.createdAt
-        );
-      }
+    // 10. Insert playbooks
+    const insertPb = db.prepare(`
+      INSERT INTO playbooks (id, clause_type, contract_types, our_role, standard, fallback,
+        forbidden, negotiation, keywords, confidence_score, source_occurrences, variants,
+        knowledge_signals, usage_count, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const pb of normalizedSnapshot.playbooks || []) {
+      insertPb.run(
+        pb.id, pb.type, safeJson(pb.contractTypes), pb.ourRole, pb.standard, pb.fallback,
+        pb.forbidden, pb.negotiation, safeJson(pb.keywords), pb.confidenceScore,
+        safeJson(pb.sourceOccurrences), safeJson(pb.variants), safeJson(pb.knowledgeSignals),
+        pb.usageCount || 0, pb.createdAt, pb.updatedAt
+      );
+    }
 
-      // 6. Insert findings (reviewRecords)
-      const insertFinding = db.prepare(`
-        INSERT INTO findings (id, contract_id, clause_id, severity, action_type, title, issue,
-          consequence, proposed_revision, target_text, replacement_text, comment_text,
-          negotiation_position, fallback_text, business_decision, adoption_note,
-          negotiation_bottom_line, acceptable_fallback, linked_clause_ids, quality_score, status, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-      for (const f of normalizedSnapshot.findings || normalizedSnapshot.reviewRecords || []) {
-        insertFinding.run(
-          f.id, f.contractId, f.clauseId || null, f.severity, f.actionType, f.title, f.issue,
-          f.consequence, f.proposedRevision, f.targetText, f.replacementText, f.commentText,
-          f.negotiationPosition, f.fallbackText, f.businessDecision, f.adoptionNote,
-          f.negotiationBottomLine, f.acceptableFallback, safeJson(f.linkedClauseIds),
-          f.qualityScore, f.status, f.createdAt
-        );
-      }
+    // 11. Insert risk rules
+    const insertRule = db.prepare(`
+      INSERT INTO risk_rules (id, rule_type, title, severity, action_type, pattern,
+        missing_pattern, issue, suggestion, status, source, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const r of normalizedSnapshot.riskRules || []) {
+      insertRule.run(
+        r.id, r.type, r.title, r.severity, r.actionType, r.pattern, r.missingPattern,
+        r.issue, r.suggestion, r.status, r.source, r.createdAt
+      );
+    }
+    // 12. Insert audit logs
+    const insertAudit = db.prepare(`
+      INSERT INTO audit_logs (action, contract_id, contract_name, clause_id, user_id, details, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const a of normalizedSnapshot.auditLogs || []) {
+      insertAudit.run(
+        a.action, a.contractId || null, a.contractName || null,
+        a.clauseId || null, a.userId || "local-admin", safeJson(a.details), a.createdAt
+      );
+    }
 
-      // 7. Insert clause actions (flattened)
-      const insertAction = db.prepare(`
-        INSERT INTO clause_actions (id, source_key, clause_id, action_type, text, comment, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `);
-      const actions = normalizedSnapshot.clauseActions || {};
-      for (const [sourceKey, clauseMap] of Object.entries(actions)) {
-        for (const [clauseId, action] of Object.entries(clauseMap || {})) {
-          insertAction.run(
-            `${sourceKey}:${clauseId}`, sourceKey, clauseId,
-            action.actionType, action.text, action.comment, action.createdAt
-          );
-        }
-      }
+    // 13. Insert users
+    const insertUser = db.prepare(`
+      INSERT INTO users (id, name, role, permissions) VALUES (?, ?, ?, ?)
+    `);
+    for (const u of normalizedSnapshot.users || emptyDb.users) {
+      insertUser.run(u.id, u.name, u.role, safeJson(u.permissions));
+    }
 
-      // 8. Insert counterparties
-      const insertCp = db.prepare(`
-        INSERT INTO counterparties (id, name, type, industry, importance, risk_level, notes,
-          contact, email, phone, risk_profile, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-      for (const cp of normalizedSnapshot.counterparties || []) {
-        insertCp.run(
-          cp.id, cp.name, cp.type, cp.industry, cp.importance, cp.riskLevel, cp.notes,
-          cp.contact, cp.email, cp.phone, safeJson(cp.riskProfile), cp.createdAt, cp.updatedAt
-        );
-      }
+    const fkViolations = db.pragma("foreign_key_check", { simple: false });
+    if (fkViolations && fkViolations.length > 0) {
+      throw new Error(`Foreign key violations detected: ${JSON.stringify(fkViolations)}`);
+    }
 
-      // 9. Insert negotiations
-      const insertNeg = db.prepare(`
-        INSERT INTO negotiations (id, contract_id, counterparty_id, clause_id, round,
-          counterparty_position, our_response, final_result, concession, reason, decision_maker, captured, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-      for (const n of normalizedSnapshot.negotiations || []) {
-        insertNeg.run(
-          n.id, n.contractId, n.counterpartyId, n.clauseId, n.round,
-          n.counterpartyPosition, n.ourResponse, n.finalResult, n.concession,
-          n.reason, n.decisionMaker, n.captured ? 1 : 0, n.createdAt
-        );
-      }
-
-      // 10. Insert playbooks
-      const insertPb = db.prepare(`
-        INSERT INTO playbooks (id, clause_type, contract_types, our_role, standard, fallback,
-          forbidden, negotiation, keywords, confidence_score, source_occurrences, variants,
-          knowledge_signals, usage_count, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-      for (const pb of normalizedSnapshot.playbooks || []) {
-        insertPb.run(
-          pb.id, pb.type, safeJson(pb.contractTypes), pb.ourRole, pb.standard, pb.fallback,
-          pb.forbidden, pb.negotiation, safeJson(pb.keywords), pb.confidenceScore,
-          safeJson(pb.sourceOccurrences), safeJson(pb.variants), safeJson(pb.knowledgeSignals),
-          pb.usageCount || 0, pb.createdAt, pb.updatedAt
-        );
-      }
-
-      // 11. Insert risk rules
-      const insertRule = db.prepare(`
-        INSERT INTO risk_rules (id, rule_type, title, severity, action_type, pattern,
-          missing_pattern, issue, suggestion, status, source, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-      for (const r of normalizedSnapshot.riskRules || []) {
-        insertRule.run(
-          r.id, r.type, r.title, r.severity, r.actionType, r.pattern, r.missingPattern,
-          r.issue, r.suggestion, r.status, r.source, r.createdAt
-        );
-      }
-      // 12. Insert audit logs
-      const insertAudit = db.prepare(`
-        INSERT INTO audit_logs (action, contract_id, contract_name, clause_id, user_id, details, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `);
-      for (const a of normalizedSnapshot.auditLogs || []) {
-        insertAudit.run(
-          a.action, a.contractId || null, a.contractName || null,
-          a.clauseId || null, a.userId || "local-admin", safeJson(a.details), a.createdAt
-        );
-      }
-
-      // 13. Insert users
-      const insertUser = db.prepare(`
-        INSERT INTO users (id, name, role, permissions) VALUES (?, ?, ?, ?)
-      `);
-      for (const u of normalizedSnapshot.users || emptyDb.users) {
-        insertUser.run(u.id, u.name, u.role, safeJson(u.permissions));
-      }
-
-      const fkViolations = db.pragma("foreign_key_check", { simple: false });
-      if (fkViolations && fkViolations.length > 0) {
-        throw new Error(`Foreign key violations detected: ${JSON.stringify(fkViolations)}`);
-      }
-    });
-
-    tx();
+    db.prepare("COMMIT").run();
+  } catch (err) {
+    try { db.prepare("ROLLBACK").run(); } catch (e) {}
+    throw err;
   } finally {
     db.pragma("foreign_keys = ON");
   }
@@ -1029,6 +1044,44 @@ function upsertContract(contract = {}) {
   return {
     ...contract,
     folderPath,
+  };
+}
+
+function getContractWithTexts(contractId) {
+  const row = db.prepare(`
+    SELECT
+      id, name, type, purpose, business_background, status, our_role,
+      counterparty_id, counterparty_name, amount, term, payment,
+      governing_law, dispute, text, clean_text, redline_text, comments_text,
+      clause_source, risk_level, ai_tags, created_at, updated_at, folder_path
+    FROM contracts WHERE id = ?
+  `).get(contractId);
+  if (!row) return null;
+  return {
+    id: row.id,
+    name: row.name,
+    type: row.type,
+    purpose: row.purpose,
+    businessBackground: row.business_background,
+    status: row.status,
+    ourRole: row.our_role,
+    counterpartyId: row.counterparty_id,
+    counterpartyName: row.counterparty_name,
+    amount: row.amount,
+    term: row.term,
+    payment: row.payment,
+    governingLaw: row.governing_law,
+    dispute: row.dispute,
+    text: row.text,
+    cleanText: row.clean_text,
+    redlineText: row.redline_text,
+    commentsText: row.comments_text,
+    clauseSource: row.clause_source,
+    riskLevel: row.risk_level,
+    aiTags: parseJson(row.ai_tags, []),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    folderPath: row.folder_path,
   };
 }
 
@@ -1609,16 +1662,30 @@ function rebuildSearchIndex(snapshot) {
   }
 }
 
+function escapeFts5Term(term) {
+  // Escape FTS5 special characters and prefix operators
+  let t = String(term || "").replace(/"/g, '""');
+  // Escape backslash first, then other specials
+  t = t.replace(/\\/g, '\\\\');
+  // Escape remaining FTS5 metacharacters: * (prefix), - (NOT), ^ (initial)
+  t = t.replace(/[*^]/g, '\\$&');
+  return t;
+}
+
 function search(query, options = {}) {
   const { types = [], limit = 50, contractId = null } = options;
   if (!query || String(query).trim().length < 1) return [];
 
   const q = String(query).trim();
-  const terms = tokenizeForFts(q)
+  const rawTerms = tokenizeForFts(q)
     .split(/\s+/)
     .map((term) => term.trim())
-    .filter(Boolean)
-    .map((term) => `"${term.replace(/"/g, "\"\"")}"`);
+    .filter(Boolean);
+  // Filter out bare FTS5 boolean operators to avoid syntax errors
+  const reserved = new Set(["and", "or", "not"]);
+  const terms = rawTerms
+    .filter((term) => !reserved.has(term.toLowerCase()))
+    .map((term) => `"${escapeFts5Term(term)}"`);
   const safeQuery = terms.join(" ");
   if (!safeQuery) return [];
   const safeLimit = Math.max(1, Math.min(Number(limit) || 50, 200));
@@ -1668,6 +1735,62 @@ function searchGlobal(query, limit = 50) {
   return search(query, { limit });
 }
 
+/* ─────────────── Analysis cache persistence ─────────────── */
+function loadAnalysisCache({ maxEntries = 100, ttlMs = 24 * 60 * 60 * 1000 } = {}) {
+  const cutoff = Date.now() - ttlMs;
+  const rows = db.prepare(
+    `SELECT hash, result_json, created_at, hits, size_bytes FROM analysis_cache WHERE created_at > ? ORDER BY created_at DESC LIMIT ?`
+  ).all(cutoff, maxEntries);
+  const entries = new Map();
+  const accessOrder = [];
+  let currentBytes = 0;
+  for (const row of rows) {
+    const result = parseJson(row.result_json, null);
+    if (!result) continue;
+    entries.set(row.hash, {
+      result,
+      createdAt: row.created_at,
+      hits: row.hits,
+      sizeBytes: row.size_bytes,
+    });
+    accessOrder.push(row.hash);
+    currentBytes += row.size_bytes;
+  }
+  return { entries, accessOrder, currentBytes };
+}
+
+function saveAnalysisCacheEntry(hash, result, sizeBytes, hits = 1) {
+  db.prepare(
+    `INSERT INTO analysis_cache (hash, result_json, created_at, hits, size_bytes)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(hash) DO UPDATE SET
+       result_json = excluded.result_json,
+       created_at = excluded.created_at,
+       hits = excluded.hits,
+       size_bytes = excluded.size_bytes`
+  ).run(hash, safeJson(result), Date.now(), hits, sizeBytes);
+}
+
+function pruneAnalysisCache({ maxEntries = 100, ttlMs = 24 * 60 * 60 * 1000, maxBytes = 100 * 1024 * 1024 } = {}) {
+  const cutoff = Date.now() - ttlMs;
+  db.prepare(`DELETE FROM analysis_cache WHERE created_at <= ?`).run(cutoff);
+  const count = db.prepare(`SELECT COUNT(*) as c FROM analysis_cache`).get().c;
+  if (count > maxEntries) {
+    const excess = count - maxEntries;
+    db.prepare(`DELETE FROM analysis_cache WHERE hash IN (
+      SELECT hash FROM analysis_cache ORDER BY created_at ASC LIMIT ?
+    )`).run(excess);
+  }
+  const totalSize = db.prepare(`SELECT COALESCE(SUM(size_bytes), 0) as s FROM analysis_cache`).get().s;
+  if (totalSize > maxBytes) {
+    db.prepare(`DELETE FROM analysis_cache WHERE hash IN (
+      SELECT hash FROM analysis_cache ORDER BY created_at ASC LIMIT (
+        SELECT COUNT(*) FROM analysis_cache WHERE size_bytes > 0
+      ) / 4 + 1
+    )`).run();
+  }
+}
+
 /* ─────────────── Exports ─────────────── */
 function closeDb() {
   try { clearInterval(checkpointInterval); } catch (e) {}
@@ -1680,6 +1803,7 @@ module.exports = {
   writeDb,
   replaceDb,
   upsertContract,
+  getContractWithTexts,
   upsertContractWithAudit,
   upsertContractVersion,
   upsertContractVersionWithAudit,
@@ -1710,6 +1834,9 @@ module.exports = {
   searchContracts,
   searchClauses,
   searchGlobal,
+  loadAnalysisCache,
+  saveAnalysisCacheEntry,
+  pruneAnalysisCache,
   DATA_DIR,
   DB_PATH,
   WAL_PATH,

@@ -1,3 +1,18 @@
+function normalizeSkillClauseSegmentation(segments = []) {
+  return segments
+    .filter((item) => item && (item.text || item.title))
+    .map((item, index) => ({
+      stableId: item.stableId || `seg-${index + 1}`,
+      order: Number(item.order) || index + 1,
+      title: String(item.title || "").trim(),
+      text: String(item.text || "").trim(),
+      type: item.type || "",
+      chapterTitle: String(item.chapterTitle || "").trim(),
+      hierarchyLevel: item.hierarchyLevel || "article",
+    }))
+    .sort((a, b) => a.order - b.order);
+}
+
 function getAiClauseSegmentationForSource(text, sourceKey) {
   const validation = getValidatedAiClauseSegmentation(text, sourceKey);
   if (!validation.accepted) return null;

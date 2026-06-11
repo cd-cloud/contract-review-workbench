@@ -96,3 +96,96 @@ function stripHtmlForText(html) {
     .replace(/<br \/>/g, "\n")
     .replace(/<[^>]+>/g, "");
 }
+
+/* ─────────────── Version comparison visualization ─────────────── */
+
+function buildClauseLevelComparisonHtml(previousText, currentText) {
+  const previousClauses = splitClauses(previousText, { idPrefix: "prev" });
+  const currentClauses = splitClauses(currentText, { idPrefix: "curr" });
+
+  const prevByTitle = new Map();
+  previousClauses.forEach((c) => {
+    const key = normalizeClauseTitle(c.title);
+    if (key) prevByTitle.set(key, c);
+  });
+
+  const comparisons = [];
+  const seenPrevKeys = new Set();
+
+  currentClauses.forEach((curr) => {
+    const key = normalizeClauseTitle(curr.title);
+    const prev = key ? prevByTitle.get(key) : null;
+    if (prev) seenPrevKeys.add(key);
+    if (!prev) {
+      comparisons.push({ type: "added", curr, prev: null });
+    } else if (prev.text !== curr.text) {
+      comparisons.push({ type: "modified", curr, prev });
+    } else {
+      comparisons.push({ type: "unchanged", curr, prev });
+    }
+  });
+
+  previousClauses.forEach((prev) => {
+    const key = normalizeClauseTitle(prev.title);
+    if (key && !seenPrevKeys.has(key)) {
+      comparisons.push({ type: "deleted", curr: null, prev });
+    }
+  });
+
+  const stats = {
+    added: comparisons.filter((c) => c.type === "added").length,
+    deleted: comparisons.filter((c) => c.type === "deleted").length,
+    modified: comparisons.filter((c) => c.type === "modified").length,
+    unchanged: comparisons.filter((c) => c.type === "unchanged").length,
+  };
+
+  return {
+    stats,
+    html: `
+      <div class="version-comparison">
+        <div class="comparison-toolbar">
+          <span class="comparison-stat added">新增 ${stats.added}</span>
+          <span class="comparison-stat deleted">删除 ${stats.deleted}</span>
+          <span class="comparison-stat modified">修改 ${stats.modified}</span>
+          <span class="comparison-stat unchanged">未变 ${stats.unchanged}</span>
+        </div>
+        <div class="comparison-clause-list">
+          ${comparisons.map((c) => renderComparisonClauseCard(c)).join("")}
+        </div>
+      </div>
+    `,
+  };
+}
+
+function renderComparisonClauseCard(comparison) {
+  const { type, curr, prev } = comparison;
+  const labelMap = {
+    added: { label: "新增", className: "comparison-added", icon: "＋" },
+    deleted: { label: "删除", className: "comparison-deleted", icon: "－" },
+    modified: { label: "修改", className: "comparison-modified", icon: "≈" },
+    unchanged: { label: "未变", className: "comparison-unchanged", icon: "＝" },
+  };
+  const meta = labelMap[type];
+  const title = curr?.title || prev?.title || "未命名条款";
+
+  let bodyHtml = "";
+  if (type === "added") {
+    bodyHtml = `<div class="comparison-body added">${escapeHtml(curr.text).replaceAll("\n", "<br />")}</div>`;
+  } else if (type === "deleted") {
+    bodyHtml = `<div class="comparison-body deleted">${escapeHtml(prev.text).replaceAll("\n", "<br />")}</div>`;
+  } else if (type === "modified") {
+    bodyHtml = `<div class="comparison-body modified">${buildInlineDiffHtml(prev.text, curr.text, "redline-deleted", "redline-inserted")}</div>`;
+  } else {
+    bodyHtml = `<div class="comparison-body unchanged">${escapeHtml(curr.text).replaceAll("\n", "<br />")}</div>`;
+  }
+
+  return `
+    <article class="comparison-card ${meta.className}" data-comparison-type="${type}">
+      <div class="comparison-card-header">
+        <span class="comparison-badge ${meta.className}">${meta.icon} ${meta.label}</span>
+        <h4 class="comparison-title">${escapeHtml(title)}</h4>
+      </div>
+      ${bodyHtml}
+    </article>
+  `;
+}

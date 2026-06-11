@@ -62,6 +62,8 @@ function pruneOldLogs() {
 }
 
 pruneOldLogs();
+const logPruneInterval = setInterval(pruneOldLogs, 6 * 60 * 60 * 1000);
+if (typeof logPruneInterval.unref === "function") logPruneInterval.unref();
 
 function write(level, message) {
   const timestamp = new Date().toISOString();
