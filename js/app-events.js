@@ -13,8 +13,12 @@ async function handleGlobalClick(event) {
   if (handleDraftClick(event)) return;
 }
 
-function dispatchGlobalClick(event) {
-  void handleGlobalClick(event);
+async function dispatchGlobalClick(event) {
+  try {
+    await handleGlobalClick(event);
+  } catch (error) {
+    console.error("[app-events] Global click handler error:", error);
+  }
 }
 
 function handleDragStart(event) {
@@ -72,8 +76,17 @@ function handleDrop(event) {
   reorderClauseByDrag(draggedClauseId, targetClauseId);
 }
 
-document.addEventListener("click", dispatchGlobalClick);
-document.addEventListener("dragstart", handleDragStart);
-document.addEventListener("dragover", handleDragOver);
-document.addEventListener("dragleave", handleDragLeave);
-document.addEventListener("drop", handleDrop);
+function attachGlobalAppListeners() {
+  if (typeof document.removeEventListener !== "function" || typeof document.addEventListener !== "function") return;
+  document.removeEventListener("click", dispatchGlobalClick);
+  document.removeEventListener("dragstart", handleDragStart);
+  document.removeEventListener("dragover", handleDragOver);
+  document.removeEventListener("dragleave", handleDragLeave);
+  document.removeEventListener("drop", handleDrop);
+  document.addEventListener("click", dispatchGlobalClick);
+  document.addEventListener("dragstart", handleDragStart);
+  document.addEventListener("dragover", handleDragOver);
+  document.addEventListener("dragleave", handleDragLeave);
+  document.addEventListener("drop", handleDrop);
+}
+attachGlobalAppListeners();

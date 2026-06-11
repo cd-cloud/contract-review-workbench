@@ -74,6 +74,10 @@ const config = {
 
   // File upload
   maxFileBytes: asNumber(process.env.LEGAL_WORKBENCH_MAX_FILE_BYTES, 50 * 1024 * 1024),
+  maxJsonPayloadBytes: asNumber(
+    process.env.LEGAL_WORKBENCH_MAX_JSON_PAYLOAD_BYTES,
+    Math.max(20 * 1024 * 1024, Math.floor(asNumber(process.env.LEGAL_WORKBENCH_MAX_FILE_BYTES, 50 * 1024 * 1024) * 1.5))
+  ),
 
   // Cache
   cacheMaxEntries: asNumber(process.env.LEGAL_WORKBENCH_CACHE_MAX, 100),

@@ -223,13 +223,13 @@ function renderKnowledgeReviewQueue() {
       title: `${item.type}｜${item.ourRole}`,
       body: item.standard,
       meta: `待复核标准口径｜来源 ${item.sourceOccurrences?.length || item.sourceClauseIds?.length || 0} 个终稿`,
-      action: `<button class="small-button" data-playbook-review="${item.id}:active">复核通过</button><button class="small-button" data-playbook-review="${item.id}:disabled">禁用</button>`,
+      action: `<button class="small-button" data-playbook-review="${escapeHtml(item.id)}:active">复核通过</button><button class="small-button" data-playbook-review="${escapeHtml(item.id)}:disabled">禁用</button>`,
     })),
     ...pendingVariants.map(({ playbook, variant }) => ({
       title: `候选变体｜${playbook.type}`,
       body: variant.text,
       meta: `${variant.contractName || ""}｜${variant.note || ""}`,
-      action: `<button class="small-button" type="button" data-playbook-promote-variant="${playbook.id}:${variant.id}">提升为标准口径</button>`,
+      action: `<button class="small-button" type="button" data-playbook-promote-variant="${escapeHtml(playbook.id)}:${escapeHtml(variant.id)}">提升为标准口径</button>`,
     })),
     ...feedback.map((item) => ({
       title: `AI反馈｜${item.status}`,
@@ -281,7 +281,7 @@ function renderRiskRuleLibrary() {
               <p>${escapeHtml(rule.issue)}</p>
               <p><strong>建议：</strong>${escapeHtml(rule.suggestion)}</p>
               <div class="row-actions">
-                <button class="small-button" type="button" data-risk-rule-status="${rule.id}:${rule.status === "disabled" ? "active" : "disabled"}">${rule.status === "disabled" ? "启用" : "禁用"}</button>
+                <button class="small-button" type="button" data-risk-rule-status="${escapeHtml(rule.id)}:${rule.status === "disabled" ? "active" : "disabled"}">${rule.status === "disabled" ? "启用" : "禁用"}</button>
               </div>
             </div>`
           )
@@ -320,9 +320,9 @@ function renderPlaybookCards(items) {
         <p><strong>谈判底线：</strong>${escapeHtml(item.negotiation)}</p>
         <p><strong>版本/复核：</strong>v${escapeHtml(item.version || 1)}｜${playbookReviewStatusLabel(item.reviewStatus)}｜上次 ${escapeHtml(item.lastReviewedAt || "未复核")}｜下次 ${escapeHtml(item.nextReviewAt || "未设置")}</p>
         <div class="row-actions">
-          <button class="small-button" data-playbook-review="${item.id}:active">标记已复核</button>
-          <button class="small-button" data-playbook-review="${item.id}:pending_review">待复核</button>
-          <button class="small-button" data-playbook-review="${item.id}:disabled">禁用</button>
+          <button class="small-button" data-playbook-review="${escapeHtml(item.id)}:active">标记已复核</button>
+          <button class="small-button" data-playbook-review="${escapeHtml(item.id)}:pending_review">待复核</button>
+          <button class="small-button" data-playbook-review="${escapeHtml(item.id)}:disabled">禁用</button>
         </div>
         ${renderKnowledgeVariants(item)}
         ${renderKnowledgeSignals(item)}
@@ -336,7 +336,7 @@ function renderPlaybookCards(items) {
                     <div class="reference-item">
                       <div><strong>${escapeHtml(occurrence.contractName)}</strong></div>
                       <div class="muted">${escapeHtml(occurrence.clauseTitle)}｜第 ${occurrence.number} 条｜${escapeHtml(occurrence.counterpartyName)}</div>
-                      <button class="small-button" data-open-clause="${occurrence.contractId}:${occurrence.clauseId}">打开位置</button>
+                      <button class="small-button" data-open-clause="${escapeHtml(occurrence.contractId)}:${escapeHtml(occurrence.clauseId)}">打开位置</button>
                     </div>`
                   )
                   .join("")
@@ -370,7 +370,7 @@ function renderKnowledgeVariants(item) {
             <div><strong>${escapeHtml(variant.contractName || "终稿候选")}</strong><span class="status-pill">${escapeHtml(variant.status || "candidate")}</span></div>
             <p>${escapeHtml(variant.text)}</p>
             <div class="muted">${escapeHtml(variant.note || "")}</div>
-            <button class="small-button" type="button" data-playbook-promote-variant="${item.id}:${variant.id}">提升为标准口径</button>
+            <button class="small-button" type="button" data-playbook-promote-variant="${escapeHtml(item.id)}:${escapeHtml(variant.id)}">提升为标准口径</button>
           </div>`
         )
         .join("")}

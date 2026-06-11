@@ -236,7 +236,7 @@ async function handleApi(req, res, url) {
   if (req.method === "POST" && url.pathname === "/api/db/sync") {
     try {
       const snapshot = await readJson(req);
-      sendJson(res, 200, { ok: true, db: replaceDb(snapshot) });
+      sendJson(res, 200, { ok: true, db: await replaceDb(snapshot) });
     } catch (error) {
       sendJson(res, 500, { ok: false, error: error.message || String(error) });
     }

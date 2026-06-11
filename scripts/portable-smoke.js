@@ -81,17 +81,19 @@ async function main() {
     stdio: ["ignore", "pipe", "pipe"],
   });
 
-  const cleanup = () => {
+  const cleanup = (exitCode) => {
+    clearTimeout(timeout);
     if (!child.killed && child.exitCode === null) child.kill();
+    if (typeof exitCode === "number") process.exit(exitCode);
   };
 
   const timeout = setTimeout(() => {
-    cleanup();
     console.error(`portable smoke timed out after ${TIMEOUT_MS}ms`);
     console.error(stdout);
     console.error(stderr);
-    process.exit(1);
+    cleanup(1);
   }, TIMEOUT_MS);
+  if (typeof timeout.unref === "function") timeout.unref();
 
   let healthCheckPromise = null;
 
@@ -103,13 +105,11 @@ async function main() {
     if (!match || selectedPort) return;
     selectedPort = Number(match[1]);
     healthCheckPromise = waitForHealth(selectedPort).then((health) => {
-      clearTimeout(timeout);
       console.log(`portable smoke ok: ${selectedPort}`);
       console.log(`database: ${health.database}`);
       cleanup();
       return { ok: true };
     }).catch((error) => {
-      clearTimeout(timeout);
       cleanup();
       console.error(error.message || String(error));
       process.exit(1);
@@ -130,7 +130,12 @@ async function main() {
       console.error(stderr);
       process.exit(1);
     }
-    if (healthCheckPromise) await healthCheckPromise;
+    try {
+      if (healthCheckPromise) await healthCheckPromise;
+    } catch (error) {
+      console.error(error.message || String(error));
+      process.exit(1);
+    }
   });
 }
 

@@ -1,7 +1,19 @@
 const { sendJson, serverErrorPayload } = require("../../http-utils");
 const { search, searchContracts, searchClauses } = require("../../store");
+const { rebuildSearchIndex, assembleStructuredSnapshot } = require("../../store-sqlite");
 
 async function handleSearch(req, res, url) {
+  if (req.method === "POST" && url.pathname === "/api/search/rebuild") {
+    try {
+      const snapshot = assembleStructuredSnapshot();
+      rebuildSearchIndex(snapshot);
+      sendJson(res, 200, { ok: true, message: "Search index rebuilt" }, req);
+    } catch (error) {
+      sendJson(res, error.statusCode || 500, serverErrorPayload(error, "Failed to rebuild search index"), req);
+    }
+    return true;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/search") {
     try {
       const query = url.searchParams.get("q") || "";

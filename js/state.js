@@ -318,11 +318,21 @@ function stripLargeTexts(nextState) {
   return skeleton;
 }
 
-function hasStrippedTexts(state) {
-  for (const contract of state.contracts || []) {
+// Heuristic: detect whether large text fields were stripped from localStorage.
+// This can happen when localStorage quota is exceeded and the skeleton is saved without long texts.
+function hasStrippedTexts(candidate) {
+  if (!candidate?.contracts) return false;
+  for (const contract of candidate.contracts) {
     for (const field of LARGE_TEXT_FIELDS) {
       if (contract[field] === "" && seedData.contracts[0]?.[field]?.length > 200) {
-        // Heuristic: if a previously long field is now empty, it was likely stripped
+        return true;
+      }
+    }
+  }
+  for (const update of candidate.updates || []) {
+    for (const field of UPDATE_LARGE_TEXT_FIELDS || []) {
+      if (update[field] === "" && update._originalLength && update._originalLength > 200) {
+        return true;
       }
     }
   }
@@ -373,6 +383,7 @@ function saveState(nextState = state, options = {}) {
   if (!options.preserveUpdatedAt) {
     nextState.storageMeta.updatedAt = new Date().toISOString();
     nextState.storageMeta.source = "browser-cache";
+    nextState.storageMeta.__syncGeneration = (nextState.storageMeta.__syncGeneration || 0) + 1;
   }
   writeLocalState(nextState);
   if (!options.localOnly) {

@@ -85,6 +85,6 @@ process.on("uncaughtException", (err) => {
 process.on("unhandledRejection", (reason, promise) => {
   logger.error(`[server] Unhandled rejection at ${promise}: ${reason}`);
   console.error("[server] Unhandled rejection:", reason);
-  // Exit to prevent silent data corruption in undefined states
-  process.exit(1);
+  // Use graceful shutdown to give active jobs a chance to cancel and WAL a chance to checkpoint.
+  gracefulShutdown("unhandledRejection");
 });

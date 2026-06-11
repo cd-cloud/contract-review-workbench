@@ -74,7 +74,7 @@
         collapsed
           ? ""
           : `<div class="risk-point-panel">
-              ${contractFindings.length ? `<button class="small-button" type="button" data-adopt-all-contract-risks="${contract.id}">一键采纳合同级建议</button>` : ""}
+              ${contractFindings.length ? `<button class="small-button" type="button" data-adopt-all-contract-risks="${escapeHtml(contract.id)}">一键采纳合同级建议</button>` : ""}
               <ul class="risk-point-list">
                 ${riskPoints.map((point) => `<li>
                   <strong>${escapeHtml(point.title)}</strong>
@@ -82,10 +82,10 @@
                   ${point.suggestion ? `<span class="risk-suggestion">建议：${escapeHtml(point.suggestion)}</span>` : ""}
                   ${point.actionable ? `<div class="row-actions risk-decision-actions">
                     ${point.rejected
-                      ? `<span class="status-pill">已拒绝</span><button class="small-button" type="button" data-restore-contract-risk="${point.index}">恢复建议</button>`
+                      ? `<span class="status-pill">已拒绝</span><button class="small-button" type="button" data-restore-contract-risk="${escapeHtml(String(point.index))}">恢复建议</button>`
                       : point.adopted
-                        ? `<span class="status-pill">已采纳</span><button class="small-button danger-button" type="button" data-reject-contract-risk="${point.index}">拒绝</button>`
-                        : `<button class="small-button" type="button" data-adopt-contract-risk="${point.index}">采纳为新增条款</button><button class="small-button danger-button" type="button" data-reject-contract-risk="${point.index}">拒绝</button>`}
+                        ? `<span class="status-pill">已采纳</span><button class="small-button danger-button" type="button" data-reject-contract-risk="${escapeHtml(String(point.index))}">拒绝</button>`
+                        : `<button class="small-button" type="button" data-adopt-contract-risk="${escapeHtml(String(point.index))}">采纳为新增条款</button><button class="small-button danger-button" type="button" data-reject-contract-risk="${escapeHtml(String(point.index))}">拒绝</button>`}
                   </div>` : ""}
                 </li>`).join("")}
               </ul>
@@ -289,19 +289,19 @@ function renderClauseRiskAdvice(clauseRisk, sourceKey, clauseId, targetClause = 
   const anchorKey = `${sourceKey}||${clauseId}`;
   const focused = state.focusedAdviceKey === anchorKey;
   return [
-    `<div class="clause-risk-advice ${focused ? "focused" : ""} ${isAddAdvice ? "proposed-addition" : ""}" data-clause-advice-anchor="${anchorKey}">`,
+    `<div class="clause-risk-advice ${focused ? "focused" : ""} ${isAddAdvice ? "proposed-addition" : ""}" data-clause-advice-anchor="${escapeHtml(anchorKey)}">`,
     `<div class="advice-heading"><strong>${escapeHtml(clauseRisk.action || "修改")}建议</strong>${isAddAdvice ? `<span class="status-pill">待采纳后编号</span>` : ""}${clauseRisk.adjusted ? `<span class="status-pill">已调整建议</span>` : ""}${Number.isFinite(Number(clauseRisk.qualityScore)) ? `<span class="status-pill">质量 ${escapeHtml(String(clauseRisk.qualityScore))}/100</span>` : ""}</div>`,
     renderAdviceThreePart(clauseRisk, sourceKey, targetClause),
     renderAdviceBlock("谈判底线", clauseRisk.negotiationBottomLine),
     renderAdviceBlock("可让步方案", clauseRisk.acceptableFallback),
     renderAdviceMeta(clauseRisk),
     `<div class="row-actions">`,
-    `<button class="small-button" type="button" data-adopt-clause-risk="${sourceKey}||${clauseId}">${adoptLabel}</button>`,
-    `<button class="small-button" type="button" data-adjust-clause-risk="${sourceKey}||${clauseId}">进一步调整</button>`,
+    `<button class="small-button" type="button" data-adopt-clause-risk="${escapeHtml(sourceKey)}||${escapeHtml(clauseId)}">${adoptLabel}</button>`,
+    `<button class="small-button" type="button" data-adjust-clause-risk="${escapeHtml(sourceKey)}||${escapeHtml(clauseId)}">进一步调整</button>`,
     `<!-- further-adjust-marker -->`,
-    `<button class="small-button" type="button" data-comment-clause-risk="${sourceKey}||${clauseId}">仅作批注</button>`,
-    `<button class="small-button" type="button" data-business-confirm-clause-risk="${sourceKey}||${clauseId}">业务确认</button>`,
-    `<button class="small-button danger-button" type="button" data-reject-clause-risk="${sourceKey}||${clauseId}">拒绝</button>`,
+    `<button class="small-button" type="button" data-comment-clause-risk="${escapeHtml(sourceKey)}||${escapeHtml(clauseId)}">仅作批注</button>`,
+    `<button class="small-button" type="button" data-business-confirm-clause-risk="${escapeHtml(sourceKey)}||${escapeHtml(clauseId)}">业务确认</button>`,
+    `<button class="small-button danger-button" type="button" data-reject-clause-risk="${escapeHtml(sourceKey)}||${escapeHtml(clauseId)}">拒绝</button>`,
     `</div>`,
     `</div>`
   ].filter(Boolean).join("");

@@ -6,6 +6,28 @@ const {
 } = require("../../store");
 
 let isSyncing = false;
+const SYNC_TIMEOUT_MS = 90000;
+
+function withSyncTimeout(promise, startTime, label) {
+  const elapsed = Date.now() - startTime;
+  const remaining = SYNC_TIMEOUT_MS - elapsed;
+  if (remaining <= 0) {
+    const err = new Error(`Sync timeout: ${label}`);
+    err.statusCode = 503;
+    return Promise.reject(err);
+  }
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      const timer = setTimeout(() => {
+        const err = new Error(`Sync timeout: ${label}`);
+        err.statusCode = 503;
+        reject(err);
+      }, remaining);
+      timer.unref?.();
+    }),
+  ]);
+}
 const { getRunnerStatus } = require("../../legal-skill-adapter");
 const { getRunnerStatus: getSuggestionRunnerStatus } = require("../../suggestion-action-adapter");
 const { getRunnerStatus: getIntakeRunnerStatus } = require("../../contract-intake-adapter");
@@ -48,17 +70,18 @@ async function handleSystem(req, res, url, state = {}) {
       return true;
     }
     isSyncing = true;
+    const syncStartTime = Date.now();
     try {
-      const snapshot = await readJson(req);
+      const snapshot = await withSyncTimeout(readJson(req), syncStartTime, "reading request body");
       let dbResult;
       if (snapshot?.syncMode === "aux-patch") {
         const { patchAuxState } = require("../../store");
         const auxState = patchAuxState(snapshot.state || {});
         dbResult = { ok: true, auxState };
       } else if (snapshot?.syncMode === "incremental") {
-        dbResult = await incrementalSync(snapshot);
+        dbResult = await withSyncTimeout(incrementalSync(snapshot), syncStartTime, "incremental sync");
       } else {
-        dbResult = replaceDb(snapshot);
+        dbResult = await withSyncTimeout(replaceDb(snapshot), syncStartTime, "full database sync");
       }
       sendJson(res, 200, { ok: true, db: dbResult }, req);
     } catch (error) {

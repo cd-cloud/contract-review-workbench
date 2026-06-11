@@ -58,6 +58,9 @@ function Stop-StaleAppProcesses($expectedExe) {
 
 Set-Location $root
 
+$npmCmd = (Get-Command npm -ErrorAction SilentlyContinue)?.Source
+if (-not $npmCmd) { Fail "npm is not available. Install Node.js 20 or 22 first." }
+
 Step "Checking Node.js"
 try {
   $nodeVersion = (& node --version)
@@ -78,7 +81,7 @@ Write-Host "ELECTRON_MIRROR=$env:ELECTRON_MIRROR"
 
 if (-not $SkipInstall) {
   Step "Installing dependencies"
-  & npm.cmd install
+  & $npmCmd install
   if ($LASTEXITCODE -ne 0) { Fail "npm install failed." }
 }
 
@@ -101,7 +104,7 @@ if (-not $SkipSmoke) {
     Write-Host "SkipBuild is set and win-unpacked already exists. Skipping electron:smoke so packaged native modules keep the Electron ABI." -ForegroundColor Yellow
   } else {
     Step "Running desktop smoke test"
-    & npm.cmd run electron:smoke
+    & $npmCmd run electron:smoke
     if ($LASTEXITCODE -ne 0) { Fail "Electron smoke test failed." }
     $smokeRan = $true
   }
@@ -109,7 +112,7 @@ if (-not $SkipSmoke) {
 
 if (-not $SkipBuild -and (-not $appExe -or $smokeRan)) {
   Step "Building win-unpacked desktop app"
-  & npm.cmd run build:win
+  & $npmCmd run build:win
   if ($LASTEXITCODE -ne 0) { Fail "Windows build failed." }
   $appExe = Find-UnpackedExe
 }

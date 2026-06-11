@@ -87,17 +87,16 @@
   let enhancementDebounce = null;
 
   function runEnhancements() {
-    if (enhancementDebounce) clearTimeout(enhancementDebounce);
-    enhancementDebounce = setTimeout(() => {
-      enhancementDebounce = null;
+    TimerRegistry.clear("electron-bridge-enhance");
+    TimerRegistry.set("electron-bridge-enhance", setTimeout(() => {
       enhanceTopbar();
       enhanceContractCards();
-    }, 50);
+    }, 50));
   }
 
   function startObserving() {
     if (!document.body) {
-      setTimeout(startObserving, 100);
+      TimerRegistry.set("electron-bridge-start", setTimeout(startObserving, 100));
       return;
     }
     if (observer) {
@@ -108,17 +107,48 @@
     runEnhancements();
   }
 
-  // Disconnect when page is hidden to reduce CPU during background operations
-  document.addEventListener("visibilitychange", () => {
+  function handleVisibilityChange() {
     if (document.hidden && observer) {
       try { observer.disconnect(); } catch (e) {}
     } else if (!document.hidden) {
       startObserving();
     }
-  });
+  }
+  function handleBeforeUnload() {
+    TimerRegistry.clear("electron-bridge-enhance");
+    TimerRegistry.clear("electron-bridge-start");
+    if (observer) {
+      try { observer.disconnect(); } catch (e) {}
+    }
+  }
+  function handleDomReady() {
+    startObserving();
+  }
+
+  if (typeof document.removeEventListener === "function") {
+    document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }
+  if (typeof window.removeEventListener === "function") {
+    window.removeEventListener("beforeunload", handleBeforeUnload);
+  }
+  if (typeof document.removeEventListener === "function") {
+    document.removeEventListener("DOMContentLoaded", handleDomReady);
+  }
+
+  // Disconnect when page is hidden to reduce CPU during background operations
+  if (typeof document.addEventListener === "function") {
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+  }
+
+  // Cleanup on page unload to prevent observer leaks during hot reload
+  if (typeof window.addEventListener === "function") {
+    window.addEventListener("beforeunload", handleBeforeUnload);
+  }
 
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", startObserving);
+    if (typeof document.addEventListener === "function") {
+      document.addEventListener("DOMContentLoaded", handleDomReady);
+    }
   } else {
     startObserving();
   }

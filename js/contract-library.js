@@ -4,7 +4,7 @@ function contractRow(contract) {
   const updateCount = getContractUpdates(contract.id).length;
   const final = hasFinalVersion(contract.id);
   return `
-    <div class="contract-row contract-card" data-contract-card="${contract.id}">
+    <div class="contract-row contract-card" data-contract-card="${escapeHtml(contract.id)}">
       <div>
         <h3>${escapeHtml(contract.name)}</h3>
         <p class="contract-row-summary">${escapeHtml(contract.purpose || contract.businessBackground || "未填写合同背景")}</p>
@@ -18,9 +18,9 @@ function contractRow(contract) {
         </div>
       </div>
       <div class="row-actions">
-        <button class="small-button open-contract-button" data-open-contract="${contract.id}">打开</button>
-        <button class="small-button" data-open-progress="${contract.id}">进度更新</button>
-        <button class="small-button danger-button" data-delete-contract="${contract.id}">删除</button>
+        <button class="small-button open-contract-button" data-open-contract="${escapeHtml(contract.id)}">打开</button>
+        <button class="small-button" data-open-progress="${escapeHtml(contract.id)}">进度更新</button>
+        <button class="small-button danger-button" data-delete-contract="${escapeHtml(contract.id)}">删除</button>
       </div>
     </div>
   `;

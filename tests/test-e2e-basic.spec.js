@@ -40,7 +40,7 @@ test.describe("Legal Contract Workbench E2E", () => {
     await page.waitForSelector("#dashboard-view", { timeout: 5000 });
 
     // Demo contract should be in the dashboard
-    const demoButton = await page.locator('[data-open-contract]').first();
+    const demoButton = await page.locator('[data-active-contract-open]').first();
     await expect(demoButton).toBeVisible();
 
     // Open the contract

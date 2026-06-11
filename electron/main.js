@@ -142,7 +142,7 @@ function applySelectedRuntimeProfile(env, backendRuntime, options = {}) {
 
 /* ─────────────── Backend lifecycle ─────────────── */
 function startBackend() {
-  if (backendProcess) return;
+  if (backendProcess || isQuitting || isStoppingBackend) return;
 
   // Ensure backend reads the same token we pass via env
   const tokenPath = path.join(WORKBENCH_ROOT, ".api_token");
@@ -153,9 +153,12 @@ function startBackend() {
     console.error("[Electron] Failed to persist API token:", error.message);
   }
 
+  const unpackedScript = path.join(process.resourcesPath, "app.asar.unpacked", "server", "server.js");
   const serverScript = isDev
     ? path.join(__dirname, "..", "server", "server.js")
-    : path.join(process.resourcesPath, "app", "server", "server.js");
+    : (fs.existsSync(unpackedScript)
+      ? unpackedScript
+      : path.join(process.resourcesPath, "app", "server", "server.js"));
   if (!fs.existsSync(serverScript)) {
     dialog.showErrorBox(
       "启动失败",
@@ -222,6 +225,10 @@ function startBackend() {
     smokeLog(`[Backend] exited with code ${code}`);
     backendProcess = null;
     backendReady = false;
+    if (isStoppingBackend) {
+      isStoppingBackend = false;
+      return;
+    }
     if (code !== 0 && code !== null) {
       tryRestartBackend();
     }
@@ -229,6 +236,7 @@ function startBackend() {
 }
 
 function tryRestartBackend() {
+  if (isQuitting || isStoppingBackend) return;
   backendRestartCount++;
   if (backendRestartCount > MAX_BACKEND_RESTARTS) {
     dialog.showErrorBox(
@@ -286,12 +294,17 @@ function stopBackend() {
     }
 
     const checkInterval = setInterval(() => {
+      if (!backendProcess) {
+        clearInterval(checkInterval);
+        clearTimeout(killTimeout);
+        resolve();
+        return;
+      }
       try { process.kill(pid, 0); } catch (e) {
         clearInterval(checkInterval);
         clearTimeout(killTimeout);
         backendProcess = null;
         backendReady = false;
-        isStoppingBackend = false;
         resolve();
       }
     }, 200);
@@ -301,7 +314,6 @@ function stopBackend() {
       clearTimeout(killTimeout);
       backendProcess = null;
       backendReady = false;
-      isStoppingBackend = false;
       resolve();
     }, 8000);
   });
@@ -618,7 +630,8 @@ app.whenReady().then(async () => {
 });
 
 app.on("window-all-closed", () => {
-  if (process.platform === "darwin") {
+  // On macOS it is common for applications to stay open until the user explicitly quits.
+  if (process.platform !== "darwin") {
     quitApp();
   }
 });

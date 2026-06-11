@@ -72,6 +72,7 @@ async function main() {
         NODE_ENV: "test",
         ELECTRON_SMOKE_TEST: "1",
         ELECTRON_SMOKE_LOG: LOG_PATH,
+        ELECTRON_RUN_AS_NODE: undefined,
       },
     }), "electron.launch");
 

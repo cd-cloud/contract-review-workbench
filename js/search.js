@@ -12,6 +12,14 @@
   const SEARCH_DEBOUNCE_MS = 250;
   const MIN_QUERY_LEN = 1;
 
+  if (typeof searchInput.removeEventListener === "function") {
+    searchInput.removeEventListener("input", handleSearchInput);
+    searchInput.removeEventListener("focus", handleSearchFocus);
+    searchInput.removeEventListener("keydown", handleSearchKeydown);
+  }
+  if (typeof document.removeEventListener === "function") {
+    document.removeEventListener("click", handleDocumentClick);
+  }
   searchInput.addEventListener("input", handleSearchInput);
   searchInput.addEventListener("focus", handleSearchFocus);
   searchInput.addEventListener("keydown", handleSearchKeydown);

@@ -119,6 +119,34 @@ function cleanupAnalysisJobs() {
 const cleanupInterval = setInterval(cleanupAnalysisJobs, 60 * 1000);
 if (typeof cleanupInterval.unref === "function") cleanupInterval.unref();
 
+// Example CNY rates per 1K tokens (input / output). Override via LEGAL_WORKBENCH_COST_RATES_JSON.
+const DEFAULT_MODEL_RATES = {
+  "moonshot": { input: 0.012, output: 0.012 },
+  "moonshot-v1-8k": { input: 0.012, output: 0.012 },
+  "gpt-4o": { input: 0.165, output: 0.66 },
+  "gpt-4o-mini": { input: 0.015, output: 0.06 },
+  "claude-3-5-sonnet": { input: 0.12, output: 0.6 },
+  "claude-3-opus": { input: 0.72, output: 2.88 },
+  "default": { input: 0.03, output: 0.03 },
+};
+
+function getModelRates() {
+  if (process.env.LEGAL_WORKBENCH_COST_RATES_JSON) {
+    try {
+      return { ...DEFAULT_MODEL_RATES, ...JSON.parse(process.env.LEGAL_WORKBENCH_COST_RATES_JSON) };
+    } catch (e) {
+      console.error("[jobs] Failed to parse LEGAL_WORKBENCH_COST_RATES_JSON:", e.message);
+    }
+  }
+  return DEFAULT_MODEL_RATES;
+}
+
+function resolveModelRate(modelName) {
+  const rates = getModelRates();
+  const key = Object.keys(rates).find((k) => k !== "default" && modelName.toLowerCase().includes(k.toLowerCase()));
+  return rates[key] || rates.default;
+}
+
 function buildCostMetadata(result) {
   const meta = {
     model: result?.runner?.model || "unknown",
@@ -133,13 +161,18 @@ function buildCostMetadata(result) {
     meta.totalTokens = result.usage.total_tokens || (meta.inputTokens + meta.outputTokens);
   }
   // Rough CNY estimate (example rates; not updated automatically)
-  // Override via LEGAL_WORKBENCH_COST_RATE_PER_1K env var if needed
+  // Override via LEGAL_WORKBENCH_COST_RATES_JSON env var if needed
   if (meta.totalTokens) {
-    const envRate = Number(process.env.LEGAL_WORKBENCH_COST_RATE_PER_1K);
-    const ratePer1k = Number.isFinite(envRate) && envRate > 0
-      ? envRate
-      : (meta.model.includes("moonshot") ? 0.024 : 0.03);
-    meta.estimatedCostCny = Number(((meta.totalTokens / 1000) * ratePer1k).toFixed(4));
+    const legacyRate = Number(process.env.LEGAL_WORKBENCH_COST_RATE_PER_1K);
+    if (Number.isFinite(legacyRate) && legacyRate > 0) {
+      meta.estimatedCostCny = Number(((meta.totalTokens / 1000) * legacyRate).toFixed(4));
+    } else {
+      const rate = resolveModelRate(meta.model);
+      const inputCost = (meta.inputTokens / 1000) * rate.input;
+      const outputCost = (meta.outputTokens / 1000) * rate.output;
+      meta.estimatedCostCny = Number((inputCost + outputCost).toFixed(4));
+      meta.rateSource = "example-rates";
+    }
   }
   return meta;
 }
@@ -205,6 +238,8 @@ async function executeAnalysisJob(job, request) {
         diffParts = rawDiff.slice(0, 200);
       }
     } catch (e) {}
+    // Release previous_text reference after diff computation to reduce memory pressure.
+    request.previous_text = "";
   }
 
   Object.assign(current, {

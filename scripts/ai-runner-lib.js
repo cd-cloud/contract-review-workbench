@@ -476,6 +476,7 @@ function compact(value, maxLength = 120000) {
   for (let i = 0; i < openBraces; i++) safeSlice += "}";
   for (let i = 0; i < openBrackets; i++) safeSlice += "]";
   safeSlice = safeSlice.replace(/,\s*([\}\]])/g, "$1");
+  const end = headLen + tailLen;
   return `${safeSlice}
 
 [TRUNCATED_FOR_AI_RUNNER: 已处理第 1–${end} 字符，共 ${text.length} 字符]`;

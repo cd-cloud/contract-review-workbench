@@ -48,12 +48,15 @@ function handleDocumentInput(event) {
     if (typeof persistBackendAuxState === "function") {
       persistBackendAuxState({ readerFilters: state.readerFilters }).catch(() => {});
     }
-    renderReview();
-    requestAnimationFrame(() => {
-      const restored = document.querySelector(`#${sourceId}`);
-      restored?.focus();
-      if (sourceId === "reader-clause-search") restored?.setSelectionRange?.(cursor, cursor);
-    });
+    TimerRegistry.clear("reader-filter-debounce");
+    TimerRegistry.set("reader-filter-debounce", setTimeout(() => {
+      renderReview();
+      requestAnimationFrame(() => {
+        const restored = document.querySelector(`#${sourceId}`);
+        restored?.focus();
+        if (sourceId === "reader-clause-search") restored?.setSelectionRange?.(cursor, cursor);
+      });
+    }, 200));
   }
 
   const reviewQueueButton = event.target.closest("[data-review-queue]");
@@ -274,8 +277,17 @@ function filterPlaybooks() {
   if (listNode) listNode.innerHTML = renderPlaybookCards(items);
 }
 
-document.addEventListener("input", handleDocumentInput);
-document.addEventListener("dblclick", handleDocumentDblclick);
-document.addEventListener("focusout", handleDocumentFocusout);
-document.addEventListener("change", handleDocumentChange);
-document.addEventListener("input", handleClauseEditInput);
+function attachDocumentListeners() {
+  if (typeof document.removeEventListener !== "function" || typeof document.addEventListener !== "function") return;
+  document.removeEventListener("input", handleDocumentInput);
+  document.removeEventListener("dblclick", handleDocumentDblclick);
+  document.removeEventListener("focusout", handleDocumentFocusout);
+  document.removeEventListener("change", handleDocumentChange);
+  document.removeEventListener("input", handleClauseEditInput);
+  document.addEventListener("input", handleDocumentInput);
+  document.addEventListener("dblclick", handleDocumentDblclick);
+  document.addEventListener("focusout", handleDocumentFocusout);
+  document.addEventListener("change", handleDocumentChange);
+  document.addEventListener("input", handleClauseEditInput);
+}
+attachDocumentListeners();

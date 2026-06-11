@@ -539,10 +539,14 @@ function wordCommentsXmlToText(xml) {
 
 const MAX_UPLOADED_FILE_CACHE = 10;
 
+function evictLruUploadedFile() {
+  const oldest = uploadedFileCache.keys().next().value;
+  if (oldest !== undefined) uploadedFileCache.delete(oldest);
+}
+
 function cacheUploadedFileResult(target, result) {
   if (uploadedFileCache.size >= MAX_UPLOADED_FILE_CACHE) {
-    const first = uploadedFileCache.keys().next().value;
-    uploadedFileCache.delete(first);
+    evictLruUploadedFile();
   }
   const cacheId = uid("file");
   uploadedFileCache.set(cacheId, result);
@@ -553,7 +557,13 @@ function cacheUploadedFileResult(target, result) {
 function getUploadedFileResult(selector) {
   const target = document.querySelector(selector);
   const cacheId = target?.dataset.uploadCacheId;
-  return cacheId ? uploadedFileCache.get(cacheId) || null : null;
+  if (!cacheId) return null;
+  const result = uploadedFileCache.get(cacheId);
+  if (!result) return null;
+  // Refresh LRU order by re-inserting the same entry.
+  uploadedFileCache.delete(cacheId);
+  uploadedFileCache.set(cacheId, result);
+  return result;
 }
 
 function buildVersionPayload(text, uploadResult = null) {

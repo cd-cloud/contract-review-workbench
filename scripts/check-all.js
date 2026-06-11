@@ -4,7 +4,7 @@ const { execSync } = require("child_process");
 
 const ROOT = path.resolve(__dirname, "..");
 
-function collectJsFiles(dir, exclude = ["node_modules", ".git", "dist"]) {
+function collectJsFiles(dir, exclude = ["node_modules", ".git", "dist", "tests/.tmp-"]) {
   const files = [];
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
@@ -33,9 +33,26 @@ for (const file of files.sort()) {
   }
 }
 
+// Validate JSON schemas
+const schemasDir = path.join(ROOT, "schemas");
+if (fs.existsSync(schemasDir)) {
+  for (const entry of fs.readdirSync(schemasDir, { withFileTypes: true })) {
+    if (!entry.name.endsWith(".json")) continue;
+    const full = path.join(schemasDir, entry.name);
+    try {
+      JSON.parse(fs.readFileSync(full, "utf8"));
+      console.log(`  ✓ schemas/${entry.name}`);
+    } catch (error) {
+      console.error(`  ✗ schemas/${entry.name}`);
+      console.error(error.message);
+      failed += 1;
+    }
+  }
+}
+
 if (failed) {
-  console.error(`\n${failed} file(s) failed syntax check.`);
+  console.error(`\n${failed} file(s) failed syntax/validation check.`);
   process.exit(1);
 } else {
-  console.log(`\nAll ${files.length} files passed syntax check.`);
+  console.log(`\nAll ${files.length} JS files and schemas passed check.`);
 }

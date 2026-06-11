@@ -6,12 +6,8 @@ const { chromium } = require("playwright");
 const workspace = path.resolve(__dirname, "..");
 const contractPath = process.env.MANUAL_FLOW_CONTRACT || path.join(workspace, "data", "files", "shareholder-agreement-20260510.docx");
 const artifactDir = path.join(workspace, "data", "manual-flow-check");
-const localChrome = [
-  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-  "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
-  "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
-  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
-].find((item) => fs.existsSync(item));
+// Default to Playwright's bundled Chromium; override with PLAYWRIGHT_EXECUTABLE_PATH.
+const executablePath = process.env.PLAYWRIGHT_EXECUTABLE_PATH || undefined;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -53,7 +49,7 @@ async function main() {
   if (!fs.existsSync(contractPath)) throw new Error(`Missing test contract: ${contractPath}`);
   fs.mkdirSync(artifactDir, { recursive: true });
 
-  const browser = await chromium.launch({ headless: true, executablePath: localChrome || undefined });
+  const browser = await chromium.launch({ headless: true, executablePath });
   const context = await browser.newContext({ acceptDownloads: true, viewport: { width: 1440, height: 1050 } });
   const page = await context.newPage();
   const logs = [];

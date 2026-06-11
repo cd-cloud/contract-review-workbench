@@ -8,8 +8,16 @@ const checks = [
     patterns: ["ChapterHeading", "SubclauseDecimal", "renderWordHtmlClauseText"],
   },
   {
-    file: "js/api.js",
-    patterns: ["clauseSegmentation", "dedupeSkillFindings", "getClauseSegmentationStatus", "matchClauseByExplicitNumber"],
+    file: "js/api/segmentation.js",
+    patterns: ["getClauseSegmentationStatus", "normalizeSkillClauseSegmentation"],
+  },
+  {
+    file: "js/api/findings.js",
+    patterns: ["dedupeSkillFindings", "matchClauseByExplicitNumber"],
+  },
+  {
+    file: "js/api/core.js",
+    patterns: ["clauseSegmentation"],
   },
   {
     file: "scripts/codex-skill-runner.js",
@@ -36,11 +44,11 @@ const checks = [
     patterns: ["contractName", "businessBackground", "missingFacts"],
   },
   {
-    file: "server/routes/api.js",
+    file: "server/routes/handlers/adapters.js",
     patterns: ["/api/ai-suggestion/action", "runSuggestionAction", "/api/contract-intake", "runContractIntake", "/api/visual-qa", "runVisualQa"],
   },
   {
-    file: "js/api.js",
+    file: "js/api/core.js",
     patterns: ["runContractIntake", "/api/contract-intake", "legalWorkbenchFetch"],
   },
   {
@@ -80,7 +88,7 @@ const checks = [
     patterns: ["renderVisualQaPanel", "scheduleVisualQaOnReviewOpen"],
   },
   {
-    file: "js/api.js",
+    file: "js/api/visualqa.js",
     patterns: ["VISUAL_QA_INTERACTION_DELAY_MS", "pendingReason", "Visual QA 已排队"],
   },
 ];

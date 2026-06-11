@@ -38,6 +38,16 @@ const TimerRegistry = {
     this._timers.clear();
   },
 
+  clearAllExcept(keepIds = []) {
+    const keep = new Set(keepIds);
+    for (const [id, timer] of this._timers) {
+      if (keep.has(id)) continue;
+      clearTimeout(timer);
+      clearInterval(timer);
+      this._timers.delete(id);
+    }
+  },
+
   has(id) {
     return this._timers.has(id);
   },

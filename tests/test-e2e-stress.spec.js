@@ -36,7 +36,7 @@ test.describe("Manual Flow Simulation", () => {
     // 3. Back to dashboard and open demo contract
     await clickByEvaluate(page, '[data-view="dashboard"]');
     await page.waitForSelector("#dashboard-view.active", { timeout: 3000 });
-    await clickByEvaluate(page, '[data-open-contract]');
+    await clickByEvaluate(page, '[data-active-contract-open]');
     await page.waitForSelector("#review-view.active", { timeout: 5000 });
     expect(await page.textContent("#view-title")).toContain("审阅台");
 
@@ -95,7 +95,7 @@ test.describe("Manual Flow Simulation", () => {
     await waitForBootstrap(page);
 
     // Open demo contract
-    await clickByEvaluate(page, '[data-open-contract]');
+    await clickByEvaluate(page, '[data-active-contract-open]');
     await page.waitForSelector("#review-view.active", { timeout: 5000 });
 
     // Check workbench has clause cards

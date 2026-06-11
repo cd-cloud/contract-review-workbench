@@ -14,8 +14,8 @@ module.exports = defineConfig({
     baseURL: process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:8787",
     trace: "on-first-retry",
     headless: true,
-    // Use the already-downloaded Chromium (avoid headless-shell requirement)
-    channel: "chromium",
+    // Playwright will use its bundled Chromium by default.
+    // Override with PLAYWRIGHT_EXECUTABLE_PATH if you prefer a system browser.
   },
   projects: [
     {

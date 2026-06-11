@@ -66,9 +66,18 @@ function createAiAdapter(options) {
     return new Promise((resolve, reject) => {
       const { execFile } = require("child_process");
       const runnerPath = path.resolve(process.cwd(), runnerConfig.runner);
-      const child = execFile(process.execPath, [runnerPath], { maxBuffer: 100 * 1024 * 1024 }, (error, stdout, stderr) => {
+      const timeoutMs = Number(runnerConfig.timeoutMs) || 120000;
+      const child = execFile(process.execPath, [runnerPath], {
+        maxBuffer: 100 * 1024 * 1024,
+        timeout: timeoutMs,
+        killSignal: "SIGTERM",
+      }, (error, stdout, stderr) => {
         if (error) {
-          reject(new Error(`${error.message}\n${stderr || ""}`.trim()));
+          if (error.killed && error.signal === "SIGTERM") {
+            reject(new Error(`${name} runner timed out after ${timeoutMs}ms`));
+          } else {
+            reject(new Error(`${error.message}\n${stderr || ""}`.trim()));
+          }
           return;
         }
         try {

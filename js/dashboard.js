@@ -20,7 +20,7 @@ function renderDashboard() {
         <p class="eyebrow">Active Matter</p>
         <h3>${activeContract ? escapeHtml(activeContract.name) : "暂无当前合同"}</h3>
         <p>${activeContract ? `${escapeHtml(activeContract.counterpartyName)}｜${escapeHtml(activeContract.workflowStatus || activeContract.status || "审阅中")}` : "新建审阅后会在这里显示当前工作对象。"}</p>
-        ${activeContract ? `<button class="small-button open-contract-button" type="button" data-open-contract="${activeContract.id}">打开审阅台</button>` : `<button class="small-button" type="button" data-open-upload>新建审阅</button>`}
+        ${activeContract ? `<button class="small-button open-contract-button" type="button" data-open-contract="${escapeHtml(activeContract.id)}" data-active-contract-open="${escapeHtml(activeContract.id)}">打开审阅台</button>` : `<button class="small-button" type="button" data-open-upload>新建审阅</button>`}
       </div>
     </section>
     <div class="grid stats-grid">
@@ -210,10 +210,10 @@ function buildGlobalSearchResults(keyword) {
 
 function globalSearchRow(item) {
   const target = item.clauseId
-    ? `data-open-clause="${item.contractId}:${item.clauseId}"`
+    ? `data-open-clause="${escapeHtml(item.contractId)}:${escapeHtml(item.clauseId)}"`
     : item.contractId
-      ? `data-open-contract="${item.contractId}"`
-      : `data-view-target="${item.view || "dashboard"}"`;
+      ? `data-open-contract="${escapeHtml(item.contractId)}"`
+      : `data-view-target="${escapeHtml(item.view || "dashboard")}"`;
   return `
     <button class="contract-row" ${target} type="button">
       <div>
@@ -255,7 +255,7 @@ function getRecentUpdates(limit = 5) {
 
 function recentUpdateRow({ update, contract }) {
   return `
-    <button class="contract-row compact-row" type="button" data-open-update="${update.id}" data-update-contract="${contract.id}">
+    <button class="contract-row compact-row" type="button" data-open-update="${escapeHtml(update.id)}" data-update-contract="${escapeHtml(contract.id)}">
       <div>
         <strong>${escapeHtml(update.type)}｜${escapeHtml(contract.name)}</strong>
         <p>${escapeHtml(update.note || update.fileName || "版本已更新")}</p>
@@ -287,7 +287,7 @@ function contractTaskRow(contract, deadline) {
   const overdue = getDeadlineDeltaDays(deadline) < 0;
   const urgent = isDeadlineUrgent(deadline);
   return `
-    <button class="contract-row" data-open-contract="${contract.id}" type="button">
+    <button class="contract-row" data-open-contract="${escapeHtml(contract.id)}" type="button">
       <div>
         <strong>${escapeHtml(contract.name)}</strong>
         <p>${escapeHtml(contract.counterpartyName)}｜${escapeHtml(contract.workflowStatus || contract.status || "初审")}｜负责人：${escapeHtml(contract.owner || "未填写")}</p>

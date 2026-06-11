@@ -210,7 +210,7 @@ async function pollLegalSkillJob(jobId, contractId, options = {}) {
     const startedAt = Date.now();
     while (Date.now() - startedAt < POLL_TIMEOUT_MS) {
       if (controller.signal.aborted) throw new Error("AI 分析已取消。");
-      await delay(POLL_INTERVAL_MS);
+      await delay(POLL_INTERVAL_MS, controller.signal);
       const response = await legalWorkbenchFetch(`/api/legal-review/jobs/${encodeURIComponent(jobId)}`, { signal: controller.signal });
       if (!response.ok) throw new Error(await readBackendError(response, "AI 分析任务状态读取失败"));
       const data = await response.json();
@@ -221,7 +221,9 @@ async function pollLegalSkillJob(jobId, contractId, options = {}) {
     }
     throw new Error("AI 分析超时，请稍后重试或缩短合同文本。");
   } finally {
-    pollControllers.delete(jobId);
+    if (pollControllers.get(jobId) === controller) {
+      pollControllers.delete(jobId);
+    }
   }
 }
 
@@ -422,8 +424,16 @@ async function ensureCodexSegmentation(contract, material) {
   }
 }
 
-function delay(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function delay(ms, signal) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(resolve, ms);
+    if (signal) {
+      signal.addEventListener("abort", () => {
+        clearTimeout(timer);
+        reject(new Error("Cancelled"));
+      }, { once: true });
+    }
+  });
 }
 
 async function syncBackendSnapshot() {
@@ -703,12 +713,13 @@ function stripLargeTextsFromSnapshot(snapshot) {
 
 function buildIncrementalPayload(current, last) {
   if (!last) return stripLargeTextsFromSnapshot(current);
-  // Lightweight diff: if the stripped state hasn't changed, send a minimal heartbeat.
-  const currentStripped = stripLargeTextsFromSnapshot(current);
-  const lastStripped = stripLargeTextsFromSnapshot(last);
-  if (JSON.stringify(currentStripped) === JSON.stringify(lastStripped)) {
+  // Lightweight diff: compare sync generation counters instead of stringify.
+  const currentGen = current?.storageMeta?.__syncGeneration || 0;
+  const lastGen = last?.storageMeta?.__syncGeneration || 0;
+  if (currentGen === lastGen) {
     return { syncMode: "incremental" }; // nothing changed
   }
+  const currentStripped = stripLargeTextsFromSnapshot(current);
   currentStripped.syncMode = "incremental";
   return currentStripped;
 }
@@ -732,13 +743,12 @@ async function flushBackendSync() {
     if (typeof requestIdleCallback === "function") {
       requestIdleCallback(doClone, { timeout: 1000 });
     } else {
-      setTimeout(doClone, 0);
+      TimerRegistry.set("backend-sync-clone", setTimeout(doClone, 0));
     }
   });
   // Build an incremental payload stripped of large texts.
   // The backend is the source of truth for large text fields.
   const payload = buildIncrementalPayload(snapshot, lastSyncedSnapshot);
-  lastSyncedSnapshot = stripLargeTextsFromSnapshot(snapshot);
   try {
     const response = await legalWorkbenchFetch("/api/db/sync", {
       method: "POST",
@@ -746,6 +756,10 @@ async function flushBackendSync() {
       body: JSON.stringify(payload),
     });
     if (!response.ok) throw new Error("自动同步失败");
+    // Only update the baseline after a successful sync; otherwise the next
+    // incremental payload would be computed against a state the backend has
+    // not yet persisted, causing changes to be silently dropped.
+    lastSyncedSnapshot = stripLargeTextsFromSnapshot(snapshot);
     state.backendSync = {
       ok: true,
       syncedAt: new Date().toISOString(),

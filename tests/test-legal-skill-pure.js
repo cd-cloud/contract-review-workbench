@@ -17,6 +17,7 @@ function runInFreshEnv(code, extraEnv = {}) {
     env,
     encoding: "utf8",
     cwd: require("path").resolve(__dirname, ".."),
+    timeout: 30000,
   }).trim();
 }
 
@@ -447,4 +448,9 @@ test("analyzeLegalReview preserves partial chunk results when one chunk fails", 
 });
 
 // Wait for async tests before printing summary
-Promise.all(asyncTests).then(() => summary());
+Promise.all(asyncTests)
+  .then(() => summary())
+  .catch((error) => {
+    console.error("[test-legal-skill-pure] Unhandled test error:", error);
+    process.exit(1);
+  });

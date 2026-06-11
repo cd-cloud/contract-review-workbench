@@ -10,12 +10,8 @@ const { chromium } = require("playwright");
 
 const workspace = path.resolve(__dirname, "..");
 const artifactDir = path.join(workspace, "data", "frontend-e2e-test");
-const localChrome = [
-  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-  "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
-  "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
-  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
-].find((item) => fs.existsSync(item));
+// Default to Playwright's bundled Chromium; override with PLAYWRIGHT_EXECUTABLE_PATH.
+const executablePath = process.env.PLAYWRIGHT_EXECUTABLE_PATH || undefined;
 
 const sampleContract = `技术服务合同
 
@@ -65,7 +61,7 @@ async function main() {
   const logs = [];
   const errors = [];
 
-  const browser = await chromium.launch({ headless: true, executablePath: localChrome || undefined });
+  const browser = await chromium.launch({ headless: true, executablePath });
   const context = await browser.newContext({ viewport: { width: 1440, height: 1050 } });
   const page = await context.newPage();
 

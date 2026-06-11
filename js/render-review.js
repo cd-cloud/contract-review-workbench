@@ -82,9 +82,9 @@ function renderReview() {
   const activeEl = document.activeElement;
   const focusId = activeEl?.id || activeEl?.dataset?.clauseCard || activeEl?.dataset?.subclauseCard || null;
   const focusTag = activeEl?.tagName?.toLowerCase();
-  const focusSelector = activeEl?.matches?.("[data-clause-card]") ? `[data-clause-card="${activeEl.dataset.clauseCard}"]`
-    : activeEl?.matches?.("[data-subclause-card]") ? `[data-subclause-card="${activeEl.dataset.subclauseCard}"]`
-    : focusId ? `#${focusId}` : null;
+  const focusSelector = activeEl?.matches?.("[data-clause-card]") ? `[data-clause-card="${cssEscapeValue(activeEl.dataset.clauseCard)}"]`
+    : activeEl?.matches?.("[data-subclause-card]") ? `[data-subclause-card="${cssEscapeValue(activeEl.dataset.subclauseCard)}"]`
+    : focusId ? `#${cssEscapeValue(focusId)}` : null;
   const focusCursor = (focusTag === "input" || focusTag === "textarea") ? { start: activeEl?.selectionStart, end: activeEl?.selectionEnd } : null;
   const scrollTop = views.review?.scrollTop || 0;
 
@@ -104,18 +104,19 @@ function renderReview() {
   `;
   setupReviewAdviceScrollSync();
 
-  // Restore scroll and focus after rebuilding DOM
-  if (views.review && scrollTop > 0) {
-    views.review.scrollTop = scrollTop;
-  }
+  // Restore focus first, then scroll to prevent browser auto-scroll from overriding it.
   if (focusSelector) {
     const restored = document.querySelector(focusSelector);
     if (restored) {
-      restored.focus();
+      restored.focus({ preventScroll: true });
       if (focusCursor && typeof restored.setSelectionRange === "function") {
         restored.setSelectionRange(focusCursor.start, focusCursor.end);
       }
     }
+  }
+  // Restore scroll after focus to prevent browser auto-scroll from overriding it.
+  if (views.review && scrollTop > 0) {
+    views.review.scrollTop = scrollTop;
   }
 
   __lastRenderState = captureRenderState();
@@ -350,10 +351,10 @@ function renderReviewNextActions(contract, clauses, codexStatus = null, material
       <p>${escapeHtml(deadlineText)} | 高风险 ${highCount} 项 | 已记录修改/批注 ${pendingEdits} 项</p>
       ${renderCodexStatusPanel(codexStatus)}
       <div class="stacked-actions">
-        <button class="small-button" type="button" data-run-legal-skill="${contract.id}">运行 AI Legal Skill</button>
+        <button class="small-button" type="button" data-run-legal-skill="${escapeHtml(contract.id)}">运行 AI Legal Skill</button>
         <button class="small-button" type="button" data-run-visual-qa="${escapeHtml(material.sourceKey)}">运行 Agent B 检查</button>
-        <button class="small-button" type="button" data-generate-send-version="${contract.id}" ${actionDisabled}>生成拟发送版本</button>
-        <button class="small-button" type="button" data-export-word-redline="${contract.id}" ${actionDisabled}>导出 Word 红线/批注稿</button>
+        <button class="small-button" type="button" data-generate-send-version="${escapeHtml(contract.id)}" ${actionDisabled}>生成拟发送版本</button>
+        <button class="small-button" type="button" data-export-word-redline="${escapeHtml(contract.id)}" ${actionDisabled}>导出 Word 红线/批注稿</button>
       </div>
     </div>
   `;
@@ -634,7 +635,7 @@ function renderContractStructureOverview(contract, material, clauses) {
                       const action = actions[clause.id] || {};
                       const risk = getClauseRiskSummary(contract, clause, material.sourceKey, clause.id, clauses);
                       return `
-                        <button class="structure-clause-link" type="button" data-workbench-clause="${clause.id}">
+                        <button class="structure-clause-link" type="button" data-workbench-clause="${escapeHtml(clause.id)}">
                           <span class="risk-dot ${risk.severity}"></span>
                           <span>${escapeHtml(clause.title || `第 ${clause.number || ""} 条`)}</span>
                           <span class="structure-flags">
@@ -734,9 +735,9 @@ function scheduleCodexSegmentation(contract, material) {
   if (status.source === "ai" || ["running", "failed"].includes(state.segmentationJobs?.[jobKey]?.status)) return;
   state.viewBootstrappingSegmentation = state.viewBootstrappingSegmentation || {};
   state.viewBootstrappingSegmentation[jobKey] = true;
-  setTimeout(() => ensureCodexSegmentation(contract, material).finally(() => {
+  TimerRegistry.set("codex-segmentation", setTimeout(() => ensureCodexSegmentation(contract, material).finally(() => {
     if (state.viewBootstrappingSegmentation) delete state.viewBootstrappingSegmentation[jobKey];
-  }), 0);
+  }), 0));
 }
 
 function renderInlineClauseWorkbench(contract) {
@@ -933,12 +934,12 @@ function renderSegmentationJobStatus(contractId) {
 
 function renderCardQuickActions(material, clause, action = {}, options = {}) {
   const target = `${material.sourceKey}||${clause.id}`;
-  const addButton = options.allowAdd === false ? "" : `<button class="icon-text-button" type="button" data-open-add-clause="${target}">新增</button>`;
+  const addButton = options.allowAdd === false ? "" : `<button class="icon-text-button" type="button" data-open-add-clause="${escapeHtml(target)}">新增</button>`;
   return `
     <div class="card-quick-actions" aria-label="条款快捷操作">
       ${addButton}
-      <button class="icon-text-button" type="button" data-toggle-inline-comment="${target}">批注</button>
-      <button class="icon-text-button danger" type="button" data-toggle-clause-delete="${target}">${action.deleted ? "撤销删除" : "删除"}</button>
+      <button class="icon-text-button" type="button" data-toggle-inline-comment="${escapeHtml(target)}">批注</button>
+      <button class="icon-text-button danger" type="button" data-toggle-clause-delete="${escapeHtml(target)}">${action.deleted ? "撤销删除" : "删除"}</button>
       <span class="card-action-hint">卡片内处理</span>
     </div>
   `;
@@ -957,10 +958,10 @@ function renderInlineClauseEditor(material, clause, action = {}, text, label = "
       </div>
       <label>
         批注
-        <textarea data-clause-comment="${target}" placeholder="记录修改理由、谈判意见、需业务确认事项。">${escapeHtml(action.comment || "")}</textarea>
+        <textarea data-clause-comment="${escapeHtml(target)}" placeholder="记录修改理由、谈判意见、需业务确认事项。">${escapeHtml(action.comment || "")}</textarea>
       </label>
       <div class="row-actions">
-        <button class="small-button" type="button" data-save-clause-action="${target}">保存批注</button>
+        <button class="small-button" type="button" data-save-clause-action="${escapeHtml(target)}">保存批注</button>
       </div>
     </div>
   `;
@@ -972,7 +973,7 @@ function renderDirectClauseEditor(material, clause, action = {}, text, label = "
   const bodyText = stripEditableTitleFromText(text, title);
   return `
     <div class="direct-clause-editor">
-      <textarea data-clause-edit="${target}" aria-label="${label}" placeholder="直接修改本条正文">${escapeHtml(bodyText)}</textarea>
+      <textarea data-clause-edit="${escapeHtml(target)}" aria-label="${label}" placeholder="直接修改本条正文">${escapeHtml(bodyText)}</textarea>
     </div>
   `;
 }
@@ -983,7 +984,7 @@ function renderEditableClauseTitle(material, clause, headingTag = "h4") {
   const target = `${material.sourceKey}||${clause.id}`;
   return `
     <${headingTag} class="editable-clause-title-wrap">
-      <textarea class="editable-clause-title" data-clause-title-edit="${target}" rows="1" aria-label="条款标题" placeholder="条款标题">${escapeHtml(title)}</textarea>
+      <textarea class="editable-clause-title" data-clause-title-edit="${escapeHtml(target)}" rows="1" aria-label="条款标题" placeholder="条款标题">${escapeHtml(title)}</textarea>
     </${headingTag}>
   `;
 }
@@ -1006,7 +1007,7 @@ function normalizeEditableTitleLine(value) {
 
 function wrapClauseBodyAnchor(sourceKey, clauseId, html) {
   const key = `${sourceKey}||${clauseId}`;
-  return `<div class="clause-body-anchor ${state.focusedAdviceKey === key ? "focused" : ""}" data-clause-body-anchor="${key}">${html}</div>`;
+  return `<div class="clause-body-anchor ${state.focusedAdviceKey === key ? "focused" : ""}" data-clause-body-anchor="${escapeHtml(key)}">${html}</div>`;
 }
 
 function getReaderToolKey(sourceKey, clauseId) {
@@ -1090,9 +1091,9 @@ function renderInlineClauseCard(contract, material, clause, clauses, active) {
               <div class="editor-panel">
                 <label>
                   分析要求
-                  <textarea data-analysis-request="${material.sourceKey}||${clause.id}" placeholder="例如：从服务提供方视角，给出更保守的数据使用条款。">${escapeHtml(action.analysisRequest || "")}</textarea>
+                  <textarea data-analysis-request="${escapeHtml(material.sourceKey)}||${escapeHtml(clause.id)}" placeholder="例如：从服务提供方视角，给出更保守的数据使用条款。">${escapeHtml(action.analysisRequest || "")}</textarea>
                 </label>
-                <button class="primary-button" type="button" data-run-clause-analysis="${material.sourceKey}||${clause.id}">生成修改建议</button>
+                <button class="primary-button" type="button" data-run-clause-analysis="${escapeHtml(material.sourceKey)}||${escapeHtml(clause.id)}">生成修改建议</button>
                 ${renderClauseAnalysisStatus(action)}
                 <div class="reference-list">
                   ${analysis.map(referenceItem).join("")}
@@ -1178,9 +1179,9 @@ function renderSubclauseCard(contract, material, parentClause, subclause, subcla
                 <div class="editor-panel">
                   <label>
                     分析要求
-                    <textarea data-analysis-request="${material.sourceKey}||${subclause.id}" placeholder="例如：只分析本款是否应保留、补充例外或调整责任。">${escapeHtml(action.analysisRequest || "")}</textarea>
+                    <textarea data-analysis-request="${escapeHtml(material.sourceKey)}||${escapeHtml(subclause.id)}" placeholder="例如：只分析本款是否应保留、补充例外或调整责任。">${escapeHtml(action.analysisRequest || "")}</textarea>
                   </label>
-                  <button class="primary-button" type="button" data-run-clause-analysis="${material.sourceKey}||${subclause.id}">生成修改建议</button>
+                  <button class="primary-button" type="button" data-run-clause-analysis="${escapeHtml(material.sourceKey)}||${escapeHtml(subclause.id)}">生成修改建议</button>
                   ${renderClauseAnalysisStatus(action)}
                   <div class="reference-list">${analysis.map(referenceItem).join("")}</div>
                 </div>
@@ -1238,12 +1239,12 @@ function renderReviewTimeline(contractId) {
         .map(
           (item) => `
           <div class="timeline-entry">
-            <button class="timeline-item ${state.activeUpdateId === item.id ? "active" : ""}" data-open-update="${item.id}" type="button">
+            <button class="timeline-item ${state.activeUpdateId === item.id ? "active" : ""}" data-open-update="${escapeHtml(item.id)}" type="button">
               <h4>${escapeHtml(item.type)} <span class="muted">${escapeHtml(item.createdAt)}</span></h4>
               <p>${escapeHtml(item.note || "未填写说明")}</p>
               ${item.feedbackDeadline ? `<p><span class="${isDeadlineUrgent(item.feedbackDeadline) ? "risk high" : "status-pill"}">反馈期限：${escapeHtml(item.feedbackDeadline)}</span></p>` : ""}
             </button>
-            <button class="timeline-delete" type="button" data-delete-update="${item.id}" aria-label="删除版本">删除</button>
+            <button class="timeline-delete" type="button" data-delete-update="${escapeHtml(item.id)}" aria-label="删除版本">删除</button>
           </div>`
         )
         .join("")}

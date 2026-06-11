@@ -225,7 +225,7 @@ console.log("\n=== test-http-utils.js ===\n");
     assert.ok(threw, "Expected rejection for invalid JSON");
   });
 
-  await testAsync("readJson rejects body > 150MB", async () => {
+  await testAsync("readJson rejects body > maxJsonPayloadBytes", async () => {
     let destroyed = false;
     const mockReq = Readable.from([Buffer.alloc(151 * 1024 * 1024, "x")]);
     mockReq.destroy = () => { destroyed = true; };

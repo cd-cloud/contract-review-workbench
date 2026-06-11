@@ -75,4 +75,12 @@ function handleDocumentSubmit(event) {
   renderDrafting();
 }
 
-document.addEventListener("submit", handleDocumentSubmit);
+function attachDraftListeners() {
+  if (typeof document.removeEventListener === "function") {
+    document.removeEventListener("submit", handleDocumentSubmit);
+  }
+  if (typeof document.addEventListener === "function") {
+    document.addEventListener("submit", handleDocumentSubmit);
+  }
+}
+attachDraftListeners();

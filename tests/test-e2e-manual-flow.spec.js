@@ -51,7 +51,7 @@ test.describe("Manual Flow - Comprehensive", () => {
     console.log("  ✓ Contract search typed");
 
     // 5. Open demo contract
-    const demoBtn = await page.locator('[data-open-contract]').first();
+    const demoBtn = await page.locator('[data-active-contract-open]').first();
     if (await demoBtn.isVisible().catch(() => false)) {
       await demoBtn.click();
       await page.waitForTimeout(600);
@@ -65,7 +65,7 @@ test.describe("Manual Flow - Comprehensive", () => {
     console.log("  ✓ Review view");
 
     // 7. Open a contract in review
-    const reviewContractBtn = await page.locator('[data-open-contract]').first();
+    const reviewContractBtn = await page.locator('[data-active-contract-open]').first();
     if (await reviewContractBtn.isVisible().catch(() => false)) {
       await reviewContractBtn.click();
       await page.waitForTimeout(800);

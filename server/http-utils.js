@@ -18,8 +18,8 @@ function loadOrCreateApiToken() {
   }
   const token = crypto.randomBytes(32).toString("hex");
   try {
-    fs.mkdirSync(workbenchRoot, { recursive: true });
-    fs.writeFileSync(tokenPath, token, "utf8");
+    fs.mkdirSync(workbenchRoot, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(tokenPath, token, { encoding: "utf8", mode: 0o600 });
   } catch (error) {
     console.error("[http-utils] Failed to persist API token:", error.message);
   }
@@ -178,12 +178,13 @@ function serverErrorPayload(error, fallbackMessage = "Server error") {
   return { ok: false, error: fallbackMessage };
 }
 
-function readJson(req) {
+function readJson(req, options = {}) {
+  const maxBytes = options.maxBytes || config.maxJsonPayloadBytes || 75 * 1024 * 1024;
   return new Promise((resolve, reject) => {
     let body = "";
     req.on("data", (chunk) => {
       body += chunk;
-      if (Buffer.byteLength(body, "utf8") > 20 * 1024 * 1024) {
+      if (Buffer.byteLength(body, "utf8") > maxBytes) {
         const error = new Error("Request body too large");
         error.statusCode = 413;
         reject(error);

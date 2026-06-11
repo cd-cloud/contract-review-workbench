@@ -64,7 +64,7 @@ function renderChapterCard(contract, material, chapter, clauses, selectedClause,
   return `
     <article class="chapter-card ${expanded ? "expanded" : ""}">
       <div class="tree-card-header">
-        <button class="tree-toggle-button" type="button" data-toggle-tree-node="${chapter.id}" aria-expanded="${expanded}">
+        <button class="tree-toggle-button" type="button" data-toggle-tree-node="${escapeHtml(chapter.id)}" aria-expanded="${expanded}">
           ${expanded ? "收起" : "展开"}
         </button>
         <div class="tree-card-title">

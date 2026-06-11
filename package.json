@@ -27,7 +27,7 @@
     "portable:smoke": "node scripts/portable-smoke.js",
     "preflight": "node scripts/preflight.js",
     "health": "node scripts/health-check.js",
-    "check": "node scripts/check-all.js && node scripts/regression-smoke.js",
+    "check": "node scripts/check-all.js && node scripts/regression-smoke.js && node scripts/guard-data-attrs.js && node scripts/guard-listeners.js",
     "pretest": "node -e \"try { require('better-sqlite3'); } catch(e) { console.error('ERROR: better-sqlite3 is not installed. Run npm install first.'); process.exit(1); }\"",
     "test": "node tests/test-runner.js",
     "test:coverage": "c8 --reporter=text --reporter=html --include='server/**/*.js' --include='scripts/**/*.js' --include='js/**/*.js' --include='lib/**/*.js' node tests/test-runner.js",
@@ -59,8 +59,8 @@
     "productName": "AI合同审阅工作台",
     "asar": true,
     "asarUnpack": [
-      "node_modules/better-sqlite3/**/*.node",
-      "node_modules/better-sqlite3/**/*.dll"
+      "node_modules/better-sqlite3/**/*.{node,dll,so,dylib}",
+      "server/**/*"
     ],
     "directories": {
       "output": "dist"

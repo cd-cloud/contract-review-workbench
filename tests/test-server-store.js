@@ -23,30 +23,41 @@ console.log("\n=== test-server-store.js ===\n");
 let totalTests = 0;
 let passedTests = 0;
 let failedTests = [];
+const testQueue = [];
 
 function test(name, fn) {
-  totalTests++;
-  try {
-    fn();
-    passedTests++;
-    process.stdout.write(`  ✓ ${name}\n`);
-  } catch (error) {
-    failedTests.push({ name, error });
-    process.stdout.write(`  ✗ ${name}\n`);
-    process.stdout.write(`    ${error.message}\n`);
-  }
+  testQueue.push(async () => {
+    totalTests++;
+    try {
+      fn();
+      passedTests++;
+      process.stdout.write(`  ✓ ${name}\n`);
+    } catch (error) {
+      failedTests.push({ name, error });
+      process.stdout.write(`  ✗ ${name}\n`);
+      process.stdout.write(`    ${error.message}\n`);
+    }
+  });
 }
 
-async function testAsync(name, fn) {
-  totalTests++;
-  try {
-    await fn();
-    passedTests++;
-    process.stdout.write(`  ✓ ${name}\n`);
-  } catch (error) {
-    failedTests.push({ name, error });
-    process.stdout.write(`  ✗ ${name}\n`);
-    process.stdout.write(`    ${error.message}\n`);
+function testAsync(name, fn) {
+  testQueue.push(async () => {
+    totalTests++;
+    try {
+      await fn();
+      passedTests++;
+      process.stdout.write(`  ✓ ${name}\n`);
+    } catch (error) {
+      failedTests.push({ name, error });
+      process.stdout.write(`  ✗ ${name}\n`);
+      process.stdout.write(`    ${error.message}\n`);
+    }
+  });
+}
+
+async function runAllTests() {
+  for (const t of testQueue) {
+    await t();
   }
 }
 
@@ -109,7 +120,7 @@ test("saveFile generates default name when empty", () => {
 });
 
 // --- replaceDb ---
-test("replaceDb normalizes snapshot structure", () => {
+testAsync("replaceDb normalizes snapshot structure", async () => {
   const snapshot = {
     contracts: [{ id: "c1", name: "Test" }],
     updates: [{ id: "u1", contractId: "c1" }],
@@ -123,7 +134,7 @@ test("replaceDb normalizes snapshot structure", () => {
     auditLogs: [],
     users: [],
   };
-  const db = store.replaceDb(snapshot);
+  const db = await store.replaceDb(snapshot);
   assert.ok(db.savedAt);
   assert.ok(db.snapshot);
   assert.strictEqual(db.contracts.length, 1);
@@ -133,14 +144,14 @@ test("replaceDb normalizes snapshot structure", () => {
   assert.ok(db.snapshot.storageMeta.backendSavedAt);
 });
 
-test("replaceDb handles minimal snapshot", () => {
-  const db = store.replaceDb({ contracts: [] });
+testAsync("replaceDb handles minimal snapshot", async () => {
+  const db = await store.replaceDb({ contracts: [] });
   assert.ok(db.savedAt);
   assert.strictEqual(db.contracts.length, 0);
 });
 
-test("readDb preserves auxiliary frontend state while using structured data as source of truth", () => {
-  store.replaceDb({
+testAsync("readDb preserves auxiliary frontend state while using structured data as source of truth", async () => {
+  await store.replaceDb({
     activeContractId: "c-aux",
     visualQaReports: { "c-aux:u1": { checkedAt: "2026-06-08T00:00:00.000Z", issues: [] } },
     contracts: [{ id: "c-aux", name: "Authoritative Contract", createdAt: "2026-06-08" }],
@@ -162,8 +173,8 @@ test("readDb preserves auxiliary frontend state while using structured data as s
   assert.strictEqual(db.snapshot.storageMeta.persistedVia, "sqlite-structured");
 });
 
-test("patchAuxState merges frontend-only state without replacing structured data", () => {
-  store.replaceDb({
+testAsync("patchAuxState merges frontend-only state without replacing structured data", async () => {
+  await store.replaceDb({
     contracts: [{ id: "c-aux-patch", name: "Aux Patch", createdAt: "2026-06-08" }],
     updates: [],
     clauses: [],
@@ -285,8 +296,8 @@ test("runWalCheckpoint returns sqlite wal metadata", () => {
   assert.strictEqual(typeof checkpoint.checkpointed, "number");
 });
 
-test("saveContractFile avoids overwriting duplicate original names", () => {
-  const seed = store.replaceDb({
+testAsync("saveContractFile avoids overwriting duplicate original names", async () => {
+  const seed = await store.replaceDb({
     contracts: [{ id: "c-files", name: "Files Test", counterpartyName: "Acme", createdAt: "2026-06-08" }],
     updates: [],
     clauses: [],
@@ -311,8 +322,8 @@ test("saveContractFile avoids overwriting duplicate original names", () => {
   store.deleteFile(second.id);
 });
 
-test("replaceDb prunes orphaned archived files when contracts disappear", () => {
-  store.replaceDb({
+testAsync("replaceDb prunes orphaned archived files when contracts disappear", async () => {
+  await store.replaceDb({
     contracts: [{ id: "c-prune", name: "Prune Test", counterpartyName: "Acme", createdAt: "2026-06-08" }],
     updates: [{ id: "u-prune", contractId: "c-prune", createdAt: "2026-06-08" }],
     clauses: [],
@@ -327,7 +338,7 @@ test("replaceDb prunes orphaned archived files when contracts disappear", () => 
   const saved = store.saveContractFile("c-prune", "u-prune", Buffer.from("prune-me"), "prune.docx", "application/octet-stream", "version");
   assert.ok(fs.existsSync(saved.path));
 
-  store.replaceDb({
+  await store.replaceDb({
     contracts: [],
     updates: [],
     clauses: [],
@@ -344,8 +355,8 @@ test("replaceDb prunes orphaned archived files when contracts disappear", () => 
   assert.strictEqual(fs.existsSync(saved.path), false);
 });
 
-test("replaceDb preserves file rows included in snapshot", () => {
-  const seeded = store.replaceDb({
+testAsync("replaceDb preserves file rows included in snapshot", async () => {
+  const seeded = await store.replaceDb({
     contracts: [{ id: "c-files-keep", name: "Keep Files", counterpartyName: "Acme", createdAt: "2026-06-10" }],
     updates: [{ id: "u-files-keep", contractId: "c-files-keep", createdAt: "2026-06-10" }],
     clauses: [],
@@ -360,7 +371,7 @@ test("replaceDb preserves file rows included in snapshot", () => {
   const archived = store.saveContractFile("c-files-keep", "u-files-keep", Buffer.from("keep-me"), "keep.docx", "application/octet-stream", "version");
   assert.ok(archived?.id);
   const persisted = store.getFileById(archived.id);
-  const resynced = store.replaceDb({
+  const resynced = await store.replaceDb({
     ...seeded,
     files: [{
       id: persisted.id,
@@ -379,9 +390,8 @@ test("replaceDb preserves file rows included in snapshot", () => {
   assert.ok(store.getFileById(archived.id));
 });
 
-async function runAsyncTests() {
-  await testAsync("backup sqlite can be reopened independently for restore inspection", async () => {
-    store.replaceDb({
+testAsync("backup sqlite can be reopened independently for restore inspection", async () => {
+    await store.replaceDb({
       contracts: [{ id: "c-restore", name: "Restore Test", counterpartyName: "Acme", createdAt: "2026-06-08" }],
       updates: [{ id: "u-restore", contractId: "c-restore", createdAt: "2026-06-08", text: "restore body" }],
       clauses: [],
@@ -407,8 +417,8 @@ async function runAsyncTests() {
     store.deleteFile(uploaded.id);
   });
 
-  await testAsync("restoreBackupToDirectory recreates sqlite and archive content in a new root", async () => {
-    store.replaceDb({
+testAsync("restoreBackupToDirectory recreates sqlite and archive content in a new root", async () => {
+    await store.replaceDb({
       contracts: [{ id: "c-restore-copy", name: "Restore Copy Test", counterpartyName: "Acme", createdAt: "2026-06-08" }],
       updates: [{ id: "u-restore-copy", contractId: "c-restore-copy", createdAt: "2026-06-08", text: "restore body" }],
       clauses: [],
@@ -439,8 +449,8 @@ async function runAsyncTests() {
     store.deleteFile(uploaded.id);
   });
 
-  await testAsync("runAutoBackup includes sqlite and archive folders", async () => {
-  store.replaceDb({
+testAsync("runAutoBackup includes sqlite and archive folders", async () => {
+  await store.replaceDb({
     contracts: [{ id: "c-backup", name: "Backup Test", counterpartyName: "Acme", createdAt: "2026-06-08" }],
     updates: [],
     clauses: [],
@@ -470,14 +480,13 @@ async function runAsyncTests() {
   store.deleteFile(uploaded.id);
 });
 
-  await testAsync("runAutoBackup performs truncate checkpoint before backup", async () => {
-    const checkpoint = store.runWalCheckpoint("TRUNCATE");
-    assert.strictEqual(checkpoint.mode, "TRUNCATE");
-    assert.strictEqual(typeof checkpoint.walSizeBytes, "number");
-  });
-}
+testAsync("runAutoBackup performs truncate checkpoint before backup", async () => {
+  const checkpoint = store.runWalCheckpoint("TRUNCATE");
+  assert.strictEqual(checkpoint.mode, "TRUNCATE");
+  assert.strictEqual(typeof checkpoint.walSizeBytes, "number");
+});
 
-runAsyncTests().then(() => {
+runAllTests().then(() => {
   const failed = totalTests - passedTests;
   process.stdout.write(`\n${passedTests}/${totalTests} passed${failed ? `, ${failed} failed` : ""}\n`);
   if (failed) {
