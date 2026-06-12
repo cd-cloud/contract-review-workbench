@@ -30,6 +30,7 @@ module.exports = {
   getFileById: sqlite.getFileById,
   deleteFile: sqlite.deleteFile,
   getContractFolder: sqlite.getContractFolder,
+  getContractWithTexts: sqlite.getContractWithTexts,
   listAllContractsWithPaths: sqlite.listAllContractsWithPaths,
   runAutoBackup: sqlite.runAutoBackup,
   runWalCheckpoint: sqlite.runWalCheckpoint,

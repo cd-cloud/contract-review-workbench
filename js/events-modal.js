@@ -309,7 +309,3 @@ async function handleAddClauseFormSubmit(event) {
     targetCard?.scrollIntoView({ block: "center" });
   });
 }
-
-document.querySelector("#upload-form")?.addEventListener("submit", handleUploadFormSubmit);
-document.querySelector("#progress-form")?.addEventListener("submit", handleProgressFormSubmit);
-document.querySelector("#add-clause-form")?.addEventListener("submit", handleAddClauseFormSubmit);

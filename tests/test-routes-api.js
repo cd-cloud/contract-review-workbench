@@ -175,6 +175,8 @@ function authedReq(method = "GET") {
         name: "API 合同",
         type: "测试合同",
         counterpartyName: "Acme",
+        text: "API contract text",
+        cleanText: "API contract text",
         createdAt: "2026-06-09",
         updatedAt: "2026-06-09",
       },
@@ -185,6 +187,17 @@ function authedReq(method = "GET") {
     const body = JSON.parse(res.body);
     assert.strictEqual(body.ok, true);
     assert.strictEqual(body.contract.id, "contract-api-1");
+  });
+
+  await testAsync("handleApi handles GET /api/contracts/:id with texts", async () => {
+    const res = mockRes();
+    const handled = await handleApi(authedReq("GET"), res, makeUrl("/api/contracts/contract-api-1"));
+    assert.strictEqual(handled, true);
+    assert.strictEqual(res.status, 200);
+    const body = JSON.parse(res.body);
+    assert.strictEqual(body.ok, true);
+    assert.strictEqual(body.contract.id, "contract-api-1");
+    assert.ok(body.contract.text);
   });
 
   await testAsync("handleApi handles POST /api/contract-versions", async () => {
