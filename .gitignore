@@ -12,3 +12,5 @@ server*.log
 tests/.tmp-*
 tests/.tmp-*
 .env
+test-results/
+playwright-report/
