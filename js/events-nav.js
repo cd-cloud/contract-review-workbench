@@ -9,6 +9,7 @@ function handleNavClick(event) {
   if (sidebarToggle) {
     document.body.classList.toggle("sidebar-expanded");
     sidebarToggle.setAttribute("aria-expanded", document.body.classList.contains("sidebar-expanded") ? "true" : "false");
+    return true;
   }
 
   if (event.target.closest("[data-toggle-audit-logs]")) {

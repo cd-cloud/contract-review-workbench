@@ -16,6 +16,7 @@ const { configureRunnerProfile } = require("../scripts/portable-runtime");
 
 const isDev = !app.isPackaged;
 const isTest = process.env.NODE_ENV === "test" || process.env.ELECTRON_SMOKE_TEST === "1";
+const shouldOpenDevTools = isDev && !isTest && process.env.ELECTRON_OPEN_DEVTOOLS === "1";
 let WORKBENCH_ROOT = path.join(os.homedir(), "LegalWorkbench");
 
 function smokeLog(message) {
@@ -392,7 +393,7 @@ function createWindow() {
   mainWindow.once("ready-to-show", () => {
     smokeLog("window ready-to-show");
     mainWindow.show();
-    if (isDev && !isTest) mainWindow.webContents.openDevTools();
+    if (shouldOpenDevTools) mainWindow.webContents.openDevTools();
   });
 
   mainWindow.on("close", (event) => {

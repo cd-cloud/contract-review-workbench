@@ -168,7 +168,7 @@ test("handleNavClick handles sidebar toggle", () => {
   };
   const event = mockEvent({ "[data-toggle-sidebar]": { setAttribute: () => {}, dataset: {} } });
   const result = handleNavClick(event);
-  assert.strictEqual(result, false);
+  assert.strictEqual(result, true);
   assert.strictEqual(toggled, true);
 });
 

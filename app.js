@@ -64,11 +64,6 @@ function hideOfflineBanner() {
 TimerRegistry.set("backend-health", setInterval(checkBackendHealth, 30000));
 window.addEventListener("beforeunload", () => TimerRegistry.clear("backend-health"));
 
-document.addEventListener("click", handleGlobalClick);
-document.addEventListener("dragstart", handleDragStart);
-document.addEventListener("dragover", handleDragOver);
-document.addEventListener("dragleave", handleDragLeave);
-document.addEventListener("drop", handleDrop);
 document.addEventListener("dblclick", handleDocumentDblclick);
 document.addEventListener("focusout", handleDocumentFocusout);
 document.addEventListener("change", handleDocumentChange);

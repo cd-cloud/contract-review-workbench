@@ -7,7 +7,7 @@
 
 const { test, expect } = require("playwright/test");
 
-const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:8787";
+const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || `http://127.0.0.1:${process.env.PLAYWRIGHT_PORT || "18787"}`;
 
 test.describe("Legal Contract Workbench E2E", () => {
   test("homepage loads and shows dashboard view", async ({ page }) => {
@@ -50,6 +50,22 @@ test.describe("Legal Contract Workbench E2E", () => {
     await expect(page.locator("#dashboard-view.active")).toHaveCount(0);
     const reviewTitle = await page.textContent("#view-title");
     expect(reviewTitle).toContain("审阅台");
+  });
+
+  test("review sidebar toggle expands navigation", async ({ page }) => {
+    await page.goto(BASE_URL);
+    await page.click('[data-view="review"]');
+    await page.waitForSelector("#review-view.active", { timeout: 5000 });
+
+    const sidebar = page.locator(".sidebar");
+    const toggle = page.locator("[data-toggle-sidebar]");
+    await expect(toggle).toBeVisible();
+    await expect(sidebar).toBeHidden();
+
+    await toggle.click();
+    await expect(page.locator("body")).toHaveClass(/sidebar-expanded/);
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(sidebar).toBeVisible();
   });
 
   test("upload modal opens and closes", async ({ page }) => {
