@@ -2276,6 +2276,18 @@ body.modal-open::before {
 .global-loading-overlay.hidden {
   display: none;
 }
+.global-loading-card {
+  width: min(460px, calc(100vw - 48px));
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: var(--shadow);
+}
 .global-loading-spinner {
   width: 40px;
   height: 40px;
@@ -2288,18 +2300,77 @@ body.modal-open::before {
   to { transform: rotate(360deg); }
 }
 .global-loading-text {
-  margin-top: 16px;
-  font-size: 14px;
-  color: #495057;
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--ink);
+}
+.global-loading-detail {
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+.global-loading-meta {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--primary-strong);
+}
+.global-loading-steps {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 8px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.global-loading-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--soft);
+  color: var(--muted);
+  font-size: 13px;
+}
+.global-loading-step::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #a8b3c2;
+}
+.global-loading-step.running {
+  color: var(--primary-strong);
+  border-color: rgba(15, 118, 128, 0.28);
+  background: #eefafa;
+}
+.global-loading-step.running::before {
+  background: var(--primary);
+}
+.global-loading-step.done {
+  color: #15803d;
+  background: #eefbf2;
+  border-color: #c9efd5;
+}
+.global-loading-step.done::before {
+  background: #22c55e;
 }
 .global-loading-cancel {
   margin-top: 12px;
-  padding: 6px 16px;
+  padding: 8px 18px;
   font-size: 13px;
   border: 1px solid #dee2e6;
   background: #fff;
-  border-radius: 4px;
+  border-radius: 8px;
   cursor: pointer;
+}
+.global-loading-cancel:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 .global-loading-cancel.hidden {
   display: none;

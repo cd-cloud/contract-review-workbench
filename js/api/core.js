@@ -135,69 +135,128 @@ function extractLeadingDecimalNumber(text) {
 }
 
 async function runLegalSkillAnalysis(contract, materialText, extraRequirements = "", options = {}) {
-  showGlobalLoading("AI 正在审阅合同...", true);
+  const showLoading = !options.silentStatus;
+  if (showLoading && typeof showGlobalLoading === "function") {
+    showGlobalLoading({
+      title: "AI 正在审阅合同",
+      detail: "正在提交本地 Legal Skill 任务。长合同通常需要 1-3 分钟。",
+      meta: "会依次读取合同、切分条款、匹配风险并生成修改建议。",
+      steps: buildLegalSkillLoadingSteps("submitting"),
+      showCancel: true,
+      cancelText: "取消等待",
+      onCancel: () => {
+        if (typeof setGlobalLoadingStatus === "function") {
+          setGlobalLoadingStatus({ detail: "任务正在提交，稍后可在运行阶段取消。", showCancel: false });
+        }
+      },
+    });
+  }
   const request = buildLegalSkillRequest(contract, materialText, extraRequirements, options);
   try {
-    const response = await legalWorkbenchFetch("/api/legal-review/jobs", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(request),
-    });
-    if (response.status === 202) {
-      const data = await response.json();
-      return await pollLegalSkillJob(data.job.id, contract.id, options);
+    try {
+      const response = await legalWorkbenchFetch("/api/legal-review/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+      });
+      if (response.status === 202) {
+        const data = await response.json();
+        return await pollLegalSkillJob(data.job.id, contract.id, options);
+      }
+      if (response.ok) return normalizeLegalSkillResult(await response.json());
+      throw new Error(await readBackendError(response, "本地 Legal Skill 服务返回错误"));
+    } catch (error) {
+      if (!isLikelyServerUnavailableError(error)) throw error;
+      if (!options.allowBrowserFallback) throw new Error("AI 后端不可用，无法执行 Legal Skill。请确认本地服务和 AI Runner 已启动。");
+      // Debug: local legal skill server unavailable; using browser fallback.
     }
-    if (response.ok) return normalizeLegalSkillResult(await response.json());
-    throw new Error(await readBackendError(response, "本地 Legal Skill 服务返回错误"));
-  } catch (error) {
-    if (!isLikelyServerUnavailableError(error)) throw error;
-    if (!options.allowBrowserFallback) throw new Error("AI 后端不可用，无法执行 Legal Skill。请确认本地服务和 AI Runner 已启动。");
-    // Debug: local legal skill server unavailable; using browser fallback.
-  }
-  // Browser fallback: preserve the Legal Skill IO shape when the local runner is unavailable.
-  // A backend service should replace this with legal-work-orchestrator / legal-contract-orchestrator execution.
-  const clauses = splitVersionClauses(request.contract_text, `${contract.id}:analysis-preview`);
-  const findings = generateFindings(contract, clauses);
-  return normalizeLegalSkillResult({
-    ok: true,
-    source: "browser-fallback",
-    isFallback: true,
-    fallbackReason: "Local backend unavailable; using browser fallback review.",
-    request,
-    response: {
-      contractSummary: {
-        contractName: contract.name,
-        contractType: contract.type,
-        purpose: contract.purpose,
-        businessBackground: contract.businessBackground,
-        ourRole: contract.ourRole,
-        counterparty: contract.counterpartyName,
-        riskLevel: contract.riskLevel,
-        completionScore: null,
-        positionDeviationLevel: null,
+    // Browser fallback: preserve the Legal Skill IO shape when the local runner is unavailable.
+    // A backend service should replace this with legal-work-orchestrator / legal-contract-orchestrator execution.
+    const clauses = splitVersionClauses(request.contract_text, `${contract.id}:analysis-preview`);
+    const findings = generateFindings(contract, clauses);
+    return normalizeLegalSkillResult({
+      ok: true,
+      source: "browser-fallback",
+      isFallback: true,
+      fallbackReason: "Local backend unavailable; using browser fallback review.",
+      request,
+      response: {
+        contractSummary: {
+          contractName: contract.name,
+          contractType: contract.type,
+          purpose: contract.purpose,
+          businessBackground: contract.businessBackground,
+          ourRole: contract.ourRole,
+          counterparty: contract.counterpartyName,
+          riskLevel: contract.riskLevel,
+          completionScore: null,
+          positionDeviationLevel: null,
+        },
+        contractLevelRisks: findings.filter((finding) => !finding.clauseId),
+        clauseAnalyses: findings
+          .filter((finding) => finding.clauseId)
+          .map((finding) => ({
+            clauseId: finding.clauseId,
+            severity: finding.severity,
+            issue: finding.issue,
+            consequence: finding.consequence,
+            proposedRevision: finding.fix,
+            negotiationPosition: finding.negotiation,
+            fallbackText: "",
+            businessDecision: finding.needsBusiness ? "需业务确认" : "",
+          })),
+        missingFacts: [],
+        businessSummary: "",
       },
-      contractLevelRisks: findings.filter((finding) => !finding.clauseId),
-      clauseAnalyses: findings
-        .filter((finding) => finding.clauseId)
-        .map((finding) => ({
-          clauseId: finding.clauseId,
-          severity: finding.severity,
-          issue: finding.issue,
-          consequence: finding.consequence,
-          proposedRevision: finding.fix,
-          negotiationPosition: finding.negotiation,
-          fallbackText: "",
-          businessDecision: finding.needsBusiness ? "需业务确认" : "",
-        })),
-      missingFacts: [],
-      businessSummary: "",
-    },
-  });
+    });
+  } finally {
+    if (showLoading && typeof hideGlobalLoading === "function") hideGlobalLoading();
+  }
 }
 
 function isLikelyServerUnavailableError(error) {
   const message = String(error?.message || error || "");
   return /Failed to fetch|NetworkError|Load failed|ECONNREFUSED|ERR_CONNECTION_REFUSED|fetch failed/i.test(message);
+}
+
+function buildLegalSkillLoadingSteps(activeStatus = "submitting") {
+  const order = ["submitting", "queued", "running", "completed"];
+  const labels = {
+    submitting: "提交本地审阅任务",
+    queued: "等待 AI Runner 接单",
+    running: "读取合同并生成审阅意见",
+    completed: "写回风险、建议和结构化结果",
+  };
+  const activeIndex = Math.max(0, order.indexOf(activeStatus));
+  return order.map((status, index) => ({
+    label: labels[status],
+    status: index < activeIndex ? "done" : (index === activeIndex ? "running" : "pending"),
+  }));
+}
+
+function normalizeLoadingJobStatus(job) {
+  if (!job) return "queued";
+  if (job.status === "completed") return "completed";
+  if (job.status === "running") return "running";
+  if (job.status === "queued") return "queued";
+  return "running";
+}
+
+function updateLegalSkillLoading(job) {
+  if (typeof setGlobalLoadingStatus !== "function") return;
+  const status = normalizeLoadingJobStatus(job);
+  const queueText = job?.status === "queued" && Number.isFinite(job.positionInQueue)
+    ? `当前排队第 ${job.positionInQueue + 1} 位。`
+    : "";
+  const phase = job?.phase || (status === "queued" ? "任务已进入队列" : "AI Runner 正在处理合同");
+  setGlobalLoadingStatus({
+    title: status === "queued" ? "AI 审阅已排队" : "AI 正在审阅合同",
+    detail: [phase, queueText, "长合同通常需要 1-3 分钟。"].filter(Boolean).join(" "),
+    meta: "完成后会自动回到审阅台。",
+    steps: buildLegalSkillLoadingSteps(status),
+    showCancel: true,
+    cancelText: "取消等待",
+  });
 }
 
 async function pollLegalSkillJob(jobId, contractId, options = {}) {
@@ -206,7 +265,34 @@ async function pollLegalSkillJob(jobId, contractId, options = {}) {
   const controller = new AbortController();
   pollControllers.set(jobId, controller);
   try {
-    if (!options.silentStatus) setAnalysisStatus(contractId, "running", "AI Legal Skill 正在审阅合同，长合同通常需要 2-3 分钟。");
+    if (!options.silentStatus) {
+      setAnalysisStatus(contractId, "running", "AI Legal Skill 正在审阅合同，长合同通常需要 1-3 分钟。");
+      if (typeof setGlobalLoadingStatus === "function") {
+        setGlobalLoadingStatus({
+          title: "AI 审阅已提交",
+          detail: "任务已提交到本地队列，正在等待 AI Runner 返回进度。",
+          meta: "可以继续等待，也可以取消本次等待。",
+          steps: buildLegalSkillLoadingSteps("queued"),
+          showCancel: true,
+          cancelText: "取消等待",
+        });
+      }
+      if (typeof document !== "undefined") {
+        const cancelBtn = document.getElementById("global-loading-cancel");
+        if (cancelBtn) {
+          cancelBtn.onclick = async () => {
+            cancelBtn.disabled = true;
+            if (typeof setGlobalLoadingStatus === "function") {
+              setGlobalLoadingStatus({ detail: "正在取消本次 AI 审阅任务...", showCancel: false });
+            }
+            try {
+              await legalWorkbenchFetch(`/api/legal-review/jobs/${encodeURIComponent(jobId)}/cancel`, { method: "POST" });
+            } catch (error) {}
+            controller.abort();
+          };
+        }
+      }
+    }
     const startedAt = Date.now();
     while (Date.now() - startedAt < POLL_TIMEOUT_MS) {
       if (controller.signal.aborted) throw new Error("AI 分析已取消。");
@@ -215,9 +301,14 @@ async function pollLegalSkillJob(jobId, contractId, options = {}) {
       if (!response.ok) throw new Error(await readBackendError(response, "AI 分析任务状态读取失败"));
       const data = await response.json();
       const job = data.job;
-      if (!options.silentStatus) setAnalysisStatus(contractId, job.status, `${job.phase || "分析中"}｜已等待 ${Math.round((Date.now() - startedAt) / 1000)} 秒`);
+      const elapsedSeconds = Math.round((Date.now() - startedAt) / 1000);
+      if (!options.silentStatus) {
+        setAnalysisStatus(contractId, job.status, `${job.phase || "分析中"}｜已等待 ${elapsedSeconds} 秒`);
+        updateLegalSkillLoading(job);
+      }
       if (job.status === "completed") return job.result;
       if (job.status === "failed") throw new Error(job.error || "AI 分析失败");
+      if (job.status === "cancelled") throw new Error("AI 分析已取消。");
     }
     throw new Error("AI 分析超时，请稍后重试或缩短合同文本。");
   } finally {

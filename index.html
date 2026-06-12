@@ -293,8 +293,15 @@
     <script src="./js/electron-bridge.js?v=20260602"></script>
     <script src="./app.js?v=20260530-extract"></script>
     <div id="global-loading-overlay" class="global-loading-overlay hidden">
-      <div class="global-loading-spinner"></div>
-      <div class="global-loading-text">AI 正在处理...</div>
+      <div class="global-loading-card" role="status" aria-live="polite">
+        <div class="global-loading-spinner"></div>
+        <div class="global-loading-copy">
+          <div class="global-loading-text">AI 正在处理...</div>
+          <div class="global-loading-detail">正在提交任务，请稍候。</div>
+          <div class="global-loading-meta">已等待 0 秒</div>
+        </div>
+        <ol class="global-loading-steps"></ol>
+      </div>
       <button id="global-loading-cancel" class="global-loading-cancel hidden">取消</button>
     </div>
   </body>
