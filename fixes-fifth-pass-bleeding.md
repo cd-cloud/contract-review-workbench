@@ -84,9 +84,48 @@ npm run check         # All 157 JS files and schemas passed check.
 npm run electron:smoke # passed
 ```
 
+## 本轮审查后追加修复
+
+### [P0] 前端全局点击分发被 `handleProgressClick` 截断
+- **文件**：`js/app-events.js`
+- **根因**：`handleProgressClick` 是 `async` 函数，但 `handleGlobalClick` 中调用时未 `await`：
+  ```js
+  if (handleProgressClick(event)) return;
+  ```
+  异步函数立即返回 `Promise`，`Promise` 是 truthy，导致后续所有点击处理器（审阅台、导出、后端操作、起草入口等）被截断。
+- **修复**：改为 `if (await handleProgressClick(event)) return;`。
+- **回归测试**：将 `tests/test-e2e-basic.spec.js` 中的 "demo contract is present and clickable" 重命名为 **"dashboard active contract button opens review view"**，并增加 `#dashboard-view.active` 消失断言。
+- **验证**：`npx playwright test tests/test-e2e-basic.spec.js` 6/6 passed。
+
+### [P0] Playwright 配置缺少 `webServer`
+- **文件**：`playwright.config.js`
+- **根因**：`npx playwright test` 依赖外部已启动的 8787 服务，无法一键复现。
+- **修复**：增加 `webServer` 配置：
+  ```js
+  webServer: {
+    command: "node scripts/start-ai-server.js --profile basic",
+    url: "http://127.0.0.1:8787",
+    reuseExistingServer: !process.env.CI,
+    timeout: 120 * 1000,
+    env: { LEGAL_WORKBENCH_PORT: "8787", NODE_ENV: "test" },
+  }
+  ```
+- **验证**：`npx playwright test` 27/27 passed（含 basic、manual-flow、stress、upload-core）。
+
+## 最新基线状态
+
+```bash
+npm test                   # 581/581 passed
+npm run check              # 157 文件/schema/guard 全绿
+npm run electron:smoke     # passed
+npx playwright test        # 27/27 passed
+```
+
 ## 后续根因级改进（未进入本轮）
 
 - 全量 `state` 同步改为 dirty-entity 增量同步。
 - FTS5 增量更新，避免全量重建。
 - 文件传输改用流式 multipart，避免 base64 全量进 JSON。
 - 统一 Electron/后端/Job 生命周期状态机。
+- 真实 `build:win` 安装包 smoke（本轮未执行）。
+- 沙箱/普通桌面两种环境下 runner 诊断提示再收敛，避免权限受限误报为 provider 未就绪。

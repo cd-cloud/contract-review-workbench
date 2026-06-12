@@ -35,7 +35,7 @@ test.describe("Legal Contract Workbench E2E", () => {
     expect(playbooksTitle).toContain("条款库");
   });
 
-  test("demo contract is present and clickable", async ({ page }) => {
+  test("dashboard active contract button opens review view", async ({ page }) => {
     await page.goto(BASE_URL);
     await page.waitForSelector("#dashboard-view", { timeout: 5000 });
 
@@ -43,9 +43,11 @@ test.describe("Legal Contract Workbench E2E", () => {
     const demoButton = await page.locator('[data-active-contract-open]').first();
     await expect(demoButton).toBeVisible();
 
-    // Open the contract
+    // Clicking the dashboard "Open Review" button must leave the dashboard
+    // and activate the review view (regression guard for async click dispatch).
     await demoButton.click();
     await page.waitForSelector("#review-view.active", { timeout: 5000 });
+    await expect(page.locator("#dashboard-view.active")).toHaveCount(0);
     const reviewTitle = await page.textContent("#view-title");
     expect(reviewTitle).toContain("审阅台");
   });

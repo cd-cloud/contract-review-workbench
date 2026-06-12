@@ -1,7 +1,7 @@
 async function handleGlobalClick(event) {
   if (handleNavClick(event)) return;
   if (handleModalClick(event)) return;
-  if (handleProgressClick(event)) return;
+  if (await handleProgressClick(event)) return;
   if (handleReviewClick(event)) return;
   if (handleContractNavClick(event)) return;
   if (handleWorkbenchClick(event)) return;
