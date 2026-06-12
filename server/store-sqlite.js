@@ -85,6 +85,21 @@ function setMigrationVersion(version) {
   db.prepare(`PRAGMA user_version = ${version}`).run();
 }
 
+function tableColumns(tableName) {
+  try {
+    return new Set(db.prepare(`PRAGMA table_info(${tableName})`).all().map((row) => row.name));
+  } catch (error) {
+    return new Set();
+  }
+}
+
+function addColumnIfMissing(tableName, columnName, definition) {
+  const columns = tableColumns(tableName);
+  if (columns.has(columnName)) return false;
+  db.prepare(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`).run();
+  return true;
+}
+
 const MIGRATIONS = [
   // v0 → v1: initial schema
   function migrate_v1() {
@@ -341,6 +356,18 @@ const MIGRATIONS = [
       );
       CREATE INDEX IF NOT EXISTS idx_analysis_cache_created_at ON analysis_cache(created_at);
     `);
+  },
+  // v2 → v3: repair analysis job schema for databases created before queued jobs persisted full payloads.
+  function migrate_v3() {
+    addColumnIfMissing("analysis_jobs", "request_json", "TEXT");
+    addColumnIfMissing("analysis_jobs", "result_json", "TEXT");
+    addColumnIfMissing("analysis_jobs", "cost_meta_json", "TEXT");
+    addColumnIfMissing("analysis_jobs", "position_in_queue", "INTEGER");
+    const columns = tableColumns("analysis_jobs");
+    if (columns.has("result") && columns.has("result_json")) {
+      db.prepare("UPDATE analysis_jobs SET result_json = result WHERE result_json IS NULL AND result IS NOT NULL").run();
+    }
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_analysis_jobs_status ON analysis_jobs(status)").run();
   },
 ];
 
