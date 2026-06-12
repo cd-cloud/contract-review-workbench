@@ -22,11 +22,10 @@ const STALE_JOB_TIMEOUT_MS = 10 * 60 * 1000;
 
 async function checkBackendHealth() {
   try {
-    const token = getApiToken ? getApiToken() : "";
-    const res = await fetch(`${getBackendUrl ? getBackendUrl() : "http://127.0.0.1:8787"}/api/health`, {
-      method: "GET",
-      headers: { "X-Legal-Workbench-Token": token },
-    });
+    const request = typeof legalWorkbenchFetch === "function"
+      ? legalWorkbenchFetch("/api/health", { method: "GET" })
+      : fetch("/api/health", { method: "GET", credentials: "include" });
+    const res = await request;
     if (res.ok && !isBackendOnline) {
       isBackendOnline = true;
       hideOfflineBanner();
