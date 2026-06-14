@@ -17,8 +17,8 @@ function setActiveContract(contractId) {
 function ensureInitialUpdate(targetState, contract) {
   targetState.updates = targetState.updates || [];
   const exists = targetState.updates.some((item) => item.contractId === contract.id && item.type === "初稿上传");
-  if (exists) return;
-  targetState.updates.push({
+  if (exists) return null;
+  const update = {
     id: uid("upd"),
     contractId: contract.id,
     type: "初稿上传",
@@ -38,7 +38,9 @@ function ensureInitialUpdate(targetState, contract) {
     hasRedline: Boolean(contract.redlineText),
     hasComments: Boolean(contract.commentsText),
     createdAt: contract.createdAt || today(),
-  });
+  };
+  targetState.updates.push(update);
+  return update;
 }
 
 function scheduleAutomaticCodexReview(contractId, reason = "auto") {
@@ -111,7 +113,6 @@ async function runAutomaticCodexReview(contractId, expectedSourceKey, reason = "
   try {
     setAnalysisStatus(contract.id, "queued", "AI 正在自动运行 Legal Skill 审阅分析...");
     const result = await runLegalSkillAnalysis(contract, material.text);
-    if (state.activeContractId !== contract.id) return;
     if (getWorkbenchMaterial(contract).sourceKey !== jobKey) {
       Store.mutate("supersede-auto-review", (draft) => {
         draft.autoReviewJobs = draft.autoReviewJobs || {};

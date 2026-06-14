@@ -253,6 +253,59 @@ test("upsertContract and upsertContractVersion persist incrementally", () => {
   assert.ok(db.snapshot.updates.some((item) => item.id === "u-upsert"));
 });
 
+test("upsertContract preserves existing large text when incremental payload omits it", () => {
+  store.upsertContract({
+    id: "c-preserve-text",
+    name: "Preserve Text Contract",
+    text: "Original contract body",
+    cleanText: "Original clean body",
+    createdAt: "2026-06-08",
+    updatedAt: "2026-06-08",
+  });
+  store.upsertContract({
+    id: "c-preserve-text",
+    name: "Preserve Text Contract Renamed",
+    text: "",
+    cleanText: "",
+    createdAt: "2026-06-08",
+    updatedAt: "2026-06-09",
+  });
+  const contract = store.getContractWithTexts("c-preserve-text");
+  assert.strictEqual(contract.name, "Preserve Text Contract Renamed");
+  assert.strictEqual(contract.text, "Original contract body");
+  assert.strictEqual(contract.cleanText, "Original clean body");
+});
+
+test("upsertContractVersion preserves existing version text when incremental payload omits it", () => {
+  store.upsertContract({
+    id: "c-preserve-version",
+    name: "Preserve Version Contract",
+    createdAt: "2026-06-08",
+    updatedAt: "2026-06-08",
+  });
+  store.upsertContractVersion({
+    id: "u-preserve-version",
+    contractId: "c-preserve-version",
+    type: "初稿",
+    versionText: "Original version body",
+    acceptedText: "Original accepted body",
+    createdAt: "2026-06-08",
+  });
+  store.upsertContractVersion({
+    id: "u-preserve-version",
+    contractId: "c-preserve-version",
+    type: "初稿更新",
+    versionText: "",
+    acceptedText: "",
+    createdAt: "2026-06-09",
+  });
+  const db = store.readDb();
+  const version = db.snapshot.updates.find((item) => item.id === "u-preserve-version");
+  assert.strictEqual(version.type, "初稿更新");
+  assert.strictEqual(version.versionText, "Original version body");
+  assert.strictEqual(version.acceptedText, "Original accepted body");
+});
+
 test("deleteContractVersionCascade removes version incrementally", () => {
   store.upsertContract({
     id: "c-delete-version",

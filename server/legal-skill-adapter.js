@@ -340,7 +340,7 @@ async function analyzeLegalReviewInChunks(request, options = {}, runnerConfig = 
 
   // Kimi/Moonshot have lower RPM limits; reduce concurrency and add stagger.
   const provider = getProviderStatus().provider;
-  const isKimi = provider === "kimi" || provider === "moonshot";
+  const isKimi = provider === "kimi" || provider === "kimi-cli" || provider === "moonshot";
   // Allow overriding via env for developer self-use on capable accounts
   const envKimiConcurrency = Number(process.env.LEGAL_WORKBENCH_KIMI_CHUNK_CONCURRENCY);
   const chunkConcurrency = isKimi

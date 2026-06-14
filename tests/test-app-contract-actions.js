@@ -183,9 +183,11 @@ test("ensureInitialUpdate creates initial update when missing", () => {
     cleanText: "合同文本",
     createdAt: "2026-05-29",
   };
-  ensureInitialUpdate(targetState, contract);
+  const update = ensureInitialUpdate(targetState, contract);
   assert.strictEqual(targetState.updates.length, 1);
   assert.strictEqual(targetState.updates[0].type, "初稿上传");
+  assert.strictEqual(update.id, targetState.updates[0].id);
+  assert.strictEqual(update.versionText, "合同文本");
 });
 
 test("ensureInitialUpdate skips when already exists", () => {
@@ -193,8 +195,9 @@ test("ensureInitialUpdate skips when already exists", () => {
     updates: [{ contractId: "contract-1", type: "初稿上传" }],
   };
   const contract = { id: "contract-1" };
-  ensureInitialUpdate(targetState, contract);
+  const update = ensureInitialUpdate(targetState, contract);
   assert.strictEqual(targetState.updates.length, 1);
+  assert.strictEqual(update, null);
 });
 
 // --- fillIfEmpty ---

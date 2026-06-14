@@ -139,7 +139,15 @@ async function handleUploadFormSubmit(event) {
     auditDetails: { contractName: contract.name },
   });
   hydrateContractAnalysis(state, contract);
-  ensureInitialUpdate(state, contract);
+  const initialUpdate = ensureInitialUpdate(state, contract);
+  if (initialUpdate) {
+    try {
+      await createBackendContractVersion(initialUpdate);
+    } catch (error) {
+      showToast(`创建初稿版本失败：${error.message || String(error)}`, "error");
+      return;
+    }
+  }
   Store.setActiveContract(contract.id);
   saveState();
   if (uploadResult?.originalBufferBase64) {

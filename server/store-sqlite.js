@@ -1095,6 +1095,11 @@ function saveFile(name, content) {
   return { name: safeName, path: filePath };
 }
 
+function preserveExistingLargeText(incoming, existing) {
+  if (incoming === undefined || incoming === null || incoming === "") return existing || "";
+  return incoming;
+}
+
 function upsertContract(contract = {}) {
   if (!contract?.id) throw new Error("Contract id is required");
   const contractForFolder = {
@@ -1104,6 +1109,14 @@ function upsertContract(contract = {}) {
     createdAt: contract.createdAt || nowIso(),
   };
   const folderPath = ensureContractFolder(contractForFolder);
+  const existing = db.prepare(`
+    SELECT text, clean_text, redline_text, comments_text
+    FROM contracts WHERE id = ?
+  `).get(contract.id);
+  const text = preserveExistingLargeText(contract.text, existing?.text);
+  const cleanText = preserveExistingLargeText(contract.cleanText, existing?.clean_text);
+  const redlineText = preserveExistingLargeText(contract.redlineText, existing?.redline_text);
+  const commentsText = preserveExistingLargeText(contract.commentsText, existing?.comments_text);
   db.prepare(`
     INSERT INTO contracts (
       id, name, type, purpose, business_background, status, our_role, counterparty_id, counterparty_name,
@@ -1149,10 +1162,10 @@ function upsertContract(contract = {}) {
     contract.payment || "",
     contract.governingLaw || contract.jurisdiction || "",
     contract.dispute || "",
-    contract.text || "",
-    contract.cleanText || "",
-    contract.redlineText || "",
-    contract.commentsText || "",
+    text,
+    cleanText,
+    redlineText,
+    commentsText,
     contract.clauseSource || "draft",
     contract.riskLevel || "low",
     safeJson(contract.aiTags || []),
@@ -1224,6 +1237,15 @@ function upsertContractVersionWithAudit(version, auditEntry) {
 
 function upsertContractVersion(version = {}) {
   if (!version?.id || !version?.contractId) throw new Error("Version id and contractId are required");
+  const existing = db.prepare(`
+    SELECT text, clean_text, redline_text, comments_text, accepted_text
+    FROM contract_versions WHERE id = ?
+  `).get(version.id);
+  const versionText = preserveExistingLargeText(version.versionText || version.text, existing?.text);
+  const cleanText = preserveExistingLargeText(version.cleanText, existing?.clean_text);
+  const redlineText = preserveExistingLargeText(version.redlineText, existing?.redline_text);
+  const commentsText = preserveExistingLargeText(version.commentsText, existing?.comments_text);
+  const acceptedText = preserveExistingLargeText(version.acceptedText, existing?.accepted_text);
   db.prepare(`
     INSERT INTO contract_versions (
       id, contract_id, version_number, type, note, material_kind, text, clean_text, redline_text,
@@ -1251,11 +1273,11 @@ function upsertContractVersion(version = {}) {
     version.type || "",
     version.note || "",
     version.materialKind || "",
-    version.versionText || version.text || "",
-    version.cleanText || "",
-    version.redlineText || "",
-    version.commentsText || "",
-    version.acceptedText || "",
+    versionText,
+    cleanText,
+    redlineText,
+    commentsText,
+    acceptedText,
     version.filePath || null,
     version.createdAt || nowIso(),
     version.feedbackDeadline || "",
