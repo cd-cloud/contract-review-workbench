@@ -6,6 +6,8 @@ const { appRoot } = require("./ai-runner-lib");
 const ROOT = appRoot;
 const PROMPT_VERSION = "agent-a-review-v1";
 const KIMI_RUNNER_TIMEOUT_MS = Number(process.env.KIMI_RUNNER_TIMEOUT_MS || process.env.LEGAL_WORKBENCH_KIMI_RUNNER_TIMEOUT_MS || 0) || 180000;
+const KIMI_MAX_CONTRACT_TEXT = Number(process.env.KIMI_RUNNER_MAX_CONTRACT_TEXT || 0) || 30000;
+const KIMI_MAX_CLAUSES = Number(process.env.KIMI_RUNNER_MAX_CLAUSES || 0) || 120;
 let iconvLite = null;
 try {
   iconvLite = require("iconv-lite");
@@ -28,10 +30,13 @@ function readStdin() {
 function compactRequest(request) {
   const text = String(request.contract_text || "");
   const clauses = Array.isArray(request.clauses) ? request.clauses : [];
+  const compactText = text.length > KIMI_MAX_CONTRACT_TEXT
+    ? `${text.slice(0, Math.floor(KIMI_MAX_CONTRACT_TEXT * 0.7))}\n\n[TRUNCATED_MIDDLE_FOR_KIMI_RUNNER]\n\n${text.slice(-Math.floor(KIMI_MAX_CONTRACT_TEXT * 0.3))}`
+    : text;
   return {
     ...request,
-    contract_text: text.length > 90000 ? `${text.slice(0, 90000)}\n\n[TRUNCATED_FOR_KIMI_RUNNER]` : text,
-    clauses: clauses.slice(0, 220),
+    contract_text: compactText,
+    clauses: clauses.slice(0, KIMI_MAX_CLAUSES),
   };
 }
 
@@ -194,13 +199,22 @@ function getKimiCommand() {
 
 function runKimiExec(prompt) {
   const kimiCommand = getKimiCommand();
+  const promptDir = fs.mkdtempSync(path.join(os.tmpdir(), "legal-workbench-kimi-"));
+  const promptFile = path.join(promptDir, "prompt.md");
+  fs.writeFileSync(promptFile, prompt, "utf8");
+  const promptFileForKimi = promptFile.replace(/\\/g, "/");
   const args = [
     "--print",
-    "-p", prompt,
+    "-p", [
+      "Read the UTF-8 prompt file below and follow it exactly.",
+      "Return only the final JSON object requested by that file.",
+      `Prompt file: ${promptFileForKimi}`,
+    ].join("\n"),
     "--yolo",
     "--output-format", "stream-json",
     "--final-message-only",
     "--work-dir", ROOT,
+    "--add-dir", promptDir,
   ];
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -231,6 +245,7 @@ function runKimiExec(prompt) {
       settled = true;
       clearTimeout(timeout);
       cleanupSignals();
+      cleanupPromptFile();
       killChild();
       reject(error);
     }
@@ -240,6 +255,7 @@ function runKimiExec(prompt) {
       settled = true;
       clearTimeout(timeout);
       cleanupSignals();
+      cleanupPromptFile();
       resolve(value);
     }
 
@@ -251,6 +267,10 @@ function runKimiExec(prompt) {
       process.removeListener("SIGTERM", onParentExit);
       process.removeListener("SIGINT", onParentExit);
       process.removeListener("exit", onParentExit);
+    }
+
+    function cleanupPromptFile() {
+      try { fs.rmSync(promptDir, { recursive: true, force: true }); } catch (error) {}
     }
 
     process.once("SIGTERM", onParentExit);
