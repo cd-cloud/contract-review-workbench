@@ -41,6 +41,7 @@ const testFiles = [
   "tests/test-render-review-pure.js",
   "tests/test-http-utils.js",
   "tests/test-api-client.js",
+  "tests/test-api-core-pure.js",
   "tests/test-analysis-cache.js",
   "tests/test-jobs.js",
   "tests/test-routes-static.js",

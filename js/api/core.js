@@ -134,6 +134,112 @@ function extractLeadingDecimalNumber(text) {
   return match?.[1] || "";
 }
 
+function normalizeLegalSkillResult(result) {
+  const response = result?.response || {};
+  const normalized = {
+    ...(result || {}),
+    ok: result?.ok !== false,
+    response: {
+      contractSummary: response.contractSummary || {},
+      clauseSegmentation: normalizeSkillClauseSegmentation(response.clauseSegmentation || []),
+      contractLevelRisks: [],
+      clauseAnalyses: [],
+      missingFacts: Array.isArray(response.missingFacts) ? response.missingFacts : [],
+      businessSummary: response.businessSummary || "",
+    },
+  };
+  const seenContractRisks = new Set();
+  (Array.isArray(response.contractLevelRisks) ? response.contractLevelRisks : []).forEach((item) => {
+    const risk = normalizeSkillContractRisk(item);
+    if (!risk || isGenericSkillAdvice(risk)) return;
+    const key = normalizeSkillResultKeyText([risk.actionType, risk.title, risk.issue, risk.suggestion, risk.proposedClauseText].filter(Boolean).join("|")).slice(0, 220);
+    if (seenContractRisks.has(key)) return;
+    seenContractRisks.add(key);
+    normalized.response.contractLevelRisks.push(risk);
+  });
+  const seenClauseRisks = new Set();
+  (Array.isArray(response.clauseAnalyses) ? response.clauseAnalyses : []).forEach((item) => {
+    const risk = normalizeSkillClauseRisk(item);
+    if (!risk || isGenericSkillAdvice(risk)) return;
+    const key = normalizeSkillResultKeyText([risk.clauseId, risk.actionType, risk.issue, risk.proposedRevision, risk.replacementText, risk.commentText].filter(Boolean).join("|")).slice(0, 240);
+    if (seenClauseRisks.has(key)) return;
+    seenClauseRisks.add(key);
+    normalized.response.clauseAnalyses.push(risk);
+  });
+  return normalized;
+}
+
+function normalizeSkillContractRisk(item = {}) {
+  const suggestion = item.suggestion || item.recommendation || item.fix || item.proposedRevision || "";
+  const proposedClauseText = item.proposedClauseText || item.proposed_clause_text || item.replacementText || "";
+  const actionType = item.actionType === "comment_only" ? "comment_only" : "add_clause";
+  if (actionType === "add_clause" && !String(suggestion || proposedClauseText).trim()) return null;
+  return {
+    severity: normalizeSeverity(item.severity),
+    actionType,
+    title: item.title || item.issue || "合同级风险",
+    issue: item.issue || item.summary || item.title || "",
+    consequence: item.consequence || "",
+    suggestion,
+    proposedClauseText,
+    targetInsertPosition: item.targetInsertPosition || item.insertAfter || "",
+    businessRationale: item.businessRationale || "",
+    adoptionNote: item.adoptionNote || "",
+    negotiationBottomLine: item.negotiationBottomLine || item.bottomLine || "",
+    acceptableFallback: item.acceptableFallback || item.concessionText || item.fallbackText || "",
+    linkedClauseIds: Array.isArray(item.linkedClauseIds) ? item.linkedClauseIds : [],
+    qualityScore: normalizeQualityScore(item.qualityScore),
+  };
+}
+
+function normalizeSkillClauseRisk(item = {}) {
+  const proposedRevision = item.proposedRevision || item.recommendation || item.fix || item.suggestion || item.replacementText || "";
+  const actionType = normalizeClauseActionType(item.actionType, { ...item, proposedRevision });
+  if (actionType !== "comment_only" && !String(proposedRevision).trim()) return null;
+  if (actionType === "comment_only" && !String(item.commentText || item.issue || proposedRevision).trim()) return null;
+  return {
+    clauseId: item.clauseId || item.targetClauseId || "",
+    title: item.title || item.clauseTitle || item.issue || "条款风险",
+    clauseType: item.clauseType || item.type || "",
+    severity: normalizeSeverity(item.severity),
+    actionType,
+    issue: item.issue || item.summary || "",
+    consequence: item.consequence || "",
+    proposedRevision,
+    targetText: item.targetText || "",
+    replacementText: item.replacementText || "",
+    commentText: item.commentText || "",
+    negotiationPosition: item.negotiationPosition || item.negotiation || "",
+    fallbackText: item.fallbackText || "",
+    businessDecision: item.businessDecision || "",
+    adoptionNote: item.adoptionNote || "",
+    negotiationBottomLine: item.negotiationBottomLine || item.bottomLine || "",
+    acceptableFallback: item.acceptableFallback || item.concessionText || item.fallbackText || "",
+    linkedClauseIds: Array.isArray(item.linkedClauseIds) ? item.linkedClauseIds : [],
+    qualityScore: normalizeQualityScore(item.qualityScore),
+  };
+}
+
+function normalizeQualityScore(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return null;
+  return Math.max(0, Math.min(100, Math.round(number)));
+}
+
+function isGenericSkillAdvice(item = {}) {
+  const source = [item.title, item.issue, item.suggestion, item.proposedRevision, item.commentText].filter(Boolean).join("\n");
+  if (!source.trim()) return true;
+  if (/未识别到显著风险|建议结合.*背景.*复核|进一步确认|继续关注|酌情完善|保持现状/.test(source) && !/(修改为|替换为|删除|新增|补充以下|建议条款|proposed|replace|delete|add)/i.test(source)) return true;
+  return false;
+}
+
+function normalizeSkillResultKeyText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/[，。；：、“”‘’（）()[\]{}<>《》|,.;:'"`~!@#$%^&*_+=?\\/\\-]/g, "");
+}
+
 async function runLegalSkillAnalysis(contract, materialText, extraRequirements = "", options = {}) {
   const showLoading = !options.silentStatus;
   if (showLoading && typeof showGlobalLoading === "function") {

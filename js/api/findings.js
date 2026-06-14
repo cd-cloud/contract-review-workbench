@@ -105,7 +105,7 @@ function buildSkillFindingStableId(contractId, item = {}, scope = "clause") {
   ]
     .filter(Boolean)
     .join("|");
-  return `skill-finding-${hashStableText(normalizeText(source).slice(0, 800))}`;
+  return `skill-finding-${hashStableText(normalizeSkillMatchText(source).slice(0, 800))}`;
 }
 
 function hashStableText(text) {
@@ -115,6 +115,13 @@ function hashStableText(text) {
     hash = Math.imul(hash, 16777619);
   }
   return (hash >>> 0).toString(36);
+}
+
+function normalizeSkillMatchText(text) {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/[，。；：、“”‘’（）()[\]{}<>《》|,.;:'"`~!@#$%^&*_+=?\\/\\-]/g, "");
 }
 
 function skillFindingPlacementScore(finding = {}) {
@@ -195,8 +202,8 @@ function scoreSkillClausePlacement(item, clause) {
   const source = buildSkillPlacementText(item);
   const title = item.title || item.clauseTitle || "";
   let score = clauseMatchScore(source, title, item.clauseType, clause);
-  const targetText = normalizeText(item.targetText || "");
-  const clauseText = normalizeText(`${clause.title || ""}\n${clause.text || ""}`);
+  const targetText = normalizeSkillMatchText(item.targetText || "");
+  const clauseText = normalizeSkillMatchText(`${clause.title || ""}\n${clause.text || ""}`);
   if (targetText && clauseText.includes(targetText.slice(0, Math.min(targetText.length, 160)))) score += 0.72;
   if (source.includes(clause.id) || (clause.stableId && source.includes(clause.stableId))) score += 0.15;
   const explicitNumbers = extractClauseNumberRefs(source);
@@ -204,8 +211,8 @@ function scoreSkillClausePlacement(item, clause) {
   if (explicitNumbers.length && clauseNumbers.some((number) => explicitNumbers.includes(number))) score += 0.55;
   if (explicitNumbers.length && !clauseNumbers.some((number) => explicitNumbers.includes(number))) score -= 0.25;
   const normalizedTitle = normalizeClauseTitle(clause.title);
-  if (normalizedTitle && normalizeText(source).includes(normalizedTitle)) score += 0.25;
-  if (clause.chapterTitle && normalizeText(source).includes(normalizeText(clause.chapterTitle))) score += 0.12;
+  if (normalizedTitle && normalizeSkillMatchText(source).includes(normalizedTitle)) score += 0.25;
+  if (clause.chapterTitle && normalizeSkillMatchText(source).includes(normalizeSkillMatchText(clause.chapterTitle))) score += 0.12;
   score += scoreDocumentRegionContext(source, clause);
   if (item.clauseType && clause.type && String(item.clauseType).includes(clause.type)) score += 0.1;
   return Math.max(0, Math.min(1, score));
@@ -279,7 +286,7 @@ function resolveContractRiskTargetPlacement(item, clauses, byId, byTitle) {
   }
 
   const directTitle = byTitle.get(normalizeClauseTitle(item.targetInsertPosition || item.title || ""));
-  const suggestedType = normalizeSuggestedClauseType(`${item.title || ""}\n${item.issue || ""}\n${item.suggestion || ""}\n${item.proposedClauseText || ""}`);
+  const suggestedType = normalizeClauseTypeLabel(`${item.title || ""}\n${item.issue || ""}\n${item.suggestion || ""}\n${item.proposedClauseText || ""}`);
   const best = findBestContractRiskTarget(targetText, suggestedType, clauses);
   if (linked) {
     const linkedScore = contractRiskTargetScore(targetText, suggestedType, linked);
@@ -348,9 +355,9 @@ function contractRiskTargetScore(targetText, suggestedType, clause) {
 
 function scoreNumberedClauseContext(source, clause) {
   let score = 0;
-  const normalizedSource = normalizeText(source);
+  const normalizedSource = normalizeSkillMatchText(source);
   const normalizedTitle = normalizeClauseTitle(clause.title);
-  const normalizedChapter = normalizeText(clause.chapterTitle || "");
+  const normalizedChapter = normalizeSkillMatchText(clause.chapterTitle || "");
   if (normalizedTitle && normalizedSource.includes(normalizedTitle)) score += 0.55;
   if (normalizedChapter && normalizedSource.includes(normalizedChapter)) score += 0.48;
   score += clauseMatchScore(source, "", "", clause) * 0.35;
@@ -387,7 +394,7 @@ function buildSkillFindingDedupKey(finding = {}) {
   ]
     .filter(Boolean)
     .join("|");
-  return normalizeText(source)
+  return normalizeSkillMatchText(source)
     .replace(/第[一二三四五六七八九十百零〇两0-9]+条/g, "")
     .replace(/\b\d+(?:\.\d+)+\b/g, "")
     .slice(0, 260);
