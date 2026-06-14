@@ -306,6 +306,27 @@ test("upsertContractVersion preserves existing version text when incremental pay
   assert.strictEqual(version.acceptedText, "Original accepted body");
 });
 
+test("upsertContractVersion falls back to cleanText when versionText is omitted", () => {
+  store.upsertContract({
+    id: "c-version-clean-fallback",
+    name: "Version Clean Fallback",
+    createdAt: "2026-06-08",
+    updatedAt: "2026-06-08",
+  });
+  store.upsertContractVersion({
+    id: "u-version-clean-fallback",
+    contractId: "c-version-clean-fallback",
+    type: "初稿",
+    cleanText: "Clean version body",
+    acceptedText: "Accepted version body",
+    createdAt: "2026-06-08",
+  });
+  const db = store.readDb();
+  const version = db.snapshot.updates.find((item) => item.id === "u-version-clean-fallback");
+  assert.strictEqual(version.versionText, "Clean version body");
+  assert.strictEqual(version.text, "Clean version body");
+});
+
 test("deleteContractVersionCascade removes version incrementally", () => {
   store.upsertContract({
     id: "c-delete-version",

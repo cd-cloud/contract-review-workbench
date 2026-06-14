@@ -270,6 +270,19 @@ async function saveContractTexts(state) {
       store.put(payload);
     }
   }
+  for (const update of state.updates || []) {
+    const payload = { id: update.id };
+    let hasText = false;
+    for (const field of UPDATE_LARGE_TEXT_FIELDS) {
+      if (update[field]) {
+        payload[field] = update[field];
+        hasText = true;
+      }
+    }
+    if (hasText) {
+      store.put(payload);
+    }
+  }
   return new Promise((resolve, reject) => {
     tx.oncomplete = () => { db.close(); resolve(); };
     tx.onerror = (event) => { db.close(); reject(event.target.error); };
@@ -287,6 +300,17 @@ async function loadContractTexts(state) {
       if (record) {
         for (const field of LARGE_TEXT_FIELDS) {
           if (record[field] !== undefined) contract[field] = record[field];
+        }
+      }
+    };
+  }
+  for (const update of state.updates || []) {
+    const request = store.get(update.id);
+    request.onsuccess = (event) => {
+      const record = event.target.result;
+      if (record) {
+        for (const field of UPDATE_LARGE_TEXT_FIELDS) {
+          if (record[field] !== undefined) update[field] = record[field];
         }
       }
     };
@@ -408,6 +432,12 @@ function normalizeWorkbenchState(candidate) {
     contract.clauseSource = contract.clauseSource || "draft";
     contract.owner = contract.owner || "";
     contract.workflowStatus = contract.workflowStatus || contract.status || "初审";
+  });
+  parsed.updates.forEach((update) => {
+    update.versionText = update.versionText || update.text || update.cleanText || update.acceptedText || update.revisionText || "";
+    update.acceptedText = update.acceptedText || update.cleanText || "";
+    update.revisionText = update.revisionText || update.redlineText || update.versionText || "";
+    update.commentsText = update.commentsText || "";
   });
   parsed.clauseActions = parsed.clauseActions || {};
   parsed.analysisRequests = parsed.analysisRequests || {};

@@ -63,6 +63,21 @@ test("normalizeWorkbenchState fills missing contract fields", () => {
   assert.strictEqual(contract.workflowStatus, "初审", "workflowStatus should default to 初审");
 });
 
+test("normalizeWorkbenchState normalizes update text aliases", () => {
+  const oldState = {
+    contracts: [{ id: "c1", name: "Test", text: "", cleanText: "" }],
+    updates: [{ id: "u1", contractId: "c1", text: "Version body", cleanText: "Clean body" }],
+    clauses: [],
+    findings: [],
+  };
+  const result = normalizeWorkbenchState(oldState);
+  const update = result.updates.find((item) => item.id === "u1");
+  assert.strictEqual(update.versionText, "Version body");
+  assert.strictEqual(update.acceptedText, "Clean body");
+  assert.strictEqual(update.revisionText, "Version body");
+  assert.strictEqual(update.commentsText, "");
+});
+
 test("normalizeWorkbenchState initializes missing top-level arrays", () => {
   const minimal = {
     contracts: [{ id: "c1", name: "Test", text: "", cleanText: "" }],

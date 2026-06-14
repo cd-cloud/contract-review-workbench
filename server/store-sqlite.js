@@ -525,7 +525,9 @@ function assembleStructuredSnapshot() {
   const contractVersions = db.prepare("SELECT * FROM contract_versions").all().map(row => ({
     id: row.id, contractId: row.contract_id, versionNumber: row.version_number,
     type: row.type, note: row.note, materialKind: row.material_kind,
-    versionText: row.text, cleanText: row.clean_text, redlineText: row.redline_text,
+    text: row.text || row.clean_text || row.accepted_text || row.redline_text || "",
+    versionText: row.text || row.clean_text || row.accepted_text || row.redline_text || "",
+    cleanText: row.clean_text, redlineText: row.redline_text,
     commentsText: row.comments_text, acceptedText: row.accepted_text,
     filePath: row.file_path, createdAt: row.created_at,
     feedbackDeadline: row.feedback_deadline, status: row.status,
@@ -1241,7 +1243,10 @@ function upsertContractVersion(version = {}) {
     SELECT text, clean_text, redline_text, comments_text, accepted_text
     FROM contract_versions WHERE id = ?
   `).get(version.id);
-  const versionText = preserveExistingLargeText(version.versionText || version.text, existing?.text);
+  const versionText = preserveExistingLargeText(
+    version.versionText || version.text || version.cleanText || version.acceptedText || version.redlineText,
+    existing?.text
+  );
   const cleanText = preserveExistingLargeText(version.cleanText, existing?.clean_text);
   const redlineText = preserveExistingLargeText(version.redlineText, existing?.redline_text);
   const commentsText = preserveExistingLargeText(version.commentsText, existing?.comments_text);
