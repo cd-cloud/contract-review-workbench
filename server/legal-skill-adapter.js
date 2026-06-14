@@ -495,8 +495,14 @@ function runConfiguredSkillCommand(request, options = {}, runnerConfig = getRunn
     }
 
     if (child.stdin && typeof child.stdin.on === "function") child.stdin.on("error", () => {});
-    child.stdin.write(JSON.stringify(payload, null, 2));
-    child.stdin.end();
+    try {
+      child.stdin.write(JSON.stringify(payload, null, 2));
+      child.stdin.end();
+    } catch (writeError) {
+      clearTimeout(timeoutId);
+      try { child.kill("SIGTERM"); } catch (e) {}
+      reject(new Error(`Failed to write to runner stdin: ${writeError.message || writeError}`));
+    }
   });
 }
 

@@ -10,6 +10,7 @@ const path = require("path");
 const os = require("os");
 const crypto = require("crypto");
 const { isPathInsideRoot, safeJsonStringify } = require("./http-utils");
+const logger = require("../scripts/logger");
 
 const config = require("./config");
 const WORKBENCH_ROOT = config.dataDir;
@@ -351,15 +352,10 @@ migrate();
 /* ─────────────── Helpers ─────────────── */
 function safeJson(value) {
   try {
-    const seen = new WeakSet();
-    return JSON.stringify(value, (key, val) => {
-      if (typeof val === "object" && val !== null) {
-        if (seen.has(val)) return "[Circular]";
-        seen.add(val);
-      }
-      return val;
-    });
-  } catch { return "null"; }
+    return safeJsonStringify(value);
+  } catch {
+    return "null";
+  }
 }
 function parseJson(text, fallback = null) {
   try { return JSON.parse(text); } catch { return fallback; }
