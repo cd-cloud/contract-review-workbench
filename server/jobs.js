@@ -100,12 +100,15 @@ function cleanupAnalysisJobs() {
     if ((job.status === "queued" || job.status === "running") && now - updatedAt > ANALYSIS_JOB_TIMEOUT_MS) {
       try { job.__controller?.abort(); } catch (e) {}
       terminateJobChild(job);
+      removeFromQueue(id);
       Object.assign(job, {
         status: "failed",
         phase: JOB_PHASES.timedOut,
         updatedAt: new Date().toISOString(),
         error: "AI legal review job timed out",
+        positionInQueue: null,
       });
+      saveAnalysisJob(job);
     }
     const completedAt = Date.parse(job.completedAt || job.updatedAt || job.createdAt || "1970-01-01T00:00:00Z") || 0;
     if (!["queued", "running"].includes(job.status) && now - completedAt > ANALYSIS_JOB_TTL_MS) {
@@ -180,7 +183,7 @@ function buildCostMetadata(result) {
 function isRetryableError(error) {
   const msg = String(error?.message || error || "");
   // Do not retry auth errors, missing files, or JSON parse errors
-  if (/401|403|Unauthorized|Forbidden|ENOENT|not found|JSON parse|did not return JSON/i.test(msg)) {
+  if (/401|403|Unauthorized|Forbidden|ENOENT|not found|JSON parse|did not return JSON|did not return legal-skill JSON|missing response/i.test(msg)) {
     return false;
   }
   return /ECONNRESET|ETIMEDOUT|ENOTFOUND|socket hang up|timeout|timed out|rate limit|429|5\d{2}|Service Unavailable/i.test(msg);
@@ -411,6 +414,18 @@ function restoreJobsFromDb() {
         phase: JOB_PHASES.timedOut,
         updatedAt: new Date().toISOString(),
         error: "AI legal review job timed out (restored from DB)",
+        positionInQueue: null,
+      });
+      return;
+    }
+    if (!String(job.request?.contract_text || "").trim()) {
+      saveAnalysisJob({
+        ...job,
+        status: "failed",
+        phase: JOB_PHASES.failed,
+        updatedAt: new Date().toISOString(),
+        error: "AI review request was restored without contract text; please retry the review.",
+        positionInQueue: null,
       });
       return;
     }

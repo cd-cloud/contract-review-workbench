@@ -5,6 +5,13 @@ const { spawn } = require("child_process");
 const { appRoot } = require("./ai-runner-lib");
 const ROOT = appRoot;
 const PROMPT_VERSION = "agent-a-review-v1";
+const KIMI_RUNNER_TIMEOUT_MS = Number(process.env.KIMI_RUNNER_TIMEOUT_MS || process.env.LEGAL_WORKBENCH_KIMI_RUNNER_TIMEOUT_MS || 0) || 180000;
+let iconvLite = null;
+try {
+  iconvLite = require("iconv-lite");
+} catch (error) {
+  iconvLite = null;
+}
 
 function readStdin() {
   return new Promise((resolve, reject) => {
@@ -28,8 +35,9 @@ function compactRequest(request) {
   };
 }
 
-function buildPrompt(payload) {
+function buildPromptLegacy(payload) {
   const request = compactRequest(payload.request || payload);
+  const schemaText = buildCompactSchemaGuide();
   return [
     "你是 Kimi Code CLI 中的法律工作执行器。必须使用 legal-work-orchestrator skill 作为入口；对于合同审阅任务，按其规则路由到 legal-contract-orchestrator。",
     "",
@@ -66,6 +74,108 @@ function buildPrompt(payload) {
     "7. 如果 drafting_requirements 或用户要求中出现\"目标 clauseId 必须原样返回\"，这是条款级聚焦分析：response.clauseAnalyses 只返回该目标条款的建议，clauseId 必须完全等于目标 ID；除非目标条款缺少必要配套机制，否则不要输出 contractLevelRisks。",
     "",
     "合同审阅请求 JSON：",
+    "Output JSON schema (must be followed exactly):",
+    schemaText,
+    "",
+    "Return exactly one JSON object matching the schema. The top-level object must include ok and response. Do not repeat or echo the request JSON.",
+    "",
+    "Contract review request JSON:",
+    JSON.stringify(request, null, 2),
+  ].join("\n");
+}
+
+function buildCompactSchemaGuide() {
+  return JSON.stringify({
+    ok: true,
+    response: {
+      contractSummary: {
+        contractName: "",
+        contractType: "",
+        purpose: "",
+        ourRole: "",
+        counterparty: "",
+        riskLevel: "high|medium|low",
+        completionScore: 0,
+        positionDeviationLevel: "",
+      },
+      clauseSegmentation: [
+        {
+          stableId: "stable short id",
+          order: 1,
+          title: "",
+          text: "original clause text",
+          type: "",
+          chapterTitle: "",
+          hierarchyLevel: "preface|chapter|article",
+        },
+      ],
+      contractLevelRisks: [
+        {
+          severity: "high|medium|low",
+          actionType: "add_clause|comment_only",
+          title: "",
+          issue: "",
+          consequence: "",
+          suggestion: "",
+          proposedClauseText: "",
+          targetInsertPosition: "",
+          businessRationale: "",
+          adoptionNote: "",
+          negotiationBottomLine: "",
+          acceptableFallback: "",
+          linkedClauseIds: [],
+          qualityScore: 0,
+        },
+      ],
+      clauseAnalyses: [
+        {
+          clauseId: "",
+          title: "",
+          clauseType: "",
+          severity: "high|medium|low",
+          actionType: "replace_clause|revise_clause|delete_clause|comment_only",
+          issue: "",
+          consequence: "",
+          proposedRevision: "",
+          targetText: "",
+          replacementText: "",
+          commentText: "",
+          negotiationPosition: "",
+          fallbackText: "",
+          businessDecision: "",
+          adoptionNote: "",
+          negotiationBottomLine: "",
+          acceptableFallback: "",
+          linkedClauseIds: [],
+          qualityScore: 0,
+        },
+      ],
+      missingFacts: [],
+      businessSummary: "",
+    },
+  }, null, 2);
+}
+
+function buildPrompt(payload) {
+  const request = compactRequest(payload.request || payload);
+  return [
+    "You are a Chinese legal contract review agent for a local contract-review workbench.",
+    "Review the contract from represented_party's position. Identify material legal/commercial risks, missing core clauses, clause-level revisions, and negotiation fallback positions.",
+    "Return only one JSON object. Do not use Markdown or code fences. Do not echo the request.",
+    "All user-facing text inside the JSON should be Chinese. Use high, medium, or low for risk levels.",
+    "",
+    "Required output shape:",
+    buildCompactSchemaGuide(),
+    "",
+    "Rules:",
+    "- response is required.",
+    "- clauseSegmentation should split contract_text into meaningful original clauses. text must come from the original contract.",
+    "- contractLevelRisks is for missing mechanisms or add-clause recommendations.",
+    "- clauseAnalyses is for existing clauses that should be replaced, revised, deleted, or commented on.",
+    "- proposedClauseText, proposedRevision, replacementText, and commentText should be concrete text that a lawyer can directly use.",
+    "- If request.clauses is empty, prioritize clauseSegmentation and still provide important risks when visible from contract_text.",
+    "",
+    "Contract review request JSON:",
     JSON.stringify(request, null, 2),
   ].join("\n");
 }
@@ -93,6 +203,7 @@ function runKimiExec(prompt) {
     "--work-dir", ROOT,
   ];
   return new Promise((resolve, reject) => {
+    let settled = false;
     const child = spawn(kimiCommand, args, {
       cwd: ROOT,
       shell: false,
@@ -102,23 +213,85 @@ function runKimiExec(prompt) {
       },
       windowsHide: true,
     });
-    let stdout = "";
-    let stderr = "";
+    const stdoutChunks = [];
+    const stderrChunks = [];
+    const timeout = setTimeout(() => {
+      settleReject(new Error(`Kimi CLI timed out after ${KIMI_RUNNER_TIMEOUT_MS}ms`));
+    }, KIMI_RUNNER_TIMEOUT_MS);
+
+    function killChild() {
+      try { child.kill("SIGTERM"); } catch (e) {}
+      setTimeout(() => {
+        try { if (!child.killed) child.kill("SIGKILL"); } catch (e) {}
+      }, 3000);
+    }
+
+    function settleReject(error) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      cleanupSignals();
+      killChild();
+      reject(error);
+    }
+
+    function settleResolve(value) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      cleanupSignals();
+      resolve(value);
+    }
+
+    function onParentExit() {
+      killChild();
+    }
+
+    function cleanupSignals() {
+      process.removeListener("SIGTERM", onParentExit);
+      process.removeListener("SIGINT", onParentExit);
+      process.removeListener("exit", onParentExit);
+    }
+
+    process.once("SIGTERM", onParentExit);
+    process.once("SIGINT", onParentExit);
+    process.once("exit", onParentExit);
+
     child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString();
+      stdoutChunks.push(Buffer.from(chunk));
     });
     child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString();
+      stderrChunks.push(Buffer.from(chunk));
     });
-    child.on("error", reject);
+    child.on("error", settleReject);
     child.on("close", (code) => {
+      cleanupSignals();
+      if (settled) return;
       if (code !== 0) {
-        reject(new Error(`kimi exec failed with code ${code}\n${stderr || stdout}`.trim()));
+        const stdout = decodeKimiBuffer(Buffer.concat(stdoutChunks));
+        const stderr = decodeKimiBuffer(Buffer.concat(stderrChunks));
+        settleReject(new Error(`kimi exec failed with code ${code}\n${stderr || stdout}`.trim()));
         return;
       }
-      resolve({ stdout, stderr });
+      const stdout = decodeKimiBuffer(Buffer.concat(stdoutChunks));
+      const stderr = decodeKimiBuffer(Buffer.concat(stderrChunks));
+      settleResolve({ stdout, stderr });
     });
   });
+}
+
+function decodeKimiBuffer(buffer) {
+  const utf8 = buffer.toString("utf8");
+  if (!iconvLite) return utf8;
+  const gbk = iconvLite.decode(buffer, "gbk");
+  return mojibakeScore(gbk) < mojibakeScore(utf8) ? gbk : utf8;
+}
+
+function mojibakeScore(text) {
+  const source = String(text || "");
+  const replacement = (source.match(/\uFFFD/g) || []).length;
+  const common = (source.match(/[ÃÂâ�]/g) || []).length;
+  return replacement * 4 + common;
 }
 
 function parseKimiOutput(stdout) {
@@ -156,13 +329,56 @@ function parseJsonOutput(text) {
   try {
     return JSON.parse(raw);
   } catch (error) {
-    const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
-    if (fenced) return JSON.parse(fenced[1]);
-    const first = raw.indexOf("{");
-    const last = raw.lastIndexOf("}");
-    if (first >= 0 && last > first) return JSON.parse(raw.slice(first, last + 1));
+    const fences = [...raw.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)];
+    for (let i = fences.length - 1; i >= 0; i--) {
+      try {
+        return JSON.parse(fences[i][1].trim());
+      } catch (fenceError) {}
+    }
+    const candidates = extractJsonObjectCandidates(raw);
+    for (const candidate of candidates) {
+      try {
+        return JSON.parse(candidate);
+      } catch (candidateError) {}
+    }
     throw error;
   }
+}
+
+function extractJsonObjectCandidates(text) {
+  const candidates = [];
+  const source = String(text || "");
+  for (let start = 0; start < source.length; start += 1) {
+    if (source[start] !== "{") continue;
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let index = start; index < source.length; index += 1) {
+      const char = source[index];
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (char === "\\") {
+          escaped = true;
+        } else if (char === "\"") {
+          inString = false;
+        }
+        continue;
+      }
+      if (char === "\"") {
+        inString = true;
+      } else if (char === "{") {
+        depth += 1;
+      } else if (char === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          candidates.push(source.slice(start, index + 1));
+          break;
+        }
+      }
+    }
+  }
+  return candidates.sort((a, b) => b.length - a.length);
 }
 
 async function main() {
@@ -170,6 +386,9 @@ async function main() {
   const { stdout } = await runKimiExec(buildPrompt(payload));
   const finalText = parseKimiOutput(stdout);
   const parsed = parseJsonOutput(finalText);
+  if (!parsed || typeof parsed !== "object" || !parsed.response) {
+    throw new Error("Kimi did not return legal-skill JSON with a response object.");
+  }
   parsed.promptVersion = PROMPT_VERSION;
   parsed.skillPath = "legal-work-orchestrator";
   parsed.downstreamSkill = "legal-contract-orchestrator";

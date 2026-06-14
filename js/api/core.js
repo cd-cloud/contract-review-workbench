@@ -237,6 +237,8 @@ function buildLegalSkillLoadingSteps(activeStatus = "submitting") {
 function normalizeLoadingJobStatus(job) {
   if (!job) return "queued";
   if (job.status === "completed") return "completed";
+  if (job.status === "failed") return "failed";
+  if (job.status === "cancelled") return "cancelled";
   if (job.status === "running") return "running";
   if (job.status === "queued") return "queued";
   return "running";
@@ -245,6 +247,18 @@ function normalizeLoadingJobStatus(job) {
 function updateLegalSkillLoading(job) {
   if (typeof setGlobalLoadingStatus !== "function") return;
   const status = normalizeLoadingJobStatus(job);
+  if (status === "failed" || status === "cancelled") {
+    setGlobalLoadingStatus({
+      title: status === "cancelled" ? "AI 审阅已取消" : "AI 审阅失败",
+      detail: job?.error || job?.phase || (status === "cancelled" ? "本次 AI 审阅已取消。" : "本次 AI 审阅没有完成。"),
+      meta: "可以稍后重试，或切换 AI 运行方式后重新审阅。",
+      steps: buildLegalSkillLoadingSteps("running").map((step) => (
+        step.status === "running" ? { ...step, status: "failed" } : step
+      )),
+      showCancel: false,
+    });
+    return;
+  }
   const queueText = job?.status === "queued" && Number.isFinite(job.positionInQueue)
     ? `当前排队第 ${job.positionInQueue + 1} 位。`
     : "";

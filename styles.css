@@ -2389,6 +2389,14 @@ body.modal-open::before {
 .global-loading-step.done::before {
   background: #22c55e;
 }
+.global-loading-step.failed {
+  color: #991b1b;
+  background: #fff1f2;
+  border-color: #fecaca;
+}
+.global-loading-step.failed::before {
+  background: #ef4444;
+}
 .global-loading-cancel {
   margin-top: 12px;
   padding: 8px 18px;

@@ -243,7 +243,7 @@ function mergeChunkedCostMeta(chunkResults = []) {
 
 function isRetryableError(error) {
   const msg = String(error?.message || error || "");
-  if (/401|403|Unauthorized|Forbidden|ENOENT|not found|JSON parse|did not return JSON/i.test(msg)) {
+  if (/401|403|Unauthorized|Forbidden|ENOENT|not found|JSON parse|did not return JSON|did not return legal-skill JSON|missing response/i.test(msg)) {
     return false;
   }
   return /ECONNRESET|ETIMEDOUT|ENOTFOUND|socket hang up|timeout|timed out|rate limit|429|5\d{2}|Service Unavailable/i.test(msg);
@@ -440,20 +440,37 @@ async function analyzeLegalReviewInChunks(request, options = {}, runnerConfig = 
 function runConfiguredSkillCommand(request, options = {}, runnerConfig = getRunnerConfig()) {
   return new Promise((resolve, reject) => {
     let child;
-    const timeoutId = setTimeout(() => {
-      console.error("[legal-skill-adapter] Skill command timed out after 130s, killing child process");
+    let settled = false;
+    const skillTimeoutMs = Number(process.env.LEGAL_WORKBENCH_SKILL_TIMEOUT_MS || 0) || 180000;
+    function settleReject(error) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutId);
+      reject(error);
+    }
+    function settleResolve(value) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutId);
+      resolve(value);
+    }
+    function terminateChild() {
       try { if (child) child.kill("SIGTERM"); } catch (e) {}
       setTimeout(() => {
         try { if (child && !child.killed) child.kill("SIGKILL"); } catch (e) {}
       }, 3000);
-      reject(new Error("Skill command timed out after 130s"));
-    }, 130000);
+    }
+    const timeoutId = setTimeout(() => {
+      console.error(`[legal-skill-adapter] Skill command timed out after ${skillTimeoutMs}ms, killing child process`);
+      terminateChild();
+      settleReject(new Error(`Skill command timed out after ${skillTimeoutMs}ms`));
+    }, skillTimeoutMs);
     const payload = buildRunnerPayload(request);
     const skillMaxBuffer = Number(process.env.LEGAL_WORKBENCH_SKILL_MAX_BUFFER || 0) || 100 * 1024 * 1024;
     child = execFile(runnerConfig.runnerCommand, runnerConfig.runnerArgs, { maxBuffer: skillMaxBuffer }, (error, stdout, stderr) => {
-      clearTimeout(timeoutId);
+      if (settled) return;
       if (error) {
-        reject(new Error(`${error.message}\n${stderr || ""}`.trim()));
+        settleReject(new Error(`${error.message}\n${stderr || ""}`.trim()));
         return;
       }
       try {
@@ -466,9 +483,9 @@ function runConfiguredSkillCommand(request, options = {}, runnerConfig = getRunn
           ...parsed,
         };
         result.__costMeta = { model: getRunnerStatus().model || "unknown", provider: getRunnerStatus().provider || "unknown", source: result.source };
-        resolve(result);
+        settleResolve(result);
       } catch (parseError) {
-        reject(new Error(`Skill command did not return JSON: ${parseError.message}`));
+        settleReject(new Error(`Skill command did not return JSON: ${parseError.message}`));
       }
     });
     if (typeof options.onChild === "function") {
@@ -478,11 +495,8 @@ function runConfiguredSkillCommand(request, options = {}, runnerConfig = getRunn
     // Support cancellation via AbortController
     if (options.signal) {
       const onAbort = () => {
-        try { child.kill("SIGTERM"); } catch (e) {}
-        setTimeout(() => {
-          try { if (!child.killed) child.kill("SIGKILL"); } catch (e) {}
-        }, 3000);
-        reject(new Error("AI analysis was cancelled"));
+        terminateChild();
+        settleReject(new Error("AI analysis was cancelled"));
       };
       if (options.signal.aborted) {
         onAbort();
