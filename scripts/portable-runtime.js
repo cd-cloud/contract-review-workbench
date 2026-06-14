@@ -5,6 +5,15 @@ const { resolveAutomaticProviderSelection, resolveKimiCommandStatus } = require(
 
 const DEFAULT_PORT = 8787;
 const PORT_SCAN_LIMIT = 20;
+const RUNTIME_PROFILE_FILE = "runtime-profile.json";
+const RUNTIME_PROFILE_LABELS = {
+  ai: "自动选择",
+  kimi: "Kimi CLI",
+  codex: "Codex CLI",
+  basic: "仅后端",
+  server: "仅后端",
+  skill: "本地 Skill",
+};
 
 function appRoot() {
   return path.resolve(__dirname, "..");
@@ -12,6 +21,51 @@ function appRoot() {
 
 function defaultPortableDataDir() {
   return path.join(appRoot(), ".local-workbench");
+}
+
+function normalizeRuntimeProfile(profile = "ai") {
+  const normalized = String(profile || "ai").trim().toLowerCase();
+  if (["auto", "default", "automatic"].includes(normalized)) return "ai";
+  if (Object.prototype.hasOwnProperty.call(RUNTIME_PROFILE_LABELS, normalized)) return normalized;
+  return "ai";
+}
+
+function runtimeProfilePath(dataDir = process.env.LEGAL_WORKBENCH_DATA_DIR || defaultPortableDataDir()) {
+  return path.join(dataDir, RUNTIME_PROFILE_FILE);
+}
+
+function readRuntimePreference(dataDir = process.env.LEGAL_WORKBENCH_DATA_DIR || defaultPortableDataDir()) {
+  const filePath = runtimeProfilePath(dataDir);
+  try {
+    const raw = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    const profile = normalizeRuntimeProfile(raw.profile || raw.preferredProfile || "ai");
+    return {
+      profile,
+      label: RUNTIME_PROFILE_LABELS[profile] || profile,
+      path: filePath,
+      updatedAt: raw.updatedAt || "",
+    };
+  } catch (error) {
+    return {
+      profile: "ai",
+      label: RUNTIME_PROFILE_LABELS.ai,
+      path: filePath,
+      updatedAt: "",
+    };
+  }
+}
+
+function writeRuntimePreference(profile, dataDir = process.env.LEGAL_WORKBENCH_DATA_DIR || defaultPortableDataDir()) {
+  const normalized = normalizeRuntimeProfile(profile);
+  ensureWritableDirectory(dataDir);
+  const filePath = runtimeProfilePath(dataDir);
+  const payload = {
+    profile: normalized,
+    label: RUNTIME_PROFILE_LABELS[normalized] || normalized,
+    updatedAt: new Date().toISOString(),
+  };
+  fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf8");
+  return { ...payload, path: filePath };
 }
 
 function ensurePortableDataDir() {
@@ -82,7 +136,7 @@ function resolveAutomaticAiProfile() {
 }
 
 function configureRunnerProfile(profile = "ai", targetEnv = process.env) {
-  const normalized = String(profile || "ai").toLowerCase();
+  const normalized = normalizeRuntimeProfile(profile);
 
   if (normalized === "basic" || normalized === "server") {
     applyRuntimeSelection({ profile: normalized, mode: "basic", provider: "none", reason: "Basic server profile selected." }, targetEnv);
@@ -163,12 +217,12 @@ function configureRunnerProfile(profile = "ai", targetEnv = process.env) {
   return "fallback";
 }
 
-function parseProfileArg(argv = process.argv.slice(2)) {
+function parseProfileArg(argv = process.argv.slice(2), fallback = "ai") {
   const profileArg = argv.find((item) => item.startsWith("--profile="));
   if (profileArg) return profileArg.split("=").slice(1).join("=") || "ai";
   const index = argv.indexOf("--profile");
   if (index >= 0 && argv[index + 1]) return argv[index + 1];
-  return "ai";
+  return fallback;
 }
 
 module.exports = {
@@ -182,6 +236,10 @@ module.exports = {
   ensurePortablePort,
   ensureWritableDirectory,
   findAvailablePort,
+  normalizeRuntimeProfile,
+  readRuntimePreference,
   resolveAutomaticAiProfile,
   parseProfileArg,
+  runtimeProfilePath,
+  writeRuntimePreference,
 };

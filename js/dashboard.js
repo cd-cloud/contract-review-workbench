@@ -59,6 +59,7 @@ function renderDashboard() {
         <h3 class="section-title">本地运行诊断</h3>
         <button class="small-button" type="button" data-refresh-runner-status>刷新运行状态</button>
       </div>
+      ${renderRuntimeProfilePicker()}
       ${renderRunnerDiagnostics()}
     </div>
     <div class="panel" style="margin-top:16px">
@@ -86,6 +87,36 @@ function renderDashboard() {
           ? `<div class="contract-list audit-list">${renderAuditRows()}</div>`
           : ""
       }
+    </div>
+  `;
+}
+
+function renderRuntimeProfilePicker() {
+  const preference = state.runtimePreference || {};
+  const current = state.runnerStatus || {};
+  const preferredProfile = preference.profile || "ai";
+  const options = [
+    { profile: "ai", label: "自动选择" },
+    { profile: "kimi", label: "Kimi CLI" },
+    { profile: "codex", label: "Codex CLI" },
+  ];
+  return `
+    <div class="runtime-profile-box">
+      <div>
+        <strong>AI 运行方式</strong>
+        <p class="muted">当前运行：${escapeHtml(current.launcherMode || current.mode || current.provider || "未知")}${current.effectiveProvider ? `｜${escapeHtml(current.effectiveProvider)}` : ""}</p>
+        <p class="muted">下次启动：${escapeHtml(preference.label || "自动选择")}</p>
+      </div>
+      <div class="runtime-profile-actions">
+        ${options.map((item) => `
+          <button
+            class="small-button ${preferredProfile === item.profile ? "active-runtime-profile" : ""}"
+            type="button"
+            data-runtime-profile="${escapeHtml(item.profile)}"
+            ${preferredProfile === item.profile ? "disabled" : ""}
+          >${escapeHtml(item.label)}</button>
+        `).join("")}
+      </div>
     </div>
   `;
 }

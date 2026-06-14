@@ -146,8 +146,34 @@ function authedReq(method = "GET") {
     const body = JSON.parse(res.body);
     assert.strictEqual(body.ok, true);
     assert.ok(body.runner);
+    assert.strictEqual(body.runtimePreference.profile, "ai");
     assert.ok(body.runners.visualQa);
     assert.strictEqual(typeof body.runners.visualQa.lastRunState, "string");
+  });
+
+  await testAsync("handleApi persists runtime profile preference", async () => {
+    const postRes = mockRes();
+    const postReq = mockReqWithBody({ profile: "codex" });
+    const postHandled = await handleApi(postReq, postRes, makeUrl("/api/runtime-profile"));
+    assert.strictEqual(postHandled, true);
+    assert.strictEqual(postRes.status, 200);
+    const postBody = JSON.parse(postRes.body);
+    assert.strictEqual(postBody.ok, true);
+    assert.strictEqual(postBody.preference.profile, "codex");
+    assert.strictEqual(postBody.preference.label, "Codex CLI");
+    assert.strictEqual(postBody.restartRequired, true);
+
+    const getRes = mockRes();
+    const getHandled = await handleApi(authedReq("GET"), getRes, makeUrl("/api/runtime-profile"));
+    assert.strictEqual(getHandled, true);
+    assert.strictEqual(getRes.status, 200);
+    const getBody = JSON.parse(getRes.body);
+    assert.strictEqual(getBody.ok, true);
+    assert.strictEqual(getBody.preference.profile, "codex");
+
+    const resetRes = mockRes();
+    const resetReq = mockReqWithBody({ profile: "ai" });
+    await handleApi(resetReq, resetRes, makeUrl("/api/runtime-profile"));
   });
 
   await testAsync("handleApi handles GET /api/db", async () => {

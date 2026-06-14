@@ -33,6 +33,7 @@ const { getRunnerStatus: getSuggestionRunnerStatus } = require("../../suggestion
 const { getRunnerStatus: getIntakeRunnerStatus } = require("../../contract-intake-adapter");
 const { getRunnerStatus: getVisualQaRunnerStatus } = require("../../visual-qa-adapter");
 const config = require("../../config");
+const { readRuntimePreference, writeRuntimePreference } = require("../../../scripts/portable-runtime");
 
 async function handleSystem(req, res, url, state = {}) {
   if (req.method === "GET" && url.pathname === "/api/health") {
@@ -97,9 +98,11 @@ async function handleSystem(req, res, url, state = {}) {
     const intake = getIntakeRunnerStatus();
     const suggestion = getSuggestionRunnerStatus();
     const visualQa = getVisualQaRunnerStatus();
+    const runtimePreference = readRuntimePreference(WORKBENCH_ROOT);
     sendJson(res, 200, {
       ok: true,
       runner: legal,
+      runtimePreference,
       runners: {
         legal,
         intake,
@@ -107,6 +110,39 @@ async function handleSystem(req, res, url, state = {}) {
         visualQa,
       },
     }, req);
+    return true;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/runtime-profile") {
+    sendJson(res, 200, {
+      ok: true,
+      preference: readRuntimePreference(WORKBENCH_ROOT),
+      current: getRunnerStatus(),
+    }, req);
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/runtime-profile") {
+    try {
+      const payload = await readJson(req);
+      const preference = writeRuntimePreference(payload.profile, WORKBENCH_ROOT);
+      appendAuditLog({
+        action: "set-runtime-profile",
+        details: {
+          profile: preference.profile,
+          label: preference.label,
+          restartRequired: true,
+        },
+      });
+      sendJson(res, 200, {
+        ok: true,
+        preference,
+        restartRequired: true,
+        message: "AI runtime profile saved. Restart the desktop app or backend for it to take effect.",
+      }, req);
+    } catch (error) {
+      sendJson(res, error.statusCode || 500, serverErrorPayload(error, "Failed to save runtime profile"), req);
+    }
     return true;
   }
 

@@ -87,4 +87,34 @@ test("resolveAutomaticAiProfile returns fallback when neither codex nor API is h
   });
 });
 
+test("runtime profile preference persists normalized profile", () => {
+  const fs = require("fs");
+  const path = require("path");
+  const dir = path.join(__dirname, ".tmp-runtime-profile");
+  fs.rmSync(dir, { recursive: true, force: true });
+  try {
+    withEnv({ LEGAL_WORKBENCH_DATA_DIR: dir }, ({
+      normalizeRuntimeProfile,
+      readRuntimePreference,
+      writeRuntimePreference,
+    }) => {
+      assert.strictEqual(normalizeRuntimeProfile("auto"), "ai");
+      assert.strictEqual(readRuntimePreference(dir).profile, "ai");
+
+      const saved = writeRuntimePreference("codex", dir);
+      assert.strictEqual(saved.profile, "codex");
+      assert.strictEqual(saved.label, "Codex CLI");
+
+      const loaded = readRuntimePreference(dir);
+      assert.strictEqual(loaded.profile, "codex");
+      assert.strictEqual(loaded.label, "Codex CLI");
+
+      const fallback = writeRuntimePreference("not-a-profile", dir);
+      assert.strictEqual(fallback.profile, "ai");
+    });
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 summary();

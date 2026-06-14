@@ -729,6 +729,7 @@ async function refreshRunnerStatus() {
     const data = await response.json();
     state.runnerStatus = data.runner;
     state.runnerStatuses = data.runners || {};
+    state.runtimePreference = data.runtimePreference || state.runtimePreference || { profile: "ai", label: "自动选择" };
     saveState();
     return data.runner;
   } catch (error) {
@@ -736,6 +737,19 @@ async function refreshRunnerStatus() {
     state.runnerStatuses = {};
     return state.runnerStatus;
   }
+}
+
+async function setRuntimeProfile(profile) {
+  const response = await legalWorkbenchFetch("/api/runtime-profile", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ profile }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || "保存 AI 运行方式失败");
+  state.runtimePreference = data.preference;
+  saveState();
+  return data;
 }
 
 function normalizeRunnerResultMeta(result = {}) {

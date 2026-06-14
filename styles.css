@@ -251,6 +251,13 @@ button:disabled {
   font-size: 13px;
 }
 
+.small-button.active-runtime-profile {
+  border-color: rgba(18, 106, 114, 0.4);
+  background: #e8f6f7;
+  color: var(--primary-strong);
+  font-weight: 800;
+}
+
 .icon-text-button {
   min-width: 56px;
   padding: 7px 10px;
@@ -1868,6 +1875,29 @@ body.modal-open::before {
 
 .structure-metrics {
   justify-content: flex-start;
+}
+
+.runtime-profile-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 10px 0 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+}
+
+.runtime-profile-box p {
+  margin: 4px 0 0;
+}
+
+.runtime-profile-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .structure-group-list {

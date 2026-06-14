@@ -12,7 +12,7 @@ const fs = require("fs");
 const os = require("os");
 const net = require("net");
 const crypto = require("crypto");
-const { configureRunnerProfile } = require("../scripts/portable-runtime");
+const { configureRunnerProfile, readRuntimePreference } = require("../scripts/portable-runtime");
 
 const isDev = !app.isPackaged;
 const isTest = process.env.NODE_ENV === "test" || process.env.ELECTRON_SMOKE_TEST === "1";
@@ -123,7 +123,8 @@ function applySelectedRuntimeProfile(env, backendRuntime, options = {}) {
     if (!tmpEnv.LEGAL_AI_PROVIDER) tmpEnv.LEGAL_AI_PROVIDER = "codex-cli";
     if (!tmpEnv.CODEX_CLI_COMMAND) tmpEnv.CODEX_CLI_COMMAND = backendRuntime;
   }
-  const selectedProfile = configureRunnerProfile("ai", tmpEnv);
+  const preferredProfile = readRuntimePreference(tmpEnv.LEGAL_WORKBENCH_DATA_DIR || WORKBENCH_ROOT).profile;
+  const selectedProfile = configureRunnerProfile(preferredProfile, tmpEnv);
   env.LEGAL_AI_PROVIDER = tmpEnv.LEGAL_AI_PROVIDER;
   env.LEGAL_SKILL_RUNNER_SCRIPT = tmpEnv.LEGAL_SKILL_RUNNER_SCRIPT;
   env.SUGGESTION_ACTION_RUNNER_SCRIPT = tmpEnv.SUGGESTION_ACTION_RUNNER_SCRIPT;

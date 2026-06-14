@@ -3,11 +3,14 @@ const {
   ensurePortableDataDir,
   ensurePortablePort,
   parseProfileArg,
+  readRuntimePreference,
 } = require("./portable-runtime");
 
 async function main() {
-  const profile = configureRunnerProfile(parseProfileArg());
   const dataDir = ensurePortableDataDir();
+  const explicitProfile = parseProfileArg(process.argv.slice(2), "");
+  const preferredProfile = explicitProfile || readRuntimePreference(dataDir).profile;
+  const profile = configureRunnerProfile(preferredProfile);
   const port = await ensurePortablePort();
 
   console.log(`[portable] profile=${profile}`);

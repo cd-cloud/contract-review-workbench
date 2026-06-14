@@ -14,6 +14,22 @@ async function handleBackendClick(event) {
     return true;
   }
 
+  const runtimeProfileButton = event.target.closest("[data-runtime-profile]");
+  if (runtimeProfileButton) {
+    runtimeProfileButton.disabled = true;
+    try {
+      const result = await setRuntimeProfile(runtimeProfileButton.dataset.runtimeProfile);
+      await refreshRunnerStatus();
+      renderDashboard();
+      showToast(`AI 运行方式已保存为 ${result.preference?.label || result.preference?.profile || "自动选择"}，重启应用后生效。`);
+    } catch (error) {
+      showToast(`保存 AI 运行方式失败：${error.message || String(error)}`, "error");
+    } finally {
+      runtimeProfileButton.disabled = false;
+    }
+    return true;
+  }
+
   const syncBackend = event.target.closest("[data-sync-backend]");
   if (syncBackend) {
     syncBackend.disabled = true;
