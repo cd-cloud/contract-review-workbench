@@ -70,6 +70,15 @@
           <button class="icon-button" type="button" data-close-upload aria-label="关闭">×</button>
         </div>
         <label>
+          上传合同初稿文本文件
+          <input id="clean-file-input" type="file" accept=".txt,.md,.text,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" data-file-target="clean-text-input" />
+        </label>
+        <div class="inline-form-actions">
+          <button class="small-button" type="button" data-autofill-new-review-local>本地快速填充</button>
+          <button class="small-button" type="button" data-autofill-new-review>AI 一键信息填充</button>
+          <span class="muted" id="new-review-autofill-status"></span>
+        </div>
+        <label>
           合同名称
           <input id="contract-name-input" placeholder="例如：某客户 SaaS 服务协议" />
         </label>
@@ -109,15 +118,6 @@
           合同背景
           <textarea id="contract-background-input" rows="4" placeholder="说明签订本合同的商业背景、合同目的、核心诉求、已知谈判重点或业务底线。"></textarea>
         </label>
-        <label>
-          上传合同初稿文本文件
-          <input id="clean-file-input" type="file" accept=".txt,.md,.text,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" data-file-target="clean-text-input" />
-        </label>
-        <div class="inline-form-actions">
-          <button class="small-button" type="button" data-autofill-new-review-local>本地快速填充</button>
-          <button class="small-button" type="button" data-autofill-new-review>AI 一键信息填充</button>
-          <span class="muted" id="new-review-autofill-status"></span>
-        </div>
         <label>
           合同初稿文本
           <textarea id="clean-text-input" rows="10" placeholder="粘贴合同初稿正文。通过新建审阅进入的材料一律视为初稿。"></textarea>
