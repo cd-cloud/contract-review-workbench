@@ -822,6 +822,12 @@ async function replaceDb(snapshot) {
   const validContractIds = new Set((normalizedSnapshot.contracts || []).map((contract) => contract.id));
   const validVersionIds = new Set((normalizedSnapshot.updates || normalizedSnapshot.contractVersions || []).map((version) => version.id));
   const validFileIds = new Set((normalizedSnapshot.files || []).map((file) => file.id).filter(Boolean));
+  const existingContractTexts = new Map(db.prepare(`
+    SELECT id, text, clean_text, redline_text, comments_text FROM contracts
+  `).all().map((row) => [row.id, row]));
+  const existingVersionTexts = new Map(db.prepare(`
+    SELECT id, text, clean_text, redline_text, comments_text, accepted_text FROM contract_versions
+  `).all().map((row) => [row.id, row]));
 
   // Remove orphaned archive files *before* clearing the files table so we still
   // have the old file records to know which paths to unlink.
@@ -858,10 +864,15 @@ async function replaceDb(snapshot) {
     `);
     await batchRun(normalizedSnapshot.contracts || [], (c) => {
       const folderPath = ensureContractFolder(c);
+      const existingText = existingContractTexts.get(c.id);
+      const text = preserveExistingLargeText(c.text, existingText?.text);
+      const cleanText = preserveExistingLargeText(c.cleanText, existingText?.clean_text);
+      const redlineText = preserveExistingLargeText(c.redlineText, existingText?.redline_text);
+      const commentsText = preserveExistingLargeText(c.commentsText, existingText?.comments_text);
       insertContract.run(
         c.id, c.name, c.type, c.purpose, c.businessBackground, c.status, c.ourRole,
         c.counterpartyId, c.counterpartyName, c.amount, c.term, c.payment, c.governingLaw, c.dispute,
-        c.text, c.cleanText, c.redlineText, c.commentsText, c.clauseSource, c.riskLevel,
+        text, cleanText, redlineText, commentsText, c.clauseSource, c.riskLevel,
         safeJson(c.aiTags), c.createdAt, c.updatedAt, folderPath
       );
     });
@@ -873,9 +884,15 @@ async function replaceDb(snapshot) {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     await batchRun(normalizedSnapshot.updates || normalizedSnapshot.contractVersions || [], (v) => {
+      const existingText = existingVersionTexts.get(v.id);
+      const versionText = preserveExistingLargeText(v.versionText || v.text || v.cleanText || v.acceptedText || v.redlineText, existingText?.text);
+      const cleanText = preserveExistingLargeText(v.cleanText, existingText?.clean_text);
+      const redlineText = preserveExistingLargeText(v.redlineText, existingText?.redline_text);
+      const commentsText = preserveExistingLargeText(v.commentsText, existingText?.comments_text);
+      const acceptedText = preserveExistingLargeText(v.acceptedText, existingText?.accepted_text);
       insertVersion.run(
         v.id, v.contractId, v.versionNumber || 0, v.type, v.note, v.materialKind,
-        v.versionText || v.text, v.cleanText, v.redlineText, v.commentsText, v.acceptedText,
+        versionText, cleanText, redlineText, commentsText, acceptedText,
         v.filePath || null, v.createdAt, v.feedbackDeadline, v.status
       );
     });
@@ -1059,9 +1076,82 @@ async function replaceDb(snapshot) {
 /* ─────────────── readDb (assemble from structured tables) ─────────────── */
 function readDb() {
   const savedAt = nowIso();
+  repairMissingTextsFromArchivedDocx();
   const structuredSnapshot = assembleStructuredSnapshot();
   const auxState = readAuxState();
   return buildDbResponse(mergeSnapshots(structuredSnapshot, auxState), savedAt);
+}
+
+function findLatestArchivedDocx(folderPath) {
+  if (!folderPath) return null;
+  const attachmentsDir = path.join(folderPath, "attachments");
+  if (!isPathInsideRoot(WORKBENCH_ROOT, attachmentsDir) || !fs.existsSync(attachmentsDir)) return null;
+  try {
+    return fs.readdirSync(attachmentsDir)
+      .filter((name) => /\.docx$/i.test(name))
+      .map((name) => {
+        const filePath = path.join(attachmentsDir, name);
+        const stat = fs.statSync(filePath);
+        return { filePath, mtime: stat.mtimeMs, size: stat.size };
+      })
+      .filter((file) => file.size > 1000 && isPathInsideRoot(WORKBENCH_ROOT, file.filePath))
+      .sort((a, b) => b.mtime - a.mtime)[0]?.filePath || null;
+  } catch (error) {
+    logger.error(`[repairMissingTextsFromArchivedDocx] Failed to scan ${attachmentsDir}: ${error.message}`);
+    return null;
+  }
+}
+
+function repairMissingTextsFromArchivedDocx() {
+  const emptyContracts = db.prepare(`
+    SELECT id, name, folder_path FROM contracts
+    WHERE COALESCE(text, '') = '' AND COALESCE(clean_text, '') = ''
+  `).all();
+  if (!emptyContracts.length) return { repaired: 0 };
+  let extractor = null;
+  let repaired = 0;
+  for (const contract of emptyContracts) {
+    const filePath = findLatestArchivedDocx(contract.folder_path);
+    if (!filePath) continue;
+    try {
+      extractor = extractor || require("../scripts/docx-extract");
+      const pkg = extractor.extractDocxPackage(fs.readFileSync(filePath));
+      const text = String(pkg.acceptedText || pkg.plainText || "").trim();
+      if (!text) continue;
+      db.prepare(`
+        UPDATE contracts
+        SET text = ?, clean_text = ?, redline_text = COALESCE(NULLIF(redline_text, ''), ?),
+            comments_text = COALESCE(NULLIF(comments_text, ''), ?), updated_at = COALESCE(updated_at, ?)
+        WHERE id = ?
+      `).run(text, text, pkg.hasRevisions ? (pkg.revisionText || "") : "", pkg.commentsText || "", nowIso(), contract.id);
+      const version = db.prepare(`
+        SELECT id FROM contract_versions
+        WHERE contract_id = ? AND COALESCE(text, '') = '' AND COALESCE(clean_text, '') = '' AND COALESCE(accepted_text, '') = ''
+        ORDER BY COALESCE(created_at, ''), id
+      `).get(contract.id);
+      if (version?.id) {
+        db.prepare(`
+          UPDATE contract_versions
+          SET text = ?, clean_text = ?, accepted_text = ?,
+              redline_text = COALESCE(NULLIF(redline_text, ''), ?),
+              comments_text = COALESCE(NULLIF(comments_text, ''), ?),
+              file_path = COALESCE(NULLIF(file_path, ''), ?)
+          WHERE id = ?
+        `).run(text, text, text, pkg.revisionText || text, pkg.commentsText || "", filePath, version.id);
+      }
+      repaired += 1;
+    } catch (error) {
+      logger.error(`[repairMissingTextsFromArchivedDocx] Failed to restore ${contract.id}: ${error.message}`);
+    }
+  }
+  if (repaired) {
+    try {
+      rebuildSearchIndex(assembleStructuredSnapshot());
+    } catch (error) {
+      logger.error(`[repairMissingTextsFromArchivedDocx] rebuildSearchIndex failed: ${error.message}`);
+    }
+  }
+  return { repaired };
 }
 
 /* ─────────────── writeDb (legacy alias) ─────────────── */

@@ -150,6 +150,68 @@ testAsync("replaceDb handles minimal snapshot", async () => {
   assert.strictEqual(db.contracts.length, 0);
 });
 
+testAsync("replaceDb preserves existing large texts when full snapshot omits them", async () => {
+  await store.replaceDb({
+    contracts: [{ id: "c-preserve", name: "Preserve", text: "contract text", cleanText: "clean text", createdAt: "2026-06-08" }],
+    updates: [{ id: "u-preserve", contractId: "c-preserve", versionText: "version text", acceptedText: "accepted text", createdAt: "2026-06-08" }],
+    clauses: [],
+    findings: [],
+    counterparties: [],
+    negotiations: [],
+    playbooks: [],
+    riskRules: [],
+    auditLogs: [],
+    users: [],
+  });
+  await store.replaceDb({
+    contracts: [{ id: "c-preserve", name: "Preserve renamed", text: "", cleanText: "", createdAt: "2026-06-08" }],
+    updates: [{ id: "u-preserve", contractId: "c-preserve", versionText: "", acceptedText: "", createdAt: "2026-06-08" }],
+    clauses: [],
+    findings: [],
+    counterparties: [],
+    negotiations: [],
+    playbooks: [],
+    riskRules: [],
+    auditLogs: [],
+    users: [],
+  });
+  const db = store.readDb().snapshot;
+  const contract = db.contracts.find((item) => item.id === "c-preserve");
+  const update = db.updates.find((item) => item.id === "u-preserve");
+  assert.strictEqual(contract.name, "Preserve renamed");
+  assert.strictEqual(contract.text, "contract text");
+  assert.strictEqual(contract.cleanText, "clean text");
+  assert.strictEqual(update.versionText, "version text");
+  assert.strictEqual(update.acceptedText, "accepted text");
+});
+
+testAsync("readDb restores missing contract text from archived docx attachment", async () => {
+  const initial = await store.replaceDb({
+    contracts: [{ id: "c-docx-restore", name: "Docx Restore", text: "", cleanText: "", createdAt: "2026-06-08" }],
+    updates: [{ id: "u-docx-restore", contractId: "c-docx-restore", versionText: "", acceptedText: "", createdAt: "2026-06-08" }],
+    clauses: [],
+    findings: [],
+    counterparties: [],
+    negotiations: [],
+    playbooks: [],
+    riskRules: [],
+    auditLogs: [],
+    users: [],
+  });
+  const contract = initial.snapshot.contracts.find((item) => item.id === "c-docx-restore");
+  const attachmentsDir = path.join(contract.folderPath, "attachments");
+  fs.mkdirSync(attachmentsDir, { recursive: true });
+  fs.copyFileSync(path.join(__dirname, "fixtures", "test-contract.docx"), path.join(attachmentsDir, "test-contract.docx"));
+
+  const db = store.readDb().snapshot;
+  const restoredContract = db.contracts.find((item) => item.id === "c-docx-restore");
+  const restoredUpdate = db.updates.find((item) => item.id === "u-docx-restore");
+  assert.ok(restoredContract.text.length > 100);
+  assert.strictEqual(restoredContract.cleanText, restoredContract.text);
+  assert.strictEqual(restoredUpdate.versionText, restoredContract.text);
+  assert.strictEqual(restoredUpdate.acceptedText, restoredContract.text);
+});
+
 testAsync("readDb preserves auxiliary frontend state while using structured data as source of truth", async () => {
   await store.replaceDb({
     activeContractId: "c-aux",
