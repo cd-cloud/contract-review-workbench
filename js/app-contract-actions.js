@@ -3,7 +3,10 @@ function setActiveContract(contractId) {
     draft.activeContractId = contractId;
     draft.activeClauseId = draft.clauses.find((clause) => clause.contractId === contractId)?.id || null;
     const updates = getContractUpdates(contractId);
-    draft.activeUpdateId = updates.at(-1)?.id || null;
+    const latestTextUpdate = typeof hasUpdateDisplayText === "function"
+      ? updates.filter(hasUpdateDisplayText).at(-1)
+      : updates.filter((update) => update.versionText || update.acceptedText || update.cleanText || update.text || update.revisionText || update.redlineText).at(-1);
+    draft.activeUpdateId = (latestTextUpdate || updates.at(-1))?.id || null;
   });
   if (typeof persistBackendAuxState === "function") {
     persistBackendAuxState({

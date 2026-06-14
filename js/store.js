@@ -67,12 +67,23 @@ const Store = {
 
   getWorkbenchMaterial(contract) {
     const updates = (state.updates || []).filter((u) => u.contractId === contract.id);
-    const activeUpdate = updates.find((u) => u.id === state.activeUpdateId);
-    if (activeUpdate?.versionText) {
-      const text = activeUpdate.acceptedText || activeUpdate.versionText || "";
+    const activeUpdate = updates.find((u) => u.id === state.activeUpdateId)
+      || (typeof getLatestDisplayUpdateForContract === "function" ? getLatestDisplayUpdateForContract(state, contract.id) : null);
+    const fallbackUpdate = typeof getLatestDisplayUpdateForContract === "function"
+      ? getLatestDisplayUpdateForContract(state, contract.id)
+      : updates.filter((u) => u.versionText || u.acceptedText || u.cleanText || u.text || u.revisionText || u.redlineText).at(-1);
+    const materialUpdate = activeUpdate && (typeof hasUpdateDisplayText !== "function" || hasUpdateDisplayText(activeUpdate))
+      ? activeUpdate
+      : fallbackUpdate;
+    const updateText = typeof getUpdateDisplayTextValue === "function"
+      ? getUpdateDisplayTextValue(materialUpdate)
+      : (materialUpdate?.acceptedText || materialUpdate?.versionText || materialUpdate?.cleanText || materialUpdate?.text || materialUpdate?.revisionText || materialUpdate?.redlineText || "");
+    if (updateText.trim()) {
+      const text = materialUpdate.acceptedText || updateText || "";
+      const title = [contract.name, materialUpdate.type, materialUpdate.createdAt || ""].filter(Boolean).join(" ");
       return {
-        sourceKey: `${contract.id}:${activeUpdate.id}`,
-        title: `${contract.name} — ${activeUpdate.type} ${activeUpdate.createdAt || ""}`.trim(),
+        sourceKey: `${contract.id}:${materialUpdate.id}`,
+        title,
         text,
         mode: state.reviewMode || "clean",
       };
@@ -95,7 +106,13 @@ const Store = {
     state.activeContractId = contractId;
     state.activeClauseId = state.clauses.find((c) => c.contractId === contractId)?.id || null;
     const updates = (state.updates || []).filter((u) => u.contractId === contractId);
-    state.activeUpdateId = updates.at(-1)?.id || null;
+    const sortedUpdates = typeof sortWorkbenchUpdates === "function"
+      ? sortWorkbenchUpdates(updates)
+      : [...updates].sort((a, b) => `${a.createdAt || ""}-${a.id || ""}`.localeCompare(`${b.createdAt || ""}-${b.id || ""}`));
+    const latestTextUpdate = typeof hasUpdateDisplayText === "function"
+      ? sortedUpdates.filter(hasUpdateDisplayText).at(-1)
+      : sortedUpdates.filter((update) => update.versionText || update.acceptedText || update.cleanText || update.text || update.revisionText || update.redlineText).at(-1);
+    state.activeUpdateId = (latestTextUpdate || sortedUpdates.at(-1))?.id || null;
     // Load large texts from backend on demand. Backend is the source of truth.
     if (typeof ensureContractTextsLoaded === "function") {
       ensureContractTextsLoaded(contractId);

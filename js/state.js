@@ -323,6 +323,70 @@ async function loadContractTexts(state) {
 
 const UPDATE_LARGE_TEXT_FIELDS = ["versionText", "acceptedText", "rejectedText", "revisionText", "commentsText"];
 
+function normalizeTextValue(value) {
+  return String(value || "");
+}
+
+function getContractDisplayTextValue(contract = {}) {
+  return normalizeTextValue(contract.cleanText || contract.text || contract.redlineText || "");
+}
+
+function getUpdateDisplayTextValue(update = {}) {
+  return normalizeTextValue(update.versionText || update.acceptedText || update.cleanText || update.text || update.revisionText || update.redlineText || "");
+}
+
+function hasContractDisplayText(contract = {}) {
+  return Boolean(getContractDisplayTextValue(contract).trim());
+}
+
+function hasUpdateDisplayText(update = {}) {
+  return Boolean(getUpdateDisplayTextValue(update).trim());
+}
+
+function sortWorkbenchUpdates(updates = []) {
+  return [...updates].sort((a, b) => `${a.createdAt || ""}-${a.id || ""}`.localeCompare(`${b.createdAt || ""}-${b.id || ""}`));
+}
+
+function getContractUpdatesFrom(targetState, contractId) {
+  return sortWorkbenchUpdates((targetState?.updates || []).filter((item) => item.contractId === contractId));
+}
+
+function getLatestDisplayUpdateForContract(targetState, contractId) {
+  return getContractUpdatesFrom(targetState, contractId).filter(hasUpdateDisplayText).at(-1) || null;
+}
+
+function getLatestAnyUpdateForContract(targetState, contractId) {
+  return getContractUpdatesFrom(targetState, contractId).at(-1) || null;
+}
+
+function contractHasAnyDisplayText(targetState, contract) {
+  return Boolean(hasContractDisplayText(contract) || getLatestDisplayUpdateForContract(targetState, contract?.id));
+}
+
+function sortContractsByActivity(contracts = []) {
+  return [...contracts].sort((a, b) => `${a.updatedAt || a.createdAt || ""}-${a.id || ""}`.localeCompare(`${b.updatedAt || b.createdAt || ""}-${b.id || ""}`));
+}
+
+function repairActiveMaterialPointers(targetState) {
+  if (!targetState?.contracts?.length) return;
+  let activeContract = targetState.contracts.find((contract) => contract.id === targetState.activeContractId);
+  if (!activeContract || !contractHasAnyDisplayText(targetState, activeContract)) {
+    activeContract = sortContractsByActivity(targetState.contracts).filter((contract) => contractHasAnyDisplayText(targetState, contract)).at(-1)
+      || activeContract
+      || targetState.contracts[0];
+    targetState.activeContractId = activeContract?.id || null;
+  }
+  if (!activeContract) {
+    targetState.activeUpdateId = null;
+    return;
+  }
+  const activeUpdate = (targetState.updates || []).find((update) => update.id === targetState.activeUpdateId && update.contractId === activeContract.id);
+  if (!activeUpdate || !hasUpdateDisplayText(activeUpdate)) {
+    targetState.activeUpdateId = (getLatestDisplayUpdateForContract(targetState, activeContract.id) || getLatestAnyUpdateForContract(targetState, activeContract.id))?.id || null;
+  }
+  targetState.activeClauseId = (targetState.clauses || []).find((clause) => clause.contractId === activeContract.id)?.id || null;
+}
+
 function stripLargeTexts(nextState) {
   const skeleton = clone(nextState);
   for (const contract of skeleton.contracts || []) {
@@ -461,6 +525,7 @@ function normalizeWorkbenchState(candidate) {
   parsed.storageMeta = parsed.storageMeta || {};
   parsed.playbooks = (parsed.playbooks || []).map(normalizePlaybook);
   parsed.contracts.forEach((contract) => ensureInitialUpdate(parsed, contract));
+  repairActiveMaterialPointers(parsed);
   return parsed;
 }
 

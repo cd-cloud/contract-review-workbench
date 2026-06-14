@@ -172,6 +172,23 @@ test("setActiveContract updates state correctly", () => {
   assert.strictEqual(state.activeUpdateId, "u1");
 });
 
+test("setActiveContract prefers latest update with display text", () => {
+  global.state = {
+    contracts: [],
+    clauses: [{ id: "c1", contractId: "contract-1" }],
+    updates: [
+      { id: "u-text", contractId: "contract-1", type: "draft", versionText: "body", createdAt: "2026-06-13" },
+      { id: "u-empty", contractId: "contract-1", type: "draft", versionText: "", createdAt: "2026-06-14" },
+    ],
+    activeContractId: null,
+    activeClauseId: null,
+    activeUpdateId: null,
+  };
+  global.getContractUpdates = (contractId) => global.state.updates.filter((u) => u.contractId === contractId);
+  setActiveContract("contract-1");
+  assert.strictEqual(state.activeUpdateId, "u-text");
+});
+
 // --- ensureInitialUpdate ---
 test("ensureInitialUpdate creates initial update when missing", () => {
   const targetState = {

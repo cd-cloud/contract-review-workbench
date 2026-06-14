@@ -13,7 +13,7 @@ global.ensureInitialUpdate = (targetState, contract) => {
   const exists = targetState.updates.some((item) => item.contractId === contract.id && item.type === "初稿上传");
   if (exists) return;
   targetState.updates.push({
-    id: `upd-test`,
+    id: `upd-test-${contract.id}`,
     contractId: contract.id,
     type: "初稿上传",
     note: "通过新建审阅上传合同初稿。",
@@ -113,6 +113,28 @@ test("normalizeWorkbenchState creates initial update for contracts", () => {
   const result = normalizeWorkbenchState(state);
   assert.ok(result.updates && result.updates.length > 0, "Should create initial update");
   assert.strictEqual(result.updates[0].contractId, "c1");
+});
+
+test("normalizeWorkbenchState repairs active pointers away from empty material", () => {
+  const state = {
+    activeContractId: "empty",
+    activeUpdateId: "u-empty",
+    contracts: [
+      { id: "empty", name: "Empty", text: "", cleanText: "", createdAt: "2026-06-13" },
+      { id: "full", name: "Full", text: "contract body", cleanText: "contract body", createdAt: "2026-06-14" },
+    ],
+    updates: [
+      { id: "u-empty", contractId: "empty", type: "draft", versionText: "", createdAt: "2026-06-13" },
+      { id: "u-full", contractId: "full", type: "draft", versionText: "version body", createdAt: "2026-06-14" },
+    ],
+    clauses: [],
+    findings: [],
+  };
+  const result = normalizeWorkbenchState(state);
+  assert.strictEqual(result.activeContractId, "full");
+  const activeUpdate = result.updates.find((item) => item.id === result.activeUpdateId);
+  assert.strictEqual(activeUpdate.contractId, "full");
+  assert.ok(activeUpdate.versionText || activeUpdate.acceptedText);
 });
 
 test("normalizeWorkbenchState seeds riskRules when missing", () => {

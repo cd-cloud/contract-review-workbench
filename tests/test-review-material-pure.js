@@ -9,6 +9,7 @@ const { loadScript, test, summary, assert } = require("./test-helper");
 // contract-parser.js must be loaded first because extractSubclauseTitle calls parseOutlineMarker
 // which is defined there.
 global.state = {};
+global.materialKindLabel = () => "version";
 
 // Load dependencies before review-material.js
 loadScript("js/contract-parser.js");
@@ -133,6 +134,20 @@ test("normalizeWordTextArtifacts leaves normal text unchanged", () => {
 
 test("normalizeWordTextArtifacts handles empty string", () => {
   assert.strictEqual(normalizeWordTextArtifacts(""), "");
+});
+
+test("getWorkbenchMaterial falls back from empty active update to latest text update", () => {
+  global.state = {
+    reviewMode: "clean",
+    activeUpdateId: "u-empty",
+    updates: [
+      { id: "u-text", contractId: "c1", type: "draft", versionText: "usable version body", acceptedText: "", createdAt: "2026-06-13" },
+      { id: "u-empty", contractId: "c1", type: "draft", versionText: "", acceptedText: "", createdAt: "2026-06-14" },
+    ],
+  };
+  const material = getWorkbenchMaterial({ id: "c1", name: "Test", text: "", cleanText: "" });
+  assert.strictEqual(material.text, "usable version body");
+  assert.strictEqual(material.sourceKey, "c1:u-text");
 });
 
 // --- applyEditedTitleToClauseText ---

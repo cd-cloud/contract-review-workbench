@@ -104,13 +104,24 @@ function getContractUpdates(contractId) {
 }
 
 function getActiveMaterial(contract) {
-  const update = (state.updates || []).find((item) => item.id === state.activeUpdateId && item.contractId === contract.id);
-  if (!update?.versionText) return null;
+  const activeUpdate = (state.updates || []).find((item) => item.id === state.activeUpdateId && item.contractId === contract.id);
+  const activeUpdateHasText = typeof hasUpdateDisplayText === "function"
+    ? hasUpdateDisplayText(activeUpdate)
+    : Boolean(activeUpdate && (activeUpdate.versionText || activeUpdate.acceptedText || activeUpdate.cleanText || activeUpdate.text || activeUpdate.revisionText || activeUpdate.redlineText));
+  const update = activeUpdate && activeUpdateHasText
+    ? activeUpdate
+    : (typeof getLatestDisplayUpdateForContract === "function"
+      ? getLatestDisplayUpdateForContract(state, contract.id)
+      : getContractUpdates(contract.id).filter((item) => item.versionText || item.acceptedText || item.cleanText || item.text || item.revisionText || item.redlineText).at(-1));
+  const versionText = typeof getUpdateDisplayTextValue === "function"
+    ? getUpdateDisplayTextValue(update)
+    : (update?.versionText || update?.acceptedText || update?.cleanText || update?.text || update?.revisionText || update?.redlineText || "");
+  if (!versionText.trim()) return null;
   return {
     id: update.id,
     title: `${update.type}｜${materialKindLabel(update.materialKind)}`,
     kind: update.materialKind,
-    text: update.versionText,
+    text: versionText,
     acceptedText: update.acceptedText,
     rejectedText: update.rejectedText,
     revisionText: update.revisionText,
@@ -149,7 +160,7 @@ function getWorkbenchMaterial(contract) {
   const activeMaterial = getActiveMaterial(contract);
   const mode = state.reviewMode || "clean";
   const text = getDisplayTextForMode(contract, activeMaterial, mode);
-  const sourceKey = `${contract.id}:${state.activeUpdateId || "current"}`;
+  const sourceKey = `${contract.id}:${activeMaterial?.id || (text ? "contract" : state.activeUpdateId || "current")}`;
   return {
     sourceKey,
     title: `${mode === "revision" ? "修订模式" : "清洁模式"}｜${activeMaterial?.title || "当前主版本"}`,
@@ -163,7 +174,7 @@ function getWorkbenchMaterial(contract) {
 function getStructureWorkbenchMaterial(contract) {
   const activeMaterial = getActiveMaterial(contract);
   const text = getDisplayTextForMode(contract, activeMaterial, "clean");
-  const sourceKey = `${contract.id}:${state.activeUpdateId || "current"}`;
+  const sourceKey = `${contract.id}:${activeMaterial?.id || (text ? "contract" : state.activeUpdateId || "current")}`;
   return {
     sourceKey,
     title: `结构概览｜${activeMaterial?.title || "当前主版本"}`,
@@ -202,7 +213,10 @@ function getPreviousVersionText(contract) {
   const updates = getContractUpdates(contract.id);
   const activeIndex = updates.findIndex((item) => item.id === state.activeUpdateId);
   const previous = activeIndex > 0 ? updates[activeIndex - 1] : updates.at(-2);
-  return previous?.acceptedText || (previous?.materialKind === "redline" ? acceptRedlineText(previous.versionText) : previous?.versionText) || "";
+  const previousText = typeof getUpdateDisplayTextValue === "function"
+    ? getUpdateDisplayTextValue(previous)
+    : (previous?.acceptedText || previous?.versionText || previous?.cleanText || previous?.text || previous?.revisionText || previous?.redlineText || "");
+  return previous?.acceptedText || (previous?.materialKind === "redline" ? acceptRedlineText(previousText) : previousText) || "";
 }
 
 const clauseSplitCache = new Map();
