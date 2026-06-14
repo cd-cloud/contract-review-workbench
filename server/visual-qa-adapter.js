@@ -12,8 +12,10 @@ const adapter = createAiAdapter({
   fallbackSource: "visual-qa-fallback",
   getExtraRunnerConfig: (providerStatus) => {
     const isCodexCustom = providerStatus.mode === "codex-cli" && providerStatus.codexUsesCustomProvider;
+    const configuredTimeout = Number(process.env.VISUAL_QA_TIMEOUT_MS || process.env.VISUAL_QA_RUNNER_TIMEOUT_MS || 0);
     return {
-      timeoutMs: isCodexCustom ? 45 * 1000 : 120 * 1000,
+      allowFallback: process.env.VISUAL_QA_ALLOW_FALLBACK !== "0",
+      timeoutMs: isCodexCustom ? 45 * 1000 : (configuredTimeout > 0 ? configuredTimeout : 240 * 1000),
       preferFastFallback: isCodexCustom,
     };
   },

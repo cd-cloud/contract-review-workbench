@@ -125,4 +125,34 @@ asyncTests.push(testAsync("visual QA status records fallback after model runner 
   });
 }));
 
+asyncTests.push(testAsync("visual QA falls back by default when model runner fails", async () => {
+  await withModule("../server/visual-qa-adapter", {
+    VISUAL_QA_RUNNER_SCRIPT: "scripts/does-not-exist.js",
+    VISUAL_QA_ALLOW_FALLBACK: undefined,
+    LEGAL_AI_PROVIDER: "kimi",
+    KIMI_API_KEY: "test-key",
+  }, async ({ runVisualQa, getRunnerStatus }) => {
+    const result = await runVisualQa({ localChecks: [{ severity: "high", type: "numbering", title: "n" }] });
+    assert.strictEqual(result.source, "visual-qa-fallback");
+    assert.strictEqual(result.visualQa.status, "blocked");
+    const status = getRunnerStatus();
+    assert.strictEqual(status.allowFallback, true);
+    assert.strictEqual(status.lastRunState, "fallback");
+  }, () => {
+    const childProcess = require("child_process");
+    const original = childProcess.execFile;
+    childProcess.execFile = (command, args, options, callback) => {
+      if (typeof options === "function") {
+        callback = options;
+        options = {};
+      }
+      setImmediate(() => callback(new Error("simulated visual qa failure"), "", "simulated visual qa failure"));
+      return { stdin: { write() {}, end() {} } };
+    };
+    return () => {
+      childProcess.execFile = original;
+    };
+  });
+}));
+
 Promise.all(asyncTests).then(() => summary());
