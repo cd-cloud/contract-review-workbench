@@ -32,8 +32,15 @@ async function handleExportClick(event) {
         `本次修改摘要：${prepared.changeSummary}`,
         `自动检查摘要：${summarizeAutomaticReviewChecks(prepared.reviewChecks || [])}`,
       ].join("\n");
-      const result = await runLegalSkillAnalysis(contract, prepared.text, extraRequirements);
-      const clauses = splitVersionClauses(prepared.text, `${contract.id}:${prepared.update.id}`);
+      const preparedMaterial = {
+        id: prepared.update.id,
+        materialId: prepared.update.id,
+        sourceKey: `${contract.id}:${prepared.update.id}`,
+        text: prepared.text,
+        mode: "clean",
+      };
+      const result = await runLegalSkillAnalysis(contract, prepared.text, extraRequirements, { material: preparedMaterial, sourceKey: preparedMaterial.sourceKey });
+      const clauses = splitVersionClauses(prepared.text, preparedMaterial.sourceKey);
       applyLegalSkillResult(contract, result, clauses);
       recordAudit("复核拟发送版本", {
         contractName: contract.name,
@@ -97,7 +104,7 @@ async function handleExportClick(event) {
     const contract = state.contracts.find((item) => item.id === exportSkillRequest.dataset.exportSkillRequest);
     if (!contract) return true;
     const material = getWorkbenchMaterial(contract);
-    const request = buildLegalSkillRequest(contract, material.text);
+    const request = buildLegalSkillRequest(contract, material.text, "", { material, sourceKey: material.sourceKey });
     downloadBlob(`${safeDownloadName(contract.name)}_legal_skill_request.json`, JSON.stringify(request, null, 2), "application/json;charset=utf-8");
     recordAudit("导出 Skill 请求包", { contractName: contract.name });
     saveState();
@@ -114,7 +121,7 @@ async function handleExportClick(event) {
       setManualLegalSkillRunStatus(contract, material, "running", "AI Legal Skill 正在审阅合同。");
       setAnalysisStatus(contract.id, "queued", "正在提交 AI Legal Skill 审阅分析任务...");
       runLegalSkill.textContent = "AI 审阅中...";
-      const result = await runLegalSkillAnalysis(contract, material.text);
+      const result = await runLegalSkillAnalysis(contract, material.text, "", { material, sourceKey: material.sourceKey });
       applyLegalSkillResult(contract, result, splitVersionClauses(material.text, material.sourceKey));
       const prepared = await ensureAnalysisHasCodexSegmentation(contract);
       const updatedClauses = splitVersionClauses(prepared.text, prepared.sourceKey);

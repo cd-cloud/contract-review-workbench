@@ -148,6 +148,7 @@ test("getWorkbenchMaterial falls back from empty active update to latest text up
   const material = getWorkbenchMaterial({ id: "c1", name: "Test", text: "", cleanText: "" });
   assert.strictEqual(material.text, "usable version body");
   assert.strictEqual(material.sourceKey, "c1:u-text");
+  assert.strictEqual(material.materialId, "u-text");
 });
 
 // --- applyEditedTitleToClauseText ---

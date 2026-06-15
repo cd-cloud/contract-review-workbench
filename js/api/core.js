@@ -17,8 +17,9 @@ async function readBackendError(response, fallbackMessage = "请求失败") {
 }
 
 function buildLegalSkillRequest(contract, materialText, extraRequirements = "", options = {}) {
-  const text = materialText || contract.text || "";
-  const sourceKey = `${contract.id}:${state.activeUpdateId || "current"}`;
+  const material = options.material || (typeof getWorkbenchMaterial === "function" ? getWorkbenchMaterial(contract) : null);
+  const text = materialText || material?.text || contract.text || "";
+  const sourceKey = options.sourceKey || material?.sourceKey || `${contract.id}:${state.activeUpdateId || "current"}`;
   const businessBackground = [contract.businessBackground, contract.purpose ? `系统识别合同目的：${contract.purpose}` : ""].filter(Boolean).join("\n");
   const clauses = options.omitClauses ? [] : buildLegalSkillClauseList(text, sourceKey);
   const playbookContext = state.playbooks
@@ -77,6 +78,8 @@ function buildLegalSkillRequest(contract, materialText, extraRequirements = "", 
     skill: "legal-work-orchestrator",
     downstream_skill: "legal-contract-orchestrator",
     prompt_version: "agent-a-review-v1",
+    source_key: sourceKey,
+    material_id: material?.materialId || material?.id || "",
     jurisdiction: contract.jurisdiction || contract.governingLaw || "待确认",
     contract_type: contract.type || "待识别",
     contract_type_category: contract.type || "待识别",
@@ -491,7 +494,7 @@ function setManualLegalSkillRunStatus(contract, material, status, message = "") 
     message,
     updatedAt: new Date().toISOString(),
     ...(status === "running" ? { startedAt: new Date().toISOString() } : {}),
-    ...(status === "completed" ? { completedAt: new Date().toISOString() } : {}),
+    ...(status === "completed" || status === "completed_partial" ? { completedAt: new Date().toISOString() } : {}),
     ...(status === "failed" ? { failedAt: new Date().toISOString() } : {}),
   };
   if (typeof persistBackendAuxState === "function") {
@@ -503,6 +506,10 @@ function setManualLegalSkillRunStatus(contract, material, status, message = "") 
 
 function markLegalSkillRunCompleted(contract, material) {
   if (!contract || !material) return;
+  if (material.segmentationIncomplete) {
+    setManualLegalSkillRunStatus(contract, material, "completed_partial", "AI review suggestions are ready; semantic segmentation repair can be retried later.");
+    return;
+  }
   const jobKey = material.sourceKey || contract.id;
   setManualLegalSkillRunStatus(contract, material, "completed", "AI Legal Skill 审阅已完成。");
   const segmentation = state.legalSkillResults?.[contract.id]?.response?.clauseSegmentation || [];
@@ -610,7 +617,7 @@ async function ensureCodexSegmentation(contract, material) {
   saveState();
   renderReview();
   try {
-    const result = await runLegalSkillAnalysis(contract, material.text, buildSegmentationOnlyRequirements(), { omitClauses: true, silentStatus: true });
+    const result = await runLegalSkillAnalysis(contract, material.text, buildSegmentationOnlyRequirements(), { material, sourceKey: jobKey, omitClauses: true, silentStatus: true });
     mergeSegmentationOnlyResult(contract, result);
     scheduleVisualQa(contract.id, "segmentation-applied", { delay: 500, force: true });
     state.segmentationJobs[jobKey] = {
@@ -648,10 +655,11 @@ function delay(ms, signal) {
 }
 
 async function syncBackendSnapshot() {
+  const payload = buildIncrementalPayload(clone(state), lastSyncedSnapshot);
   const response = await legalWorkbenchFetch("/api/db/sync", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(state),
+    body: JSON.stringify(payload),
   });
   if (!response.ok) throw new Error(await readBackendError(response, "本地后端同步失败"));
   return await response.json();
@@ -720,6 +728,16 @@ async function createBackendContractVersion(version) {
   if (!response.ok) throw new Error(await readBackendError(response, "创建合同版本失败"));
   const data = await response.json();
   return data.version || version;
+}
+
+async function createBackendReview({ contract, version, file = null }) {
+  const response = await legalWorkbenchFetch("/api/reviews", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ contract, version, file }),
+  });
+  if (!response.ok) throw new Error(await readBackendError(response, "创建审阅失败"));
+  return await response.json();
 }
 
 async function createBackendInsertedClause(sourceKey, insertedClause, contract = null) {
@@ -895,14 +913,25 @@ async function fetchContractWithTexts(contractId) {
 async function ensureContractTextsLoaded(contractId) {
   const contract = state.contracts.find((c) => c.id === contractId);
   if (!contract) return;
-  // If the contract already has large texts in memory, nothing to do.
   const hasLargeText = CORE_SYNC_TEXT_FIELDS.some((field) => contract[field] && contract[field].length > 200);
-  if (hasLargeText) return;
+  const contractUpdates = (state.updates || []).filter((item) => item.contractId === contractId);
+  const hasUpdateText = contractUpdates.some((update) => UPDATE_SYNC_TEXT_FIELDS.some((field) => update[field] && update[field].length > 200));
+  if (hasLargeText && hasUpdateText) return;
   try {
     const backendContract = await fetchContractWithTexts(contractId);
     if (backendContract) {
       for (const field of CORE_SYNC_TEXT_FIELDS) {
         if (backendContract[field]) contract[field] = backendContract[field];
+      }
+      const backendUpdates = backendContract.updates || backendContract.contractVersions || [];
+      for (const backendUpdate of backendUpdates) {
+        const update = (state.updates || []).find((item) => item.id === backendUpdate.id);
+        if (!update) continue;
+        for (const field of UPDATE_SYNC_TEXT_FIELDS) {
+          if (backendUpdate[field]) update[field] = backendUpdate[field];
+        }
+        if (backendUpdate.text && !update.versionText) update.versionText = backendUpdate.text;
+        if (backendUpdate.cleanText && !update.acceptedText) update.acceptedText = backendUpdate.cleanText;
       }
       if (typeof renderReview === "function" && state.activeContractId === contractId) {
         renderReview();
@@ -937,7 +966,11 @@ function stripLargeTextsFromSnapshot(snapshot) {
 }
 
 function buildIncrementalPayload(current, last) {
-  if (!last) return stripLargeTextsFromSnapshot(current);
+  if (!last) {
+    const currentStripped = stripLargeTextsFromSnapshot(current);
+    currentStripped.syncMode = "incremental";
+    return currentStripped;
+  }
   // Lightweight diff: compare sync generation counters instead of stringify.
   const currentGen = current?.storageMeta?.__syncGeneration || 0;
   const lastGen = last?.storageMeta?.__syncGeneration || 0;

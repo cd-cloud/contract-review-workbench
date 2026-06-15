@@ -283,7 +283,7 @@ test("cancelJob terminates attached child process", () => {
     }
   });
 
-  await testAsync("restoreJobsFromDb fails persisted jobs whose large request text was stripped", async () => {
+  await testAsync("restoreJobsFromDb requeues persisted jobs with recoverable request text", async () => {
     _clearAllJobsForTesting();
     globalCache.clear();
     store.saveAnalysisJob({
@@ -308,11 +308,10 @@ test("cancelJob terminates attached child process", () => {
     reloadedJobs.restoreJobsFromDb();
     const queued = reloadedJobs.getJob("job-persist-queued");
     const running = reloadedJobs.getJob("job-persist-running");
-    assert.strictEqual(queued, undefined);
-    assert.strictEqual(running, undefined);
-    const persisted = store.listAnalysisJobs(["failed"]);
-    assert.ok(persisted.some((job) => job.id === "job-persist-queued" && /without contract text/.test(job.error)));
-    assert.ok(persisted.some((job) => job.id === "job-persist-running" && /without contract text/.test(job.error)));
+    assert.ok(queued);
+    assert.ok(running);
+    assert.ok(["queued", "running"].includes(queued.status));
+    assert.ok(["queued", "running"].includes(running.status));
     reloadedJobs._clearAllJobsForTesting();
   });
 

@@ -1281,6 +1281,32 @@ function getContractWithTexts(contractId) {
     FROM contracts WHERE id = ?
   `).get(contractId);
   if (!row) return null;
+  const updates = db.prepare(`
+    SELECT
+      id, contract_id, version_number, type, note, material_kind,
+      text, clean_text, redline_text, comments_text, accepted_text,
+      file_path, created_at, feedback_deadline, status
+    FROM contract_versions
+    WHERE contract_id = ?
+    ORDER BY created_at ASC, id ASC
+  `).all(contractId).map(version => ({
+    id: version.id,
+    contractId: version.contract_id,
+    versionNumber: version.version_number,
+    type: version.type,
+    note: version.note,
+    materialKind: version.material_kind,
+    text: version.text || version.clean_text || version.accepted_text || version.redline_text || "",
+    versionText: version.text || version.clean_text || version.accepted_text || version.redline_text || "",
+    cleanText: version.clean_text,
+    redlineText: version.redline_text,
+    commentsText: version.comments_text,
+    acceptedText: version.accepted_text,
+    filePath: version.file_path,
+    createdAt: version.created_at,
+    feedbackDeadline: version.feedback_deadline,
+    status: version.status,
+  }));
   return {
     id: row.id,
     name: row.name,
@@ -1306,6 +1332,8 @@ function getContractWithTexts(contractId) {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     folderPath: row.folder_path,
+    updates,
+    contractVersions: updates,
   };
 }
 
@@ -1537,15 +1565,18 @@ function appendAuditLog(entry = {}) {
 }
 
 function saveAnalysisJob(job = {}) {
-  // Strip large text fields from request before persisting to avoid WAL bloat
+  const status = job.status || "queued";
+  const keepRecoverableInput = ["queued", "running"].includes(status);
   const requestForPersist = job.request ? { ...job.request } : {};
-  delete requestForPersist.contract_text;
-  delete requestForPersist.previous_text;
-  delete requestForPersist.text;
+  if (!keepRecoverableInput) {
+    delete requestForPersist.contract_text;
+    delete requestForPersist.previous_text;
+    delete requestForPersist.text;
+  }
   delete requestForPersist.clauses;
   const persisted = {
     id: job.id,
-    status: job.status || "queued",
+    status,
     phase: job.phase || "",
     request_json: safeJson(requestForPersist),
     result_json: safeJson(job.result || null),

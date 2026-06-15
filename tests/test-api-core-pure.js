@@ -84,4 +84,34 @@ test("normalizeLegalSkillResult filters empty and generic advice", () => {
   assert.strictEqual(result.response.clauseAnalyses.length, 0);
 });
 
+test("buildLegalSkillRequest uses material source key instead of active update guess", () => {
+  global.state = {
+    activeUpdateId: "stale-active",
+    playbooks: [],
+    updates: [{ id: "u-real", contractId: "c1", type: "draft" }],
+  };
+  global.getWorkbenchMaterial = () => ({
+    id: "u-real",
+    materialId: "u-real",
+    sourceKey: "c1:u-real",
+    text: "material body",
+  });
+  const request = buildLegalSkillRequest({ id: "c1", text: "" }, "", "", {});
+  assert.strictEqual(request.source_key, "c1:u-real");
+  assert.strictEqual(request.material_id, "u-real");
+  assert.strictEqual(request.contract_text, "material body");
+  delete global.getWorkbenchMaterial;
+});
+
+test("buildIncrementalPayload marks first sync as incremental", () => {
+  global.clone = (value) => JSON.parse(JSON.stringify(value));
+  const payload = buildIncrementalPayload({
+    contracts: [{ id: "c1", text: "x".repeat(250), cleanText: "x".repeat(250) }],
+    updates: [{ id: "u1", contractId: "c1", versionText: "y".repeat(250) }],
+  }, null);
+  assert.strictEqual(payload.syncMode, "incremental");
+  assert.strictEqual(payload.contracts[0].text, "");
+  assert.strictEqual(payload.updates[0].versionText, "");
+});
+
 summary();

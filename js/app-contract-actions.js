@@ -115,7 +115,7 @@ async function runAutomaticCodexReview(contractId, expectedSourceKey, reason = "
 
   try {
     setAnalysisStatus(contract.id, "queued", "AI 正在自动运行 Legal Skill 审阅分析...");
-    const result = await runLegalSkillAnalysis(contract, material.text);
+    const result = await runLegalSkillAnalysis(contract, material.text, "", { material, sourceKey: jobKey });
     if (getWorkbenchMaterial(contract).sourceKey !== jobKey) {
       Store.mutate("supersede-auto-review", (draft) => {
         draft.autoReviewJobs = draft.autoReviewJobs || {};
@@ -138,13 +138,14 @@ async function runAutomaticCodexReview(contractId, expectedSourceKey, reason = "
     applyLegalSkillResult(contract, result, splitVersionClauses(material.text, material.sourceKey));
     const prepared = await ensureAnalysisHasCodexSegmentation(contract);
     const clauses = splitVersionClauses(prepared.text, prepared.sourceKey);
+    const completedStatus = prepared.segmentationIncomplete ? "completed_partial" : "completed";
 
     Store.mutate("complete-auto-review", (draft) => {
       draft.findings = (draft.findings || []).filter((finding) => finding.contractId !== contract.id);
       draft.findings.push(...getStoredSkillFindings(contract, clauses));
       draft.autoReviewJobs = draft.autoReviewJobs || {};
       draft.autoReviewJobs[jobKey] = {
-        status: "completed",
+        status: completedStatus,
         reason,
         message: "AI 自动审阅分析已完成",
         completedAt: new Date().toISOString(),
@@ -194,6 +195,10 @@ async function ensureAnalysisHasCodexSegmentation(contract) {
   await ensureCodexSegmentation(contract, material);
   material = getWorkbenchMaterial(contract);
   const repaired = getClauseSegmentationStatus(material.text, material.sourceKey);
+  if (repaired.source !== "ai") {
+    setAnalysisStatus(contract.id, "completed_partial", "AI review suggestions are ready; semantic segmentation repair can be retried later.");
+    return { ...material, segmentationIncomplete: true };
+  }
   if (repaired.source !== "ai") throw new Error("AI 审阅结果缺少可用条款切分，且补充切分未完成。");
   return material;
 }

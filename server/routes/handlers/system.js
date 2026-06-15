@@ -81,8 +81,12 @@ async function handleSystem(req, res, url, state = {}) {
         dbResult = { ok: true, auxState };
       } else if (snapshot?.syncMode === "incremental") {
         dbResult = await withSyncTimeout(incrementalSync(snapshot), syncStartTime, "incremental sync");
-      } else {
+      } else if (snapshot?.syncMode === "full-replace" || snapshot?.allowFullReplace === true) {
         dbResult = await withSyncTimeout(replaceDb(snapshot), syncStartTime, "full database sync");
+      } else {
+        const error = new Error("Unsafe sync rejected: syncMode is required");
+        error.statusCode = 400;
+        throw error;
       }
       sendJson(res, 200, { ok: true, db: dbResult }, req);
     } catch (error) {

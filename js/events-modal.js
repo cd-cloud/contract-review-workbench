@@ -125,34 +125,36 @@ async function handleUploadFormSubmit(event) {
     createdAt: today(),
     updatedAt: today(),
   };
+  const reviewDraft = { updates: [] };
+  const initialUpdate = ensureInitialUpdate(reviewDraft, contract);
+  const uploadFile = uploadResult?.originalBufferBase64
+    ? {
+        contentBase64: uploadResult.originalBufferBase64,
+        originalName: uploadResult.fileName || "contract-upload",
+        mimeType: uploadResult.mimeType || "text/plain",
+        fileType: "version",
+      }
+    : null;
   try {
-    await createBackendContract(contract);
+    await createBackendReview({ contract, version: initialUpdate, file: uploadFile });
   } catch (error) {
-    showToast(`创建合同失败：${error.message || String(error)}`, "error");
+    showToast(`创建审阅失败：${error.message || String(error)}`, "error");
     return;
   }
   Store.mutate("create-contract-review", (draft) => {
     draft.contracts.unshift(contract);
+    if (initialUpdate) {
+      draft.updates = draft.updates || [];
+      draft.updates.unshift(initialUpdate);
+    }
   }, {
     save: false,
     audit: true,
     auditDetails: { contractName: contract.name },
   });
   hydrateContractAnalysis(state, contract);
-  const initialUpdate = ensureInitialUpdate(state, contract);
-  if (initialUpdate) {
-    try {
-      await createBackendContractVersion(initialUpdate);
-    } catch (error) {
-      showToast(`创建初稿版本失败：${error.message || String(error)}`, "error");
-      return;
-    }
-  }
   Store.setActiveContract(contract.id);
   saveState();
-  if (uploadResult?.originalBufferBase64) {
-    archiveContractFile(contract.id, uploadResult.originalBufferBase64, uploadResult.fileName || "contract-upload", uploadResult.mimeType || "text/plain");
-  }
   event.target.reset();
   delete event.target.dataset.detectedContractType;
   delete event.target.dataset.detectedPurpose;

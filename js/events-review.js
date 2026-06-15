@@ -468,7 +468,7 @@ async function handleClauseActionClick(event) {
     runClauseAnalysis.disabled = true;
     try {
       const extraRequirements = buildFocusedClauseAnalysisRequirements(contract, target.clause, clauses, actions[clauseId].analysisRequest);
-      const result = await runLegalSkillAnalysis(contract, material.text, extraRequirements);
+      const result = await runLegalSkillAnalysis(contract, material.text, extraRequirements, { material, sourceKey: material.sourceKey });
       applyFocusedClauseSkillResult(contract, clauseId, result);
       Store.mutate("complete-clause-analysis", () => {
         actions[clauseId].analysisStatus = "completed";

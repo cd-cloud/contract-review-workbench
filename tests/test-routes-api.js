@@ -183,14 +183,58 @@ function authedReq(method = "GET") {
     assert.strictEqual(res.status, 200);
   });
 
-  await testAsync("handleApi handles POST /api/db/sync", async () => {
+  await testAsync("handleApi handles POST /api/db/sync incremental", async () => {
     const res = mockRes();
-    const req = mockReqWithBody({ contracts: [] });
+    const req = mockReqWithBody({ syncMode: "incremental", contracts: [] });
     const handled = await handleApi(req, res, makeUrl("/api/db/sync"));
     assert.strictEqual(handled, true);
     assert.strictEqual(res.status, 200);
     const body = JSON.parse(res.body);
     assert.strictEqual(body.ok, true);
+  });
+
+  await testAsync("handleApi rejects unsafe POST /api/db/sync without syncMode", async () => {
+    const res = mockRes();
+    const req = mockReqWithBody({ contracts: [] });
+    const handled = await handleApi(req, res, makeUrl("/api/db/sync"));
+    assert.strictEqual(handled, true);
+    assert.strictEqual(res.status, 400);
+    const body = JSON.parse(res.body);
+    assert.strictEqual(body.ok, false);
+  });
+
+  await testAsync("handleApi handles POST /api/reviews atomically", async () => {
+    const res = mockRes();
+    const req = mockReqWithBody({
+      contract: {
+        id: "contract-review-api-1",
+        name: "Atomic Review Contract",
+        text: "Atomic contract body",
+        cleanText: "Atomic contract body",
+        createdAt: "2026-06-15",
+        updatedAt: "2026-06-15",
+      },
+      version: {
+        id: "version-review-api-1",
+        contractId: "contract-review-api-1",
+        type: "Initial Upload",
+        versionText: "Atomic contract body",
+        acceptedText: "Atomic contract body",
+        createdAt: "2026-06-15",
+      },
+    });
+    const handled = await handleApi(req, res, makeUrl("/api/reviews"));
+    assert.strictEqual(handled, true);
+    assert.strictEqual(res.status, 200);
+    const body = JSON.parse(res.body);
+    assert.strictEqual(body.ok, true);
+    assert.strictEqual(body.contract.id, "contract-review-api-1");
+    assert.strictEqual(body.version.id, "version-review-api-1");
+
+    const getRes = mockRes();
+    await handleApi(authedReq("GET"), getRes, makeUrl("/api/contracts/contract-review-api-1"));
+    const fetched = JSON.parse(getRes.body);
+    assert.ok(fetched.contract.updates.some((item) => item.id === "version-review-api-1" && item.versionText === "Atomic contract body"));
   });
 
   await testAsync("handleApi handles POST /api/contracts", async () => {
@@ -224,6 +268,7 @@ function authedReq(method = "GET") {
     assert.strictEqual(body.ok, true);
     assert.strictEqual(body.contract.id, "contract-api-1");
     assert.ok(body.contract.text);
+    assert.ok(Array.isArray(body.contract.updates));
   });
 
   await testAsync("handleApi handles POST /api/contract-versions", async () => {

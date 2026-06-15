@@ -1,5 +1,7 @@
 const { sendJson, readJson, serverErrorPayload } = require("../../http-utils");
-const { upsertContractWithAudit, upsertContractVersionWithAudit, replaceClauseActions, appendInsertedClause, appendAuditLog, deleteContractCascade, deleteContractVersionCascade, listAllContractsWithPaths, getContractWithTexts } = require("../../store");
+const { upsertContractWithAudit, upsertContractVersionWithAudit, upsertContract, upsertContractVersion, saveContractFile, replaceClauseActions, appendInsertedClause, appendAuditLog, deleteContractCascade, deleteContractVersionCascade, listAllContractsWithPaths, getContractWithTexts } = require("../../store");
+const { runInTransaction } = require("../../store-sqlite");
+const { validateUploadedPayload } = require("../upload-utils");
 
 async function handleContracts(req, res, url) {
   if (req.method === "GET" && url.pathname === "/api/contracts") {
@@ -33,6 +35,56 @@ async function handleContracts(req, res, url) {
       sendJson(res, 200, { ok: true, contract }, req);
     } catch (error) {
       sendJson(res, error.statusCode || 500, serverErrorPayload(error, "Failed to create contract"), req);
+    }
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/reviews") {
+    try {
+      const payload = await readJson(req);
+      const contract = payload.contract || {};
+      const version = payload.version || {};
+      if (!contract.id) {
+        const error = new Error("contract.id is required");
+        error.statusCode = 400;
+        throw error;
+      }
+      if (!version.id || version.contractId !== contract.id) {
+        const error = new Error("initial version id and matching contractId are required");
+        error.statusCode = 400;
+        throw error;
+      }
+      const materialText = version.versionText || version.text || version.acceptedText || contract.cleanText || contract.text || "";
+      if (!String(materialText).trim()) {
+        const error = new Error("review material text is required");
+        error.statusCode = 400;
+        throw error;
+      }
+
+      const saved = runInTransaction(() => {
+        const savedContract = upsertContract(contract);
+        const savedVersion = upsertContractVersion(version);
+        appendAuditLog({
+          action: "create-contract-review",
+          contractId: savedContract.id,
+          contractName: savedContract.name,
+          details: { versionId: savedVersion.id, source: "atomic-review-create" },
+        });
+        return { contract: savedContract, version: savedVersion };
+      });
+
+      let file = null;
+      if (payload.file?.contentBase64) {
+        const upload = validateUploadedPayload({
+          ...payload.file,
+          fileType: payload.file.fileType || "version",
+        }, ["version", "attachment"]);
+        file = saveContractFile(contract.id, version.id, upload.buffer, upload.originalName, upload.mimeType, upload.fileType);
+      }
+
+      sendJson(res, 200, { ok: true, ...saved, file }, req);
+    } catch (error) {
+      sendJson(res, error.statusCode || 500, serverErrorPayload(error, "Failed to create review atomically"), req);
     }
     return true;
   }

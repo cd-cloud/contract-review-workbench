@@ -520,6 +520,9 @@ function formatVisualQaStatusForProgress(visual, report = null) {
 function formatReviewJobSummary(job, kind = "job", fallback = "等待处理") {
   if (!job) return fallback;
   if (job.status === "completed") return kind === "visual" ? "最近已检查" : "已完成";
+  if (job.status === "completed_partial") return kind === "auto" || kind === "analysis"
+    ? "AI 建议已生成，部分结构化补全待重试。"
+    : "已部分完成，部分步骤可稍后重试。";
   if (job.status === "failed") {
     if (kind === "segmentation") return "语义切分暂未完成，已使用本地规则。";
     if (kind === "visual") return "界面校验暂未完成，可稍后重试。";
@@ -578,6 +581,7 @@ function formatJobStatus(job, fallback) {
   if (!job) return fallback;
   if (job.message) return job.message;
   if (job.status === "completed") return "已完成";
+  if (job.status === "completed_partial") return "部分完成";
   if (job.status === "failed") return "失败";
   if (job.status === "running") return "运行中";
   if (job.status === "queued") return "已排队";
@@ -587,6 +591,7 @@ function formatJobStatus(job, fallback) {
 function jobTone(job) {
   if (!job) return "low";
   if (job.status === "failed") return "medium";
+  if (job.status === "completed_partial") return "medium";
   if (["queued", "running"].includes(job.status)) return "medium";
   return "low";
 }

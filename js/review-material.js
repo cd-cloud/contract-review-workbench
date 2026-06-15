@@ -162,6 +162,8 @@ function getWorkbenchMaterial(contract) {
   const text = getDisplayTextForMode(contract, activeMaterial, mode);
   const sourceKey = `${contract.id}:${activeMaterial?.id || (text ? "contract" : state.activeUpdateId || "current")}`;
   return {
+    id: activeMaterial?.id || null,
+    materialId: activeMaterial?.id || null,
     sourceKey,
     title: `${mode === "revision" ? "修订模式" : "清洁模式"}｜${activeMaterial?.title || "当前主版本"}`,
     kind: activeMaterial?.kind || "version",
@@ -176,6 +178,8 @@ function getStructureWorkbenchMaterial(contract) {
   const text = getDisplayTextForMode(contract, activeMaterial, "clean");
   const sourceKey = `${contract.id}:${activeMaterial?.id || (text ? "contract" : state.activeUpdateId || "current")}`;
   return {
+    id: activeMaterial?.id || null,
+    materialId: activeMaterial?.id || null,
     sourceKey,
     title: `结构概览｜${activeMaterial?.title || "当前主版本"}`,
     kind: activeMaterial?.kind || "version",
