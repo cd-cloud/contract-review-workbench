@@ -1,7 +1,7 @@
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { appRoot, buildCodexLaunch, getCodexCommand } = require("./ai-runner-lib");
+const { appRoot, buildCodexLaunch, buildRunnerEnv, getCodexCommand } = require("./ai-runner-lib");
 const ROOT = appRoot;
 const PROMPT_VERSION = "agent-a-review-v1";
 
@@ -89,10 +89,7 @@ function runCodexExec(prompt, outputFile) {
     const child = require("child_process").spawn(launch.command, launch.args, {
       cwd: ROOT,
       shell: false,
-      env: {
-        ...process.env,
-        NO_COLOR: "1",
-      },
+      env: buildRunnerEnv({ NO_COLOR: "1" }),
       windowsHide: true,
     });
     let stdout = "";

@@ -2,7 +2,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { spawn } = require("child_process");
-const { appRoot } = require("./ai-runner-lib");
+const { appRoot, buildRunnerEnv } = require("./ai-runner-lib");
 const ROOT = appRoot;
 const PROMPT_VERSION = "agent-a-review-v1";
 const KIMI_RUNNER_TIMEOUT_MS = Number(process.env.KIMI_RUNNER_TIMEOUT_MS || process.env.LEGAL_WORKBENCH_KIMI_RUNNER_TIMEOUT_MS || 0) || 180000;
@@ -218,15 +218,19 @@ function runKimiExec(prompt) {
   ];
   return new Promise((resolve, reject) => {
     let settled = false;
-    const child = spawn(kimiCommand, args, {
-      cwd: ROOT,
-      shell: false,
-      env: {
-        ...process.env,
-        NO_COLOR: "1",
-      },
-      windowsHide: true,
-    });
+    let child;
+    try {
+      child = spawn(kimiCommand, args, {
+        cwd: ROOT,
+        shell: false,
+        env: buildRunnerEnv({ NO_COLOR: "1" }),
+        windowsHide: true,
+      });
+    } catch (error) {
+      cleanupPromptFile();
+      reject(error);
+      return;
+    }
     const stdoutChunks = [];
     const stderrChunks = [];
     const timeout = setTimeout(() => {

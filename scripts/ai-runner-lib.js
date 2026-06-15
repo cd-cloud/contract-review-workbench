@@ -139,6 +139,78 @@ function quoteForCmd(value) {
   return `"${text.replace(/"/g, '""')}"`;
 }
 
+function dedupePathList(value) {
+  const delimiter = path.delimiter;
+  const seen = new Set();
+  return String(value || "")
+    .split(delimiter)
+    .map((entry) => entry.trim())
+    .filter((entry) => {
+      if (!entry) return false;
+      const key = process.platform === "win32" ? entry.toLowerCase() : entry;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .join(delimiter);
+}
+
+function estimateEnvBlockLength(env) {
+  return Object.entries(env || {}).reduce((sum, [key, value]) => sum + key.length + String(value || "").length + 2, 1);
+}
+
+function buildRunnerEnv(extra = {}) {
+  const env = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (/^path$/i.test(key)) continue;
+    env[key] = value;
+  }
+  const pathKey = process.platform === "win32" ? "Path" : "PATH";
+  const pathValue = process.env.Path || process.env.PATH || "";
+  if (pathValue) env[pathKey] = dedupePathList(pathValue);
+  Object.assign(env, extra);
+
+  if (process.platform !== "win32" || estimateEnvBlockLength(env) < 28000) return env;
+
+  const safe = {};
+  const keepExact = new Set([
+    "APPDATA",
+    "CODEX_HOME",
+    "COMSPEC",
+    "ComSpec",
+    "HOME",
+    "HOMEDRIVE",
+    "HOMEPATH",
+    "HTTPS_PROXY",
+    "HTTP_PROXY",
+    "KIMI_CODE_HOME",
+    "LOCALAPPDATA",
+    "NODE_EXTRA_CA_CERTS",
+    "NO_COLOR",
+    "NO_PROXY",
+    "OS",
+    "Path",
+    "PATH",
+    "PATHEXT",
+    "SystemRoot",
+    "TEMP",
+    "TMP",
+    "USERDOMAIN",
+    "USERNAME",
+    "USERPROFILE",
+    "WINDIR",
+    "windir",
+  ]);
+  const keepPrefix = /^(LEGAL_|KIMI_|MOONSHOT_|OPENAI_|CODEX_|AI_)/i;
+  for (const [key, value] of Object.entries(env)) {
+    const text = String(value || "");
+    if ((keepExact.has(key) || keepPrefix.test(key)) && text.length < 12000) safe[key] = value;
+  }
+  if (pathValue) safe[pathKey] = dedupePathList(pathValue);
+  Object.assign(safe, extra);
+  return safe;
+}
+
 function buildCodexLaunch(command, args = []) {
   const normalized = String(command || "");
   if (process.platform === "win32" && /\.(cmd|bat)$/i.test(normalized)) {
@@ -518,7 +590,7 @@ function runCodexJsonTask({ prompt, schemaPath, outputPrefix, signal }) {
     const child = spawn(launch.command, launch.args, {
       cwd: appRoot,
       shell: false,
-      env: { ...process.env, NO_COLOR: "1" },
+      env: buildRunnerEnv({ NO_COLOR: "1" }),
       windowsHide: true,
     });
     let stdout = "";
@@ -597,21 +669,37 @@ function runCodexJsonTask({ prompt, schemaPath, outputPrefix, signal }) {
 
 function runKimiCliJsonTask({ prompt, schemaPath, outputPrefix, signal }) {
   const kimiCommand = getKimiCommand();
+  const promptDir = fs.mkdtempSync(path.join(os.tmpdir(), `${outputPrefix || "legal-ai"}-kimi-`));
+  const promptFile = path.join(promptDir, "prompt.md");
+  fs.writeFileSync(promptFile, prompt, "utf8");
+  const promptFileForKimi = promptFile.replace(/\\/g, "/");
   const args = [
     "--print",
-    "-p", prompt,
+    "-p", [
+      "Read the UTF-8 prompt file below and follow it exactly.",
+      "Return only the final JSON object requested by that file.",
+      `Prompt file: ${promptFileForKimi}`,
+    ].join("\n"),
     "--yolo",
     "--output-format", "stream-json",
     "--final-message-only",
     "--work-dir", appRoot,
+    "--add-dir", promptDir,
   ];
   return new Promise((resolve, reject) => {
-    const child = spawn(kimiCommand, args, {
-      cwd: appRoot,
-      shell: false,
-      env: { ...process.env, NO_COLOR: "1" },
-      windowsHide: true,
-    });
+    let child;
+    try {
+      child = spawn(kimiCommand, args, {
+        cwd: appRoot,
+        shell: false,
+        env: buildRunnerEnv({ NO_COLOR: "1" }),
+        windowsHide: true,
+      });
+    } catch (error) {
+      cleanupPromptFile();
+      reject(error);
+      return;
+    }
     let stdout = "";
     let stderr = "";
     let aborted = false;
@@ -620,13 +708,19 @@ function runKimiCliJsonTask({ prompt, schemaPath, outputPrefix, signal }) {
     function settleReject(error) {
       if (settled) return;
       settled = true;
+      cleanupPromptFile();
       reject(error);
     }
 
     function settleResolve(value) {
       if (settled) return;
       settled = true;
+      cleanupPromptFile();
       resolve(value);
+    }
+
+    function cleanupPromptFile() {
+      try { fs.rmSync(promptDir, { recursive: true, force: true }); } catch (error) {}
     }
 
     function onAbort() {
@@ -807,6 +901,7 @@ function validateAgainstSchema(value, schemaPath) {
 module.exports = {
   appRoot,
   buildCodexLaunch,
+  buildRunnerEnv,
   compact,
   getExecutionContext,
   getApiProviderStatus,

@@ -9,6 +9,7 @@
 
 const assert = require("assert");
 const { execFileSync } = require("child_process");
+const path = require("path");
 const { test, testAsync, summary } = require("./test-helper");
 
 function runInFreshEnv(code, extraEnv = {}) {
@@ -24,6 +25,38 @@ function runInFreshEnv(code, extraEnv = {}) {
 console.log("\n=== test-legal-skill-pure.js ===\n");
 
 const asyncTests = [];
+
+test("buildRunnerEnv dedupes PATH and keeps runner env overrides", () => {
+  const keys = ["Path", "PATH", "KIMI_API_KEY", "LEGAL_AI_PROVIDER", "LEGAL_WORKBENCH_HUGE_NOISE"];
+  const previous = {};
+  keys.forEach((key) => {
+    previous[key] = process.env[key];
+  });
+  try {
+    process.env.PATH = ["C:\\Tools\\Kimi", "C:\\Tools\\Kimi", "C:\\Windows\\System32"].join(path.delimiter);
+    process.env.KIMI_API_KEY = "test-key";
+    process.env.LEGAL_AI_PROVIDER = "kimi-cli";
+    process.env.LEGAL_WORKBENCH_HUGE_NOISE = "x".repeat(40000);
+    delete require.cache[require.resolve("../scripts/ai-runner-lib")];
+    const { buildRunnerEnv } = require("../scripts/ai-runner-lib");
+    const env = buildRunnerEnv({ NO_COLOR: "1" });
+    const pathKey = process.platform === "win32" ? "Path" : "PATH";
+    const pathEntries = String(env[pathKey] || "").split(path.delimiter).filter(Boolean);
+    assert.strictEqual(pathEntries.filter((entry) => entry.toLowerCase() === "c:\\tools\\kimi").length, 1);
+    assert.strictEqual(env.KIMI_API_KEY, "test-key");
+    assert.strictEqual(env.LEGAL_AI_PROVIDER, "kimi-cli");
+    assert.strictEqual(env.NO_COLOR, "1");
+    if (process.platform === "win32") {
+      assert.strictEqual(env.LEGAL_WORKBENCH_HUGE_NOISE, undefined);
+    }
+  } finally {
+    keys.forEach((key) => {
+      if (previous[key] === undefined) delete process.env[key];
+      else process.env[key] = previous[key];
+    });
+    delete require.cache[require.resolve("../scripts/ai-runner-lib")];
+  }
+});
 
 // ---------------------------------------------------------------------------
 // Exported getRunnerStatus
