@@ -441,7 +441,9 @@ function runConfiguredSkillCommand(request, options = {}, runnerConfig = getRunn
   return new Promise((resolve, reject) => {
     let child;
     let settled = false;
-    const skillTimeoutMs = Number(process.env.LEGAL_WORKBENCH_SKILL_TIMEOUT_MS || 0) || 180000;
+    const providerMode = String(runnerConfig.providerStatus?.mode || "").toLowerCase();
+    const defaultSkillTimeoutMs = providerMode === "kimi-cli" ? 9 * 60 * 1000 : 180000;
+    const skillTimeoutMs = Number(process.env.LEGAL_WORKBENCH_SKILL_TIMEOUT_MS || 0) || defaultSkillTimeoutMs;
     function settleReject(error) {
       if (settled) return;
       settled = true;

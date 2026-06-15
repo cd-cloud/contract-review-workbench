@@ -186,6 +186,11 @@ function isRetryableError(error) {
   if (/401|403|Unauthorized|Forbidden|ENOENT|not found|JSON parse|did not return JSON|did not return legal-skill JSON|missing response/i.test(msg)) {
     return false;
   }
+  // A local CLI timeout usually means the model is still working on a long review.
+  // Retrying immediately just restarts the expensive work and keeps the UI spinning longer.
+  if (/Skill command timed out|Kimi CLI timed out|AI legal review job timed out/i.test(msg)) {
+    return false;
+  }
   return /ECONNRESET|ETIMEDOUT|ENOTFOUND|socket hang up|timeout|timed out|rate limit|429|5\d{2}|Service Unavailable/i.test(msg);
 }
 

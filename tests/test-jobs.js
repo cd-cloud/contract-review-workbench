@@ -251,6 +251,27 @@ test("cancelJob terminates attached child process", () => {
     assert.ok(["completed", "failed"].includes(updated.status));
   });
 
+  await testAsync("createAnalysisJob does not retry local skill command timeouts", async () => {
+    _clearAllJobsForTesting();
+    globalCache.clear();
+    const originalAnalyzeLegalReview = legalSkillAdapter.analyzeLegalReview;
+    let attempts = 0;
+    legalSkillAdapter.analyzeLegalReview = async () => {
+      attempts += 1;
+      throw new Error("Skill command timed out after 540000ms");
+    };
+
+    try {
+      const job = createAnalysisJob({ contract_text: "timeout-test" });
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      const updated = getJob(job.id);
+      assert.strictEqual(updated.status, "failed");
+      assert.strictEqual(attempts, 1);
+    } finally {
+      legalSkillAdapter.analyzeLegalReview = originalAnalyzeLegalReview;
+    }
+  });
+
   await testAsync("createAnalysisJob queues jobs beyond concurrency limit instead of throwing 429", async () => {
     _clearAllJobsForTesting();
     globalCache.clear();

@@ -39,7 +39,7 @@ const config = {
 
   // Job queue
   maxJobs: asNumber(process.env.LEGAL_WORKBENCH_MAX_JOBS, 2),
-  jobTimeoutMs: asNumber(process.env.LEGAL_WORKBENCH_JOB_TIMEOUT_MS, 10 * 60 * 1000),
+  jobTimeoutMs: asNumber(process.env.LEGAL_WORKBENCH_JOB_TIMEOUT_MS, 12 * 60 * 1000),
   jobTtlMs: asNumber(process.env.LEGAL_WORKBENCH_JOB_TTL_MS, 30 * 60 * 1000),
   maxRetries: asNumber(process.env.LEGAL_WORKBENCH_MAX_RETRIES, 2),
   retryBaseMs: asNumber(process.env.LEGAL_WORKBENCH_RETRY_BASE_MS, 2000),
